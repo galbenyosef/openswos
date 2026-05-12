@@ -10,6 +10,9 @@ build/
 export/
 dist/
 
+# Portable downloaded tools (Godot, unADF, etc.) — fetched, not source
+.tools/
+
 # Godot 4
 .godot/
 .import/

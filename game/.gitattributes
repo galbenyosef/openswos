@@ -1,0 +1,11 @@
+* text=auto eol=lf
+*.cs text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.gd text eol=lf
+*.godot text eol=lf
+*.csproj text eol=lf
+*.sln text eol=crlf
+*.png binary
+*.jpg binary
+*.svg text eol=lf

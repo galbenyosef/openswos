@@ -1,0 +1,16 @@
+<Project Sdk="Godot.NET.Sdk/4.6.2">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>OpenSwos</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Single source of truth: pull the format parsers from tools/ rather than copying.
+         Both the CLI tools and the game compile these same files. -->
+    <Compile Include="..\tools\rnc-decode\RncV1.cs" Link="Imported\RncV1.cs" />
+    <Compile Include="..\tools\team-decode\TeamFile.cs" Link="Imported\TeamFile.cs" />
+  </ItemGroup>
+</Project>
