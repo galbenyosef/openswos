@@ -1,0 +1,36 @@
+# Original SWOS game files — proprietary, NEVER commit (even to private repo)
+Swos9697_Amiga/
+Swos9697_PC/
+
+# Extracted assets — regenerable from originals via tools/
+assets/extracted/
+
+# Build outputs
+build/
+export/
+dist/
+
+# Godot 4
+.godot/
+.import/
+*.translation
+mono_crash.*.json
+
+# .NET / C#
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
