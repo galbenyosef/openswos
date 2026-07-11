@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- OpenSWOS fidelity harness — xUnit replay tests against swos-port traces.
+       Stand-alone .NET 9 project (NOT Godot.NET.Sdk) so it can run on CI / cli
+       without the Godot engine. Imports the SwosVm + Sim/Port code from the
+       game project via <Compile Include> — same single-source-of-truth pattern
+       used by game/OpenSwos.csproj to share tools/ code.
+
+       NOTE: This project deliberately does NOT include game/scripts/Sim/*.cs
+       (BallSim, PlayerSim, etc.) or any other Godot-dependent code. Only the
+       Port path (Sim/Port/) and the SwosVm bridge layer.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>OpenSwos.Tests</RootNamespace>
+    <!-- 16-bit-wraparound semantics from asm-translated code require unchecked. -->
+    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Game C# port code — single source of truth via linked compile. -->
+    <Compile Include="..\..\game\scripts\SwosVm\Memory.cs" Link="Imported\SwosVm\Memory.cs" />
+    <Compile Include="..\..\game\scripts\SwosVm\Flags.cs" Link="Imported\SwosVm\Flags.cs" />
+    <Compile Include="..\..\game\scripts\SwosVm\BallSprite.cs" Link="Imported\SwosVm\BallSprite.cs" />
+    <Compile Include="..\..\game\scripts\SwosVm\TeamData.cs" Link="Imported\SwosVm\TeamData.cs" />
+    <Compile Include="..\..\game\scripts\SwosVm\PlayerSprite.cs" Link="Imported\SwosVm\PlayerSprite.cs" />
+    <Compile Include="..\..\game\scripts\SwosVm\Tables.cs" Link="Imported\SwosVm\Tables.cs" />
+    <Compile Include="..\..\game\scripts\Sim\Port\BallUpdate.cs" Link="Imported\Sim\Port\BallUpdate.cs" />
+    <Compile Include="..\..\game\scripts\Sim\Port\SpriteUpdate.cs" Link="Imported\Sim\Port\SpriteUpdate.cs" />
+    <Compile Include="..\..\game\scripts\Sim\Port\PlayerUpdate.cs" Link="Imported\Sim\Port\PlayerUpdate.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Verify.Xunit" Version="26.6.0" />
+    <PackageReference Include="FsCheck.Xunit" Version="3.0.0" />
+  </ItemGroup>
+
+  <!-- Golden trace CSVs copied to output so tests can find them at runtime. -->
+  <ItemGroup>
+    <Content Include="golden\**\*.csv" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

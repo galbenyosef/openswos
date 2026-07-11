@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>OpenSwos.Tools.PitchDecode</RootNamespace>
+    <AssemblyName>pitch-decode</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Share the format primitives with the other tools to keep one source of truth. -->
+    <Compile Include="..\rnc-decode\RncV1.cs" Link="Imported\RncV1.cs" />
+    <Compile Include="..\rnc-decode\RncV2.cs" Link="Imported\RncV2.cs" />
+    <Compile Include="..\rnc-decode\RncHeader.cs" Link="Imported\RncHeader.cs" />
+    <Compile Include="..\sprite-decode\Bitplane.cs" Link="Imported\Bitplane.cs" />
+    <Compile Include="..\sprite-decode\Bmp.cs" Link="Imported\Bmp.cs" />
+    <Compile Include="..\sprite-decode\Ppm.cs" Link="Imported\Ppm.cs" />
+    <Compile Include="..\sprite-decode\Palette.cs" Link="Imported\Palette.cs" />
+  </ItemGroup>
+</Project>

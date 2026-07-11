@@ -16,6 +16,11 @@ run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6", "C#", "GL Compatibility")
 config/icon="res://icon.svg"
 
+[physics]
+
+common/physics_ticks_per_second=70
+common/max_physics_steps_per_frame=4
+
 [dotnet]
 
 project/assembly_name="OpenSwos"
@@ -24,8 +29,8 @@ project/assembly_name="OpenSwos"
 
 window/size/viewport_width=384
 window/size/viewport_height=272
-window/size/window_width_override=1536
-window/size/window_height_override=1088
+window/size/window_width_override=1152
+window/size/window_height_override=816
 window/stretch/mode="viewport"
 window/stretch/aspect="keep"
 

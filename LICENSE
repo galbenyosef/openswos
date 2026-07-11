@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 angree and OpenSWOS contributors
+Copyright (c) 2026 Grzegorz Korycki
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,17 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+The MIT licence above covers ONLY the original OpenSWOS source code authored
+for this project. It does NOT cover, and OpenSWOS does not include or
+redistribute:
+
+  - Any assets, data, graphics, audio or text from Sensible World of Soccer
+    (the original game). These remain the property of their respective owners.
+    You must supply your own legally-obtained copy of the original game; see
+    README.md.
+  - "Sensible World of Soccer", "SWOS" and "Sensible Software" are trademarks
+    of their respective owners. OpenSWOS is an unaffiliated, fan-made
+    reimplementation and is not endorsed by or associated with them.

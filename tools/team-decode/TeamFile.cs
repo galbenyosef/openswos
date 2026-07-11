@@ -28,11 +28,17 @@ namespace OpenSwos.Tools.TeamDecode;
 //   +0x01  u8   reserved (0)
 //   +0x02  u8   shirt number
 //   +0x03  23   name (ASCII, null-padded)
-//   +0x1A  u8   position + appearance byte (high nibble = position, rounded even)
-//   +0x1C  u8   skill byte 1: bits 0..2 = passing - 1
-//   +0x1D  u8   skill byte 2: bits 4..6 = shooting - 1, bits 0..2 = heading - 1
-//   +0x1E  u8   skill byte 3: bits 4..6 = tackling - 1, bits 0..2 = control - 1
-//   +0x1F  u8   skill byte 4: bits 4..6 = speed - 1,    bits 0..2 = finishing - 1
+//   +0x1A  u8   bit-packed position + face: bits 5-7 = position (0=G .. 7=A),
+//                bits 3-4 = face/skin+hair type (0=white, 1=ginger, 2=black)
+//                (swos-port docs/SWOS/teams.txt:192-200; swos.asm:84815-84832
+//                extracts the face with `and 18h` / `shr 3` and cycles it mod 3)
+//   +0x1C  u8   skill byte 1: high nibble = ???,      low nibble = passing
+//   +0x1D  u8   skill byte 2: high nibble = shooting, low nibble = heading
+//   +0x1E  u8   skill byte 3: high nibble = tackling, low nibble = control
+//   +0x1F  u8   skill byte 4: high nibble = speed,    low nibble = finishing
+//                Skill nibbles hold 0..15 in the file (swos-port
+//                docs/SWOS/teams.txt:214-221) but the ENGINE reads them
+//                modulo 8 — see ReadPlayer below. We decode to 0..7.
 //   +0x20  u8   value code (0..47, lookup table to monetary value in thousands)
 
 public sealed record Player(
@@ -40,6 +46,7 @@ public sealed record Player(
     byte ShirtNumber,
     string Name,
     byte PositionByte,
+    int Face,
     int Passing,
     int Shooting,
     int Heading,
@@ -99,13 +106,19 @@ public static class TeamFile
         ushort globalId = BinaryPrimitives.ReadUInt16BigEndian(block.Slice(0x02, 2));
         byte skillTotal = block[0x04];
         string name = ReadNullPadded(block.Slice(0x05, 19));
+        // TeamFileHeader (swos.h:234-258, static_assert size==76): tactics @0x18,
+        // league @0x19, then TWO 5-byte kits — primary (home) @0x1A..0x1E and
+        // secondary (away/change) @0x1F..0x23 — then coachName @0x24 (the +0x24
+        // coach start is empirically verified against TEAM.008 ARSENAL, which
+        // pins the 10 kit bytes to 0x1A..0x23). Each kit is
+        // {shirtType, stripesColor, basicColor, shortsColor, socksColor}.
+        // PRIOR BUG: home was read at 0x1C (straddling primary tail + secondary
+        // head) and away as only 3 bytes at 0x21, so both kits were scrambled
+        // and the change-kit clash test had no valid data (task #185).
         byte division = block[0x19];
-        byte tactics = block[0x1A];
-        // Verified empirically against TEAM.008 ARSENAL — coach starts at +0x24 (not +0x26 as
-        // ysoccer claims). Kit layout: home 5 bytes at +0x1C..+0x20, then a short away
-        // segment, then coach. 3-byte away kit best fits the data.
-        var homeKit = block.Slice(0x1C, 5).ToArray();
-        var awayKit = block.Slice(0x21, 3).ToArray();
+        byte tactics = block[0x18];
+        var homeKit = block.Slice(0x1A, 5).ToArray();
+        var awayKit = block.Slice(0x1F, 5).ToArray();
         string coach = ReadNullPadded(block.Slice(0x24, 24));
         var displayOrder = block.Slice(0x3C, 16).ToArray();
 
@@ -127,18 +140,36 @@ public static class TeamFile
         string name = ReadNullPadded(rec.Slice(0x03, 23));
         byte posByte = rec[0x1A];
 
-        // 7 skills packed in bytes 0x1C..0x1F as 3-bit nibbles (mask 0x07), +1 -> range 1..8.
-        int passing  =  (rec[0x1C]       & 0x07) + 1;
-        int shooting = ((rec[0x1D] >> 4) & 0x07) + 1;
-        int heading  =  (rec[0x1D]       & 0x07) + 1;
-        int tackling = ((rec[0x1E] >> 4) & 0x07) + 1;
-        int control  =  (rec[0x1E]       & 0x07) + 1;
-        int speed    = ((rec[0x1F] >> 4) & 0x07) + 1;
-        int finishing=  (rec[0x1F]       & 0x07) + 1;
+        // Face (skin + hair colour type) shares the position byte: bits 3-4,
+        // 0 = white, 1 = ginger, 2 = black (swos-port docs/SWOS/teams.txt:199-200
+        // "bits 3,4 - face (00 = white, 10 = black, 01 = ginger)"; matches
+        // enum FaceTypes kWhite/kGinger/kBlack, swos.h:436-442). Extraction
+        // mirrors EditTeamsChangePlayerFace, swos.asm:84815-84818: `and 18h`,
+        // `shr 3`. Position stays in bits 5-7, untouched by this mask.
+        int face = (posByte >> 3) & 0x03;
+
+        // 7 skills packed one per NIBBLE in bytes 0x1C..0x1F. The file stores
+        // full nibbles 0..15 (swos-port docs/SWOS/teams.txt:214-221), but the
+        // original engine consumes every skill MODULO 8: both GetPlayerPrice
+        // and AdjustPlayerSkills mask the packed nibbles with `and 7777777h`
+        // (swos.asm:129744 / 37754; teams.txt:848). So a hacked nibble of 8
+        // plays as 0 and F as 7 — a wrap-around, not a clamp. We decode with
+        // the same mod-8 semantics -> range 0..7.
+        //
+        // PRIOR BUG (task #196): decoded as (v & 0x07) + 1 -> 1..8, which was
+        // off by one against the engine's own reading of the same bytes.
+        static int Skill(int nibble) => (nibble & 0x0F) % 8;
+        int passing  = Skill(rec[0x1C]);
+        int shooting = Skill(rec[0x1D] >> 4);
+        int heading  = Skill(rec[0x1D]);
+        int tackling = Skill(rec[0x1E] >> 4);
+        int control  = Skill(rec[0x1E]);
+        int speed    = Skill(rec[0x1F] >> 4);
+        int finishing= Skill(rec[0x1F]);
 
         byte valueCode = rec[0x20];
 
-        return new Player(nationality, shirt, name, posByte,
+        return new Player(nationality, shirt, name, posByte, face,
             passing, shooting, heading, tackling, control, speed, finishing, valueCode);
     }
 

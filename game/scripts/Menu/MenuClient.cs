@@ -1,0 +1,2277 @@
+using Godot;
+using OpenSwos.Assets;
+using OpenSwos.Competition;
+
+namespace OpenSwos.Menu;
+
+// One rendered menu screen: a title plus a vertical list of entries, with a
+// remembered cursor position (so BACK returns you where you were).
+public sealed class MenuScreen
+{
+    public string Title = "";
+    public System.Collections.Generic.List<MenuEntry> Entries = new();
+    public int Selected;
+    // Optional richer body painter (team-config squad table etc.), drawn under
+    // the entries. Receives the client so it can spawn its own sprites.
+    public System.Action<MenuClient>? Body;
+    public System.Collections.Generic.List<Node> BodyNodes = new();
+    // Vertical pixels the body painter needs below the entry column. Layout
+    // switches to compact entry metrics when the column would eat into this.
+    public int BodyReserve;
+    // First free Y below the last laid-out entry (set by LayoutAndBuild before
+    // Body runs). Body painters MUST anchor here, never at hardcoded Y values.
+    public int BodyTop;
+}
+
+// The OpenSWOS front-end: a SWOS-styled, stack-navigated menu client that lives
+// on the game's UI CanvasLayer and drives match setup, team config and launch.
+// Replaces the old single plain-text label. All visuals come from MenuTheme.
+public sealed class MenuClient
+{
+    private readonly Node2D _root;
+    private readonly SwosFont? _font;
+    private readonly IMenuHost _host;
+    private readonly int _vw, _vh;
+
+    private Sprite2D? _backdrop;
+    private Sprite2D? _cursor;
+    private readonly System.Collections.Generic.Stack<MenuScreen> _stack = new();
+
+    private int _cursorFrame;
+    private int _heldTicks;
+    private bool _dirty;
+
+    // ---- competition session state -------------------------------------------
+    // The single active competition (lazily loaded from CompetitionStore) and
+    // the fixture the player is currently out playing (null between matches).
+    private OpenSwos.Competition.CompetitionState? _comp;
+    private OpenSwos.Competition.Fixture? _pendingFixture;
+
+    // Setup-screen selections (persist across screen rebuilds within a session).
+    private static readonly int[] kLeagueSizes = { 4, 6, 8, 10, 12, 16, 20 };
+    private static readonly int[] kCupSizes = { 4, 8, 16, 32 };
+    private static readonly int[] kTournamentGroups = { 2, 4 };
+    private static readonly string[] kEntrantModes = { "SAME DIVISION", "SAME NATION", "RANDOM" };
+    private int _setupTeamIdx;          // master-list index of "YOUR TEAM"
+    private int _leagueSizeIdx = 2;     // default 8 teams
+    private int _cupSizeIdx = 1;        // default 8 teams
+    private int _tournamentGroupsIdx = 1; // default 4 groups of 4
+    private int _entrantsMode;          // 0 same division, 1 same nation, 2 random
+    private int _leagueRoundsIdx = 1;   // 0 single round-robin, 1 double
+
+    // Wave-2 session state: manager identity, presets, save slots, table view.
+    private static readonly string[] kManagerTitles = { "MR", "MS" };
+    private int _mgrTitleIdx;                     // 0 = MR, 1 = MS (career creation)
+    private PresetCompetition? _preset;           // preset picked on the list screen
+    private System.Collections.Generic.List<int> _presetEntrants = new();
+    private int _presetYou;                       // YOUR TEAM: index INTO _presetEntrants
+    private bool _slotDeleteMode;                 // LOAD GAME: fire deletes instead of loads
+    private string? _saveNotice;                  // one-shot dashboard status confirmation
+    private int _tableGroup;                      // tournament TABLE screen group (0 = A)
+
+    // Nation picker (continent -> country -> team, like original SWOS).
+    private int _setupContinent;        // 0..5, NationNames continent code
+    private int _setupNation;           // TEAM.* nation index of the picked country
+    private int _friendlyNation = -1;   // friendly/local-MP country filter, -1 = ALL
+    // Nations that actually contain teams, with team counts — probed once via
+    // the host and cached (the master team list never changes at runtime).
+    private System.Collections.Generic.List<int>? _nationsWithTeams;
+    private System.Collections.Generic.Dictionary<int, int>? _nationTeamCount;
+
+    public MenuClient(Node uiLayer, SwosFont? font, IMenuHost host, int viewportW, int viewportH)
+    {
+        _font = font; _host = host; _vw = viewportW; _vh = viewportH;
+        _optionsPages = new System.Action<MenuScreen>[] { AddOptionsPageAll };
+        _root = new Node2D { Name = "MenuClient" };
+        uiLayer.AddChild(_root);
+
+        BuildBackdrop();
+        _cursor = new Sprite2D { Visible = false, Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, ZIndex = 60 };
+        _root.AddChild(_cursor);
+
+        Push(BuildHome());
+    }
+
+    public bool Active
+    {
+        get => _root.Visible;
+        set
+        {
+            bool was = _root.Visible;
+            _root.Visible = value;
+            if (value)
+            {
+                // First time we (re)appear — e.g. on boot or after a match ends —
+                // snap back to the home screen so the player never lands deep in a
+                // stale sub-menu.
+                if (!was) ResetToHome();
+                _dirty = true;
+            }
+        }
+    }
+
+    private void ResetToHome()
+    {
+        while (_stack.Count > 0) DestroyScreenNodes(_stack.Pop());
+        Push(BuildHome());
+    }
+
+    private void BuildBackdrop()
+    {
+        // Vertical wash, midnight blue — our own backdrop (SWOS uses a starfield).
+        int w = _vw, h = _vh;
+        var bytes = new byte[w * h * 4];
+        for (int y = 0; y < h; y++)
+        {
+            Color c = MenuTheme.BackdropTop.Lerp(MenuTheme.BackdropBottom, y / (float)(h - 1));
+            byte r = (byte)(c.R * 255f), g = (byte)(c.G * 255f), b = (byte)(c.B * 255f);
+            for (int x = 0; x < w; x++)
+            {
+                int o = (y * w + x) * 4;
+                bytes[o] = r; bytes[o + 1] = g; bytes[o + 2] = b; bytes[o + 3] = 255;
+            }
+        }
+        var img = Image.CreateFromData(w, h, false, Image.Format.Rgba8, bytes);
+        _backdrop = new Sprite2D
+        {
+            Texture = ImageTexture.CreateFromImage(img),
+            Centered = false,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            ZIndex = 0,
+        };
+        _root.AddChild(_backdrop);
+    }
+
+    // ---- screen stack --------------------------------------------------------
+    private MenuScreen Current => _stack.Peek();
+
+    private void Push(MenuScreen s)
+    {
+        // Hide the screen we're covering so it doesn't bleed through underneath
+        // (its selection index survives on the MenuScreen object for BACK).
+        if (_stack.Count > 0) DestroyScreenNodes(Current);
+        _stack.Push(s);
+        LayoutAndBuild(s);
+        _dirty = true;
+    }
+
+    private void Pop()
+    {
+        if (_stack.Count <= 1) return;
+        var top = _stack.Pop();
+        DestroyScreenNodes(top);
+        LayoutAndBuild(Current);   // rebuild the one we return to (fresh nodes)
+        _dirty = true;
+    }
+
+    private void GoTo(MenuScreen s)
+    {
+        // replace whole stack root-ward for a fresh navigation (used by "start over")
+        Push(s);
+    }
+
+    private void DestroyScreenNodes(MenuScreen s)
+    {
+        foreach (var e in s.Entries)
+        {
+            e.Bg?.QueueFree(); e.LabelSpr?.QueueFree(); e.ValueBg?.QueueFree();
+            e.ValueSpr?.QueueFree(); e.ArrowL?.QueueFree(); e.ArrowR?.QueueFree();
+            e.Bg = e.LabelSpr = e.ValueBg = e.ValueSpr = e.ArrowL = e.ArrowR = null;
+        }
+        foreach (var n in s.BodyNodes) n.QueueFree();
+        s.BodyNodes.Clear();
+    }
+
+    // ---- layout + node creation ---------------------------------------------
+    private void LayoutAndBuild(MenuScreen s)
+    {
+        DestroyScreenNodes(s);
+        LayoutEntries(s);
+        foreach (var e in s.Entries) BuildEntryNodes(e);
+        s.Body?.Invoke(this);
+        // clamp selection to a selectable entry
+        if (!IsSelectable(s, s.Selected)) s.Selected = FirstSelectable(s);
+    }
+
+    private void LayoutEntries(MenuScreen s)
+    {
+        // Entries flow in a centred column between the title bar (bottom ~36)
+        // and the footer hint (top ~ _vh-14), minus the screen's body
+        // reservation. Try normal metrics first; if the column would overflow,
+        // retry with the compact tier; if even that overflows, log and clip.
+        int limit = _vh - 14 - s.BodyReserve;
+        if (!TryLayoutEntries(s, 46, compact: false, limit)
+            && !TryLayoutEntries(s, 40, compact: true, limit))
+        {
+            GD.PrintErr($"MenuClient: '{s.Title}' entries overflow even compact layout, clipping");
+            TryLayoutEntries(s, 40, compact: true, int.MaxValue);
+        }
+        // First free row below the last entry — where a body painter may start.
+        int bottom = 40;
+        foreach (var e in s.Entries) if (e.Y + e.H > bottom) bottom = e.Y + e.H;
+        s.BodyTop = bottom + 6;
+    }
+
+    // One layout pass at the given metrics tier; true if the column's bottom
+    // edge stays above `limit` (footer top minus any body reservation).
+    private bool TryLayoutEntries(MenuScreen s, int top, bool compact, int limit)
+    {
+        int gap = compact ? 2 : 5;
+        int y = top;
+        foreach (var e in s.Entries)
+        {
+            switch (e.Kind)
+            {
+                case EntryKind.Label:
+                    e.W = 300; e.H = compact ? 10 : 12;
+                    break;
+                case EntryKind.Button:
+                    e.W = 208; e.H = e.Big ? (compact ? 15 : 20) : (compact ? 13 : 16);
+                    break;
+                case EntryKind.Option:
+                    e.W = 300; e.H = compact ? 13 : 16;
+                    break;
+            }
+            e.X = (_vw - e.W) / 2; e.Y = y; y += e.H + gap;
+        }
+        return y - gap <= limit;
+    }
+
+    private const int OptLabelW = 150;   // option row: label box | value box
+
+    private void BuildEntryNodes(MenuEntry e)
+    {
+        if (e.Kind == EntryKind.Label)
+        {
+            e.LabelSpr = MakeText();
+            return;
+        }
+        if (e.Kind == EntryKind.Button)
+        {
+            e.Bg = MakeSprite(MenuTheme.Button(e.W, e.H, e.Style), e.X, e.Y, 10);
+            e.LabelSpr = MakeText();
+            return;
+        }
+        // Option: label box (left) + value box (right) with arrows.
+        int labelW = OptLabelW, valueW = e.W - labelW - 4;
+        e.Bg = MakeSprite(MenuTheme.Button(labelW, e.H, MenuTheme.Style.Plain), e.X, e.Y, 10);
+        e.ValueBg = MakeSprite(MenuTheme.Button(valueW, e.H, e.Style), e.X + labelW + 4, e.Y, 10);
+        e.LabelSpr = MakeText();
+        e.ValueSpr = MakeText();
+        e.ArrowL = MakeText();
+        e.ArrowR = MakeText();
+    }
+
+    private Sprite2D MakeSprite(Texture2D tex, int x, int y, int z)
+    {
+        var s = new Sprite2D { Texture = tex, Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, Position = new Vector2(x, y), ZIndex = z };
+        _root.AddChild(s);
+        return s;
+    }
+
+    private Sprite2D MakeText()
+    {
+        var s = new Sprite2D { Visible = false, Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, ZIndex = 20 };
+        _root.AddChild(s);
+        return s;
+    }
+
+    private enum Align { Left, Center, Right }
+
+    private void SetText(Sprite2D? s, string text, bool big, Align align, int boxX, int boxY, int boxW, int boxH, Color color)
+    {
+        if (s is null) return;
+        if (_font is null || string.IsNullOrEmpty(text)) { s.Visible = false; return; }
+        var tex = _font.Render(text, big, color);
+        if (tex is null) { s.Visible = false; return; }
+        int w = tex.GetWidth(), h = tex.GetHeight();
+        int x = align switch { Align.Right => boxX + boxW - w - 3, Align.Center => boxX + (boxW - w) / 2, _ => boxX + 3 };
+        int yv = boxY + (boxH - h) / 2;
+        s.Texture = tex; s.Position = new Vector2(x, yv); s.Visible = true;
+    }
+
+    // ---- public helpers for custom bodies (team-config) ---------------------
+    public Node2D Root => _root;
+    public SwosFont? Font => _font;
+    public int ViewportW => _vw;
+    public int ViewportH => _vh;
+
+    public Sprite2D BodyBox(MenuScreen s, int x, int y, int w, int h, MenuTheme.Style style, int z = 6)
+    {
+        var spr = MakeSprite(MenuTheme.Button(w, h, style), x, y, z);
+        s.BodyNodes.Add(spr);
+        return spr;
+    }
+
+    public Sprite2D BodyText(MenuScreen s, string text, bool big, int x, int y, Color color, bool rightAlign = false)
+    {
+        var spr = MakeText();
+        spr.ZIndex = 22;
+        // reuse SetText with a zero box so alignment is anchor-based
+        if (_font is not null && !string.IsNullOrEmpty(text))
+        {
+            var tex = _font.Render(text, big, color);
+            if (tex is not null)
+            {
+                int w = tex.GetWidth();
+                spr.Texture = tex;
+                spr.Position = new Vector2(rightAlign ? x - w : x, y);
+                spr.Visible = true;
+            }
+        }
+        s.BodyNodes.Add(spr);
+        return spr;
+    }
+
+    public Sprite2D BodySwatch(MenuScreen s, int x, int y, int w, int h, Color fill)
+    {
+        var bytes = new byte[w * h * 4];
+        byte r = (byte)(fill.R * 255f), g = (byte)(fill.G * 255f), b = (byte)(fill.B * 255f);
+        for (int i = 0; i < w * h; i++) { bytes[i * 4] = r; bytes[i * 4 + 1] = g; bytes[i * 4 + 2] = b; bytes[i * 4 + 3] = 255; }
+        // 1px black border for definition
+        for (int px = 0; px < w; px++) { Border(bytes, w, px, 0); Border(bytes, w, px, h - 1); }
+        for (int py = 0; py < h; py++) { Border(bytes, w, 0, py); Border(bytes, w, w - 1, py); }
+        var img = Image.CreateFromData(w, h, false, Image.Format.Rgba8, bytes);
+        var spr = new Sprite2D { Texture = ImageTexture.CreateFromImage(img), Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, Position = new Vector2(x, y), ZIndex = 8 };
+        _root.AddChild(spr);
+        s.BodyNodes.Add(spr);
+        return spr;
+    }
+    private static void Border(byte[] b, int w, int x, int y) { int o = (y * w + x) * 4; b[o] = b[o + 1] = b[o + 2] = 0; b[o + 3] = 255; }
+
+    // ---- per-frame refresh (dynamic labels/values) --------------------------
+    private void Refresh()
+    {
+        EnsureTitleNodes();
+        var s = Current;
+        SetText(_titleSpr, s.Title, true, Align.Center, 0, 14, _vw, 22, MenuTheme.TextColor(MenuTheme.Style.Header));
+        _titleBar!.Visible = true;
+
+        foreach (var e in s.Entries)
+        {
+            Color tc = MenuTheme.TextColor(e.Kind == EntryKind.Option ? MenuTheme.Style.Plain : e.Style);
+            switch (e.Kind)
+            {
+                case EntryKind.Label:
+                    SetText(e.LabelSpr, e.Label(), e.Big, Align.Center, e.X, e.Y, e.W, e.H, new Color(0.75f, 0.8f, 0.95f));
+                    break;
+                case EntryKind.Button:
+                    SetText(e.LabelSpr, e.Label(), e.Big, Align.Center, e.X, e.Y, e.W, e.H, MenuTheme.TextColor(e.Style));
+                    break;
+                case EntryKind.Option:
+                    int labelW = OptLabelW, valueW = e.W - labelW - 4, valueX = e.X + labelW + 4;
+                    SetText(e.LabelSpr, e.Label(), false, Align.Left, e.X, e.Y, labelW, e.H, new Color(0.85f, 0.88f, 0.96f));
+                    SetText(e.ValueSpr, e.Value?.Invoke() ?? "", false, Align.Center, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
+                    SetText(e.ArrowL, "<", false, Align.Left, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
+                    SetText(e.ArrowR, ">", false, Align.Right, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
+                    break;
+            }
+        }
+
+        // context footer (control hints)
+        bool hasOption = s.Entries.Exists(e => e.Kind == EntryKind.Option);
+        string hint = hasOption
+            ? "UP/DOWN SELECT   LEFT/RIGHT CHANGE   FIRE OK   ESC BACK"
+            : "UP/DOWN SELECT   FIRE OK   ESC BACK";
+        SetText(_footerSpr, hint, false, Align.Center, 0, _vh - 11, _vw, 10, new Color(0.55f, 0.6f, 0.72f));
+    }
+
+    private Sprite2D? _titleBar, _titleSpr, _footerSpr;
+
+    private void EnsureTitleNodes()
+    {
+        if (_titleBar is null)
+        {
+            _titleBar = MakeSprite(MenuTheme.Button(300, 22, MenuTheme.Style.Header), (_vw - 300) / 2, 12, 10);
+            _titleSpr = MakeText();
+            _titleSpr!.ZIndex = 21;
+            _footerSpr = MakeText();
+            _footerSpr!.ZIndex = 21;
+        }
+    }
+
+    // ---- input ---------------------------------------------------------------
+    // Called once per physics tick by Main while AppState==Menu.
+    public void Tick()
+    {
+        // Competition result hand-back — polled before the Active check and
+        // before any input handling so a finished competition match is recorded
+        // the moment the menu layer runs again (the Active setter's ResetToHome
+        // has already fired by then; we re-navigate to the dashboard below).
+        PollCompetitionResult();
+        PollFriendlyEnd();
+
+        if (!Active) return;
+        EnsureTitleNodes();
+        var s = Current;
+
+        // Text-input mode: the keyboard belongs to the typed entry, so ALL
+        // normal navigation (up/down/left/right/fire/back) is suspended —
+        // otherwise typing SPACE would fire buttons and WASD would steer the
+        // cursor. ENTER confirms, ESC cancels (both handled in TickTextInput).
+        if (_textInput is not null)
+        {
+            if (!ReferenceEquals(_textInputScreen, s)) EndTextInput();   // screen changed under us
+            else
+            {
+                TickTextInput();
+                _cursorFrame++;
+                UpdateCursor();
+                if (_dirty) { Refresh(); _dirty = false; }
+                return;
+            }
+        }
+
+        bool up = Input.IsActionJustPressed("ui_up");
+        bool down = Input.IsActionJustPressed("ui_down");
+        if (up) { MoveSelection(s, -1); _dirty = true; }
+        else if (down) { MoveSelection(s, +1); _dirty = true; }
+
+        var sel = (s.Selected >= 0 && s.Selected < s.Entries.Count) ? s.Entries[s.Selected] : null;
+
+        // LEFT/RIGHT — step an Option value (with optional accelerated hold).
+        bool leftHeld = Input.IsActionPressed("ui_left");
+        bool rightHeld = Input.IsActionPressed("ui_right");
+        int step = 0;
+        if (Input.IsActionJustPressed("ui_left")) { step = -1; _heldTicks = 0; }
+        else if (Input.IsActionJustPressed("ui_right")) { step = 1; _heldTicks = 0; }
+        else if ((leftHeld || rightHeld) && sel is { Kind: EntryKind.Option, FastScroll: true })
+        {
+            _heldTicks++;
+            int dir = leftHeld ? -1 : 1;
+            if (_heldTicks >= 90) step = dir * 5;
+            else if (_heldTicks >= 30 && (_heldTicks - 30) % 6 == 0) step = dir;
+        }
+        else _heldTicks = 0;
+
+        if (step != 0 && sel is { Kind: EntryKind.Option })
+        {
+            sel.OnStep?.Invoke(step);
+            _dirty = true;
+        }
+
+        // FIRE — activate a Button (or nudge an Option forward).
+        if (Input.IsActionJustPressed("ui_accept"))
+        {
+            if (sel is { Kind: EntryKind.Button }) sel.OnActivate?.Invoke();
+            else if (sel is { Kind: EntryKind.Option }) { sel.OnStep?.Invoke(+1); _dirty = true; }
+        }
+
+        // BACK — pop a screen.
+        if (Input.IsActionJustPressed("ui_cancel")) Pop();
+
+        // cursor flash cadence
+        _cursorFrame++;
+        UpdateCursor();
+
+        if (_dirty) { Refresh(); _dirty = false; }
+    }
+
+    private bool IsSelectable(MenuScreen s, int i) => i >= 0 && i < s.Entries.Count && s.Entries[i].Selectable;
+    private int FirstSelectable(MenuScreen s)
+    {
+        for (int i = 0; i < s.Entries.Count; i++) if (s.Entries[i].Selectable) return i;
+        return 0;
+    }
+    private void MoveSelection(MenuScreen s, int dir)
+    {
+        int n = s.Entries.Count;
+        for (int k = 0; k < n; k++)
+        {
+            s.Selected = (s.Selected + dir + n) % n;
+            if (s.Entries[s.Selected].Selectable) return;
+        }
+    }
+
+    private void UpdateCursor()
+    {
+        var s = Current;
+        if (_cursor is null) return;
+        if (_textInput is not null) { _cursor.Visible = false; return; }   // typing owns the screen
+        if (s.Selected < 0 || s.Selected >= s.Entries.Count) { _cursor.Visible = false; return; }
+        var e = s.Entries[s.Selected];
+        if (!e.Selectable) { _cursor.Visible = false; return; }
+        // frame the whole row (label+value for options)
+        int x = e.X - 2, y = e.Y - 2, w = e.W + 4, h = e.H + 4;
+        _cursor.Texture = MenuTheme.CursorOutline(w, h);
+        _cursor.Position = new Vector2(x, y);
+        _cursor.Modulate = MenuTheme.CursorColor(_cursorFrame >> 2);   // ~17 Hz flash at 70 Hz tick
+        _cursor.Visible = true;
+    }
+
+    // ---- debug / screenshot-driver hooks ------------------------------------
+    public string DebugTitle => Current.Title;
+    public int DebugEntryCount => Current.Entries.Count;
+    public int DebugSelected => Current.Selected;
+    public void DebugSelect(int i)
+    {
+        var s = Current;
+        if (i >= 0 && i < s.Entries.Count) s.Selected = s.Entries[i].Selectable ? i : FirstSelectable(s);
+        _dirty = true; Refresh(); UpdateCursor();
+    }
+    public void DebugFire()
+    {
+        var s = Current; if (s.Selected < 0 || s.Selected >= s.Entries.Count) return;
+        var sel = s.Entries[s.Selected];
+        if (sel.Kind == EntryKind.Button) sel.OnActivate?.Invoke();
+        else if (sel.Kind == EntryKind.Option) sel.OnStep?.Invoke(+1);
+        _dirty = true; Refresh(); UpdateCursor();
+    }
+    public void DebugBack() { Pop(); Refresh(); UpdateCursor(); }
+    // Finds the first selectable entry whose label CONTAINS `label` and fires
+    // it (Button) or steps it forward (Option). Robust against conditional
+    // entries shifting indices (e.g. the HOME CONTINUE button). Returns false
+    // when no such entry exists on the current screen.
+    public bool DebugFireLabel(string label)
+    {
+        var s = Current;
+        for (int i = 0; i < s.Entries.Count; i++)
+        {
+            var e = s.Entries[i];
+            if (!e.Selectable) continue;
+            if (!e.Label().Contains(label)) continue;
+            s.Selected = i;
+            if (e.Kind == EntryKind.Button) e.OnActivate?.Invoke();
+            else e.OnStep?.Invoke(+1);
+            _dirty = true; Refresh(); UpdateCursor();
+            return true;
+        }
+        return false;
+    }
+    public void DebugStep(int d)
+    {
+        var s = Current; if (s.Selected < 0 || s.Selected >= s.Entries.Count) return;
+        var sel = s.Entries[s.Selected];
+        if (sel.Kind == EntryKind.Option) sel.OnStep?.Invoke(d);
+        _dirty = true; Refresh();
+    }
+    // One-line competition state for the orchestrator's screenshot harness.
+    public string DebugCompSummary()
+        => $"{_comp?.Name}|{(_comp is null ? "none" : OpenSwos.Competition.CompetitionEngine.RoundLabel(_comp))}|fixtures={_comp?.Fixtures.Count ?? 0}";
+
+    // ======================================================================
+    //  TEXT INPUT — screen-level typed-entry mode (manager name, save slots)
+    // ======================================================================
+    // A minimal typed-input mechanism: while a screen owns an active text
+    // input, Tick() routes the raw keyboard here instead of the menu. Keys
+    // are polled with just-pressed edge detection (Input.IsPhysicalKeyPressed
+    // against a HashSet of previously-down keys, over a fixed Key[] list):
+    // A-Z / 0-9 / SPACE / MINUS append (up to MaxLen), BACKSPACE deletes,
+    // ENTER confirms into OnConfirm, ESC cancels (default: pop the screen).
+    // LEFT/RIGHT go to an optional side hook so a companion value (the
+    // manager's MR/MS title) stays steppable while navigation is suspended.
+    // The live text renders as a Label-like entry with a blinking underscore.
+    private sealed class TextInputState
+    {
+        public readonly System.Text.StringBuilder Text = new();
+        public int MaxLen = 16;
+        public System.Action<string>? OnConfirm;
+        public System.Action? OnCancel;
+        public System.Action<int>? OnSide;
+    }
+
+    private TextInputState? _textInput;
+    private MenuScreen? _textInputScreen;
+    private readonly System.Collections.Generic.HashSet<Key> _textKeysDown = new();
+    private int _textBlinkPhase;
+
+    private static readonly Key[] kTextKeys = BuildTextKeyTable();
+    private static Key[] BuildTextKeyTable()
+    {
+        var keys = new System.Collections.Generic.List<Key>();
+        for (int i = 0; i < 26; i++) keys.Add((Key)((long)Key.A + i));
+        for (int i = 0; i < 10; i++) keys.Add((Key)((long)Key.Key0 + i));
+        keys.Add(Key.Space); keys.Add(Key.Minus); keys.Add(Key.Backspace);
+        keys.Add(Key.Enter); keys.Add(Key.KpEnter); keys.Add(Key.Escape);
+        keys.Add(Key.Left); keys.Add(Key.Right);
+        return keys.ToArray();
+    }
+
+    private void StartTextInput(MenuScreen owner, string initial, int maxLen,
+        System.Action<string> onConfirm, System.Action? onCancel = null, System.Action<int>? onSide = null)
+    {
+        _textInput = new TextInputState { MaxLen = maxLen, OnConfirm = onConfirm, OnCancel = onCancel, OnSide = onSide };
+        string init = (initial ?? "").Trim().ToUpperInvariant();
+        if (init.Length > maxLen) init = init.Substring(0, maxLen);
+        _textInput.Text.Append(init);
+        _textInputScreen = owner;
+        // Seed the down-set with every currently-held key so the ENTER/SPACE
+        // press that opened this screen cannot instantly type or confirm.
+        _textKeysDown.Clear();
+        foreach (Key k in kTextKeys) if (Input.IsPhysicalKeyPressed(k)) _textKeysDown.Add(k);
+        _dirty = true;
+    }
+
+    private void EndTextInput()
+    {
+        _textInput = null;
+        _textInputScreen = null;
+        _textKeysDown.Clear();
+        _dirty = true;
+    }
+
+    private void TickTextInput()
+    {
+        var ti = _textInput!;
+        foreach (Key k in kTextKeys)
+        {
+            bool down = Input.IsPhysicalKeyPressed(k);
+            if (down) { if (_textKeysDown.Add(k)) HandleTextKey(ti, k); }   // just-pressed edge
+            else _textKeysDown.Remove(k);
+            if (_textInput is null) return;   // confirm/cancel ended the mode
+        }
+        // Blinking underscore: repaint only when the blink phase flips.
+        int phase = (_cursorFrame >> 4) & 1;
+        if (phase != _textBlinkPhase) { _textBlinkPhase = phase; _dirty = true; }
+    }
+
+    private void HandleTextKey(TextInputState ti, Key k)
+    {
+        switch (k)
+        {
+            case Key.Enter:
+            case Key.KpEnter:
+            {
+                string result = ti.Text.ToString().Trim();
+                EndTextInput();
+                ti.OnConfirm?.Invoke(result);
+                return;
+            }
+            case Key.Escape:
+            {
+                var cancel = ti.OnCancel;
+                EndTextInput();
+                if (cancel is not null) cancel();
+                else Pop();
+                return;
+            }
+            case Key.Backspace:
+                if (ti.Text.Length > 0) { ti.Text.Length -= 1; _dirty = true; }
+                return;
+            case Key.Left:  ti.OnSide?.Invoke(-1); _dirty = true; return;
+            case Key.Right: ti.OnSide?.Invoke(+1); _dirty = true; return;
+        }
+        char c;
+        if (k >= Key.A && k <= Key.Z) c = (char)('A' + (int)(k - Key.A));
+        else if (k >= Key.Key0 && k <= Key.Key9) c = (char)('0' + (int)(k - Key.Key0));
+        else if (k == Key.Space) c = ' ';
+        else if (k == Key.Minus) c = '-';
+        else return;
+        if (ti.Text.Length < ti.MaxLen) { ti.Text.Append(c); _dirty = true; }
+    }
+
+    // The live entry row: current text plus a blinking underscore caret
+    // (space keeps the rendered width steady while the caret is off).
+    private string TextInputDisplay()
+        => _textInput is null ? "" : _textInput.Text.ToString() + (_textBlinkPhase == 0 ? "_" : " ");
+
+    // Generic typed-entry screen: big live-text row, optional side-value row
+    // (stepped with LEFT/RIGHT via onSide), and a key-hint caption. Input
+    // mode starts as the screen is pushed; ESC pops back to the caller.
+    private void PushNameEntry(string title, string initial, int maxLen, string hint,
+        System.Action<string> onConfirm, System.Func<string>? sideRow = null, System.Action<int>? onSide = null)
+    {
+        var s = new MenuScreen { Title = title };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = TextInputDisplay });
+        if (sideRow is not null)
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = sideRow });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = () => hint });
+        Push(s);
+        StartTextInput(s, initial, maxLen, onConfirm, onCancel: () => Pop(), onSide: onSide);
+    }
+
+    // ---- text-input debug hooks (screenshot/orchestrator harness) ------------
+    public bool DebugTextInputActive => _textInput is not null;
+    public string DebugTextInputValue => _textInput?.Text.ToString() ?? "";
+    public void DebugTextType(string text)
+    {
+        var ti = _textInput;
+        if (ti is null) return;
+        foreach (char raw in (text ?? "").ToUpperInvariant())
+        {
+            if (raw == '\b') { if (ti.Text.Length > 0) ti.Text.Length -= 1; continue; }
+            bool ok = (raw >= 'A' && raw <= 'Z') || (raw >= '0' && raw <= '9') || raw == ' ' || raw == '-';
+            if (ok && ti.Text.Length < ti.MaxLen) ti.Text.Append(raw);
+        }
+        _dirty = true; Refresh();
+    }
+    public void DebugTextConfirm()
+    {
+        if (_textInput is not null) HandleTextKey(_textInput, Key.Enter);
+        _dirty = true; Refresh(); UpdateCursor();
+    }
+    public void DebugTextCancel()
+    {
+        if (_textInput is not null) HandleTextKey(_textInput, Key.Escape);
+        _dirty = true; Refresh(); UpdateCursor();
+    }
+    public void DebugTextSide(int d)
+    {
+        if (_textInput is not null) HandleTextKey(_textInput, d < 0 ? Key.Left : Key.Right);
+        _dirty = true; Refresh();
+    }
+
+    // ======================================================================
+    //  SCREEN BUILDERS
+    // ======================================================================
+    private MenuScreen BuildHome()
+    {
+        var s = new MenuScreen { Title = "O P E N   S W O S" };
+        if (SaveExists())
+        {
+            // Green quick-resume for the one active competition slot.
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = false,
+                Label = ContinueLabel, OnActivate = OpenSavedCompetition });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "PLAY MATCH", OnActivate = () => Push(BuildFriendly()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = true,
+            Label = () => "COMPETITIONS", OnActivate = () => Push(BuildCompetitionsHub()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = true,
+            Label = () => "MULTIPLAYER", OnActivate = () => Push(BuildLocalMultiplayer()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = true,
+            Label = () => "TEAM SETUP", OnActivate = () => Push(BuildTeamConfig()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = true,
+            Label = () => "OPTIONS", OnActivate = () => Push(BuildOptions(0)) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = true,
+            Label = () => "EXIT", OnActivate = () => Push(BuildQuitConfirm()) });
+        return s;
+    }
+
+    // Quit confirmation prompt (mirror of swos-port src/menus/mnu/quit.mnu:
+    // "QUIT TO OS" / "RETURN TO GAME", initial entry on RETURN).
+    private MenuScreen BuildQuitConfirm()
+    {
+        var s = new MenuScreen { Title = "QUIT" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => "ARE YOU SURE?" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = true,
+            Label = () => "QUIT TO WINDOWS", OnActivate = () => _host.QuitGame() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = true,
+            Label = () => "RETURN TO GAME", OnActivate = () => Pop() });
+        s.Selected = 2;   // quit.mnu: initialEntry is returnToGame — safe default
+        return s;
+    }
+
+    private MenuScreen BuildFriendly()
+    {
+        var s = new MenuScreen { Title = "FRIENDLY MATCH" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "COUNTRY", Value = FriendlyNationLabel, OnStep = StepFriendlyNation });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
+            Label = () => "HOME", Value = () => _host.TeamTag(_host.HomeIndex), OnStep = d => StepFriendlySide(false, d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
+            Label = () => "AWAY", Value = () => _host.TeamTag(_host.AwayIndex), OnStep = d => StepFriendlySide(true, d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "SWAP TEAMS", OnActivate = () => { _host.SwapTeams(); _dirty = true; } });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "PITCH", Value = () => _host.PitchLabel, OnStep = d => _host.StepPitch(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "OPPONENT", Value = () => _host.OpponentLabel, OnStep = d => _host.StepOpponent(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "HALF LENGTH", Value = () => _host.LengthLabel, OnStep = d => _host.StepLength(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "GAME SPEED", Value = () => _host.SpeedLabel, OnStep = d => _host.StepSpeed(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "KICK OFF", OnActivate = LaunchFriendly });
+        s.Selected = 0;
+        return s;
+    }
+
+    // Friendly launch point. PRE MATCH MENUS off = start straight away (as the
+    // menu always did); on = route through versus -> stadium line-ups first.
+    private void LaunchFriendly()
+    {
+        if (!_host.ShowPreMatchMenus) { _host.StartMatch(); return; }
+        Push(BuildVersus("FRIENDLY MATCH",
+            () => "FRIENDLY",
+            () => _host.TeamName(_host.HomeIndex),
+            () => _host.TeamName(_host.AwayIndex),
+            () => $"{_host.OpponentLabel}   -   {_host.LengthLabel}",
+            () => Push(BuildStadium(_host.HomeIndex, _host.AwayIndex, () => _host.StartMatch()))));
+    }
+
+    // The SWOS "versus" screen (mirror of swos-port src/menus/mnu/versus.mnu:
+    // game name + round on top, then big HOME  V  AWAY). PLAY continues to the
+    // stadium line-ups screen (or straight into the match for callers that
+    // pass a launch action directly).
+    private MenuScreen BuildVersus(string title, System.Func<string> context,
+        System.Func<string> homeName, System.Func<string> awayName,
+        System.Func<string>? detail, System.Action onPlay)
+    {
+        var s = new MenuScreen { Title = title };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = context });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = homeName });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => "V" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = awayName });
+        if (detail is not null)
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = detail });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "PLAY", OnActivate = onPlay });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    // Stadium line-ups screen (mirror of swos-port src/menus/mnu/stadium.mnu):
+    // both starting XIs side by side, bench dimmed underneath, shown between
+    // the versus screen and the actual kick-off for friendlies AND
+    // competition fixtures. `kickOff` performs the real match launch.
+    private MenuScreen BuildStadium(int homeMaster, int awayMaster, System.Action kickOff)
+    {
+        var s = new MenuScreen { Title = "TEAMS", BodyReserve = 156 };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "KICK OFF", OnActivate = kickOff });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        s.Body = client => client.DrawLineupsBody(s, homeMaster, awayMaster);
+        return s;
+    }
+
+    // Two-column line-ups body: home XI left, away XI right, bench (in-game
+    // slots 11..15) dimmed below each, kit swatch + team name as headers.
+    private void DrawLineupsBody(MenuScreen s, int homeMaster, int awayMaster)
+    {
+        int y = s.BodyTop;
+        int colW = (_vw - 44) / 2;
+        DrawLineupColumn(s, homeMaster, 22, y);
+        DrawLineupColumn(s, awayMaster, 22 + colW + 8, y);
+    }
+
+    private void DrawLineupColumn(MenuScreen s, int teamIdx, int x, int y)
+    {
+        TeamRecord t;
+        try { t = _host.Team(teamIdx); } catch { return; }
+        int bottom = _vh - 14;
+        var head = new Color(0.7f, 0.85f, 1f);
+        var normal = new Color(0.92f, 0.94f, 1f);
+        var dim = new Color(0.62f, 0.66f, 0.78f);
+
+        // column header: kit swatch + team name
+        DrawKitStrip(s, x, y, 9, t.HomeKit);
+        string nm = (t.Name ?? "").Trim();
+        if (nm.Length > 14) nm = nm.Substring(0, 14);
+        BodyText(s, nm, false, x + 13, y + 4, head);
+        y += 18;
+
+        // In-game slot order via the TEAM.* playerNumbers table (LineupOrder):
+        // the same slot->roster resolution TeamDataLoader.SeedTeamData uses —
+        // slot 0 the keeper, 1..10 the XI in tactics order, 11..15 the bench.
+        byte[] order = t.LineupOrder;
+        bool orderValid = order is { Length: 16 };
+        if (orderValid)
+            for (int i = 0; i < 16; i++)
+                if (order[i] >= t.Players.Count) { orderValid = false; break; }
+
+        int slots = System.Math.Min(16, t.Players.Count);
+        for (int i = 0; i < slots; i++)
+        {
+            if (i == 11) y += 4;   // stadium.mnu separates the bench block
+            if (y + 8 > bottom) break;
+            int roster = orderValid ? order[i] : i;
+            if (roster >= t.Players.Count) continue;
+            var p = t.Players[roster];
+            Color rc = i < 11 ? normal : dim;
+            BodyText(s, p.ShirtNumber.ToString(), false, x + 12, y, rc, rightAlign: true);
+            string pn = (p.Name ?? "").Trim();
+            if (pn.Length > 14) pn = pn.Substring(0, 14);
+            BodyText(s, pn, false, x + 17, y, rc);
+            y += 8;
+        }
+    }
+
+    // OPTIONS is paged: one builder per page in _optionsPages — adding a
+    // page-2 is one more element there. Every page opens with the PAGE pager
+    // row (indicator "N/M", LEFT/RIGHT flips pages, Header style so it reads
+    // as navigation rather than a setting) and closes with a BACK button.
+    private readonly System.Action<MenuScreen>[] _optionsPages;
+    private int _optionsPage;
+
+    private MenuScreen BuildOptions(int page)
+    {
+        var pages = _optionsPages;
+        _optionsPage = ((page % pages.Length) + pages.Length) % pages.Length;
+        var s = new MenuScreen { Title = "OPTIONS" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Header,
+            Label = () => "PAGE", Value = () => $"{_optionsPage + 1}/{_optionsPages.Length}",
+            OnStep = SwitchOptionsPage });
+        pages[_optionsPage](s);
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    private void SwitchOptionsPage(int d)
+    {
+        ReplaceTop(BuildOptions(_optionsPage + d));
+        // keep the cursor on the pager row so repeated LEFT/RIGHT keeps paging
+        Current.Selected = 0;
+    }
+
+    private void AddOptionsPageAll(MenuScreen s)
+    {
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "HALF LENGTH", Value = () => _host.LengthLabel, OnStep = d => _host.StepLength(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "GAME SPEED", Value = () => _host.SpeedLabel, OnStep = d => _host.StepSpeed(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "OPPONENT", Value = () => _host.OpponentLabel, OnStep = d => _host.StepOpponent(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "PITCH", Value = () => _host.PitchLabel, OnStep = d => _host.StepPitch(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "SKILL SCALING", Value = () => _host.SkillScalingEnabled ? "ON" : "OFF",
+            OnStep = _ => _host.ToggleSkillScaling() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "FAITHFUL SWOS PLAYER PRICE SKILL SCALING" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "ALL TEAMS EQUAL", Value = () => _host.AllPlayerTeamsEqual ? "ON" : "OFF",
+            OnStep = _ => _host.ToggleAllPlayerTeamsEqual() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "EQUALIZES TEAM STRENGTH FOR PLAYER TEAMS" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "PRE MATCH MENUS", Value = () => _host.ShowPreMatchMenus ? "ON" : "OFF",
+            OnStep = _ => _host.ToggleShowPreMatchMenus() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "DISPLAY", Value = () => _host.DisplayModeLabel,
+            OnStep = _ => _host.CycleDisplayMode() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "F11 CYCLES  ALT+ENTER TOGGLES FULLSCREEN" });
+    }
+
+    // ======================================================================
+    //  LOCAL MULTIPLAYER
+    // ======================================================================
+    private MenuScreen BuildLocalMultiplayer()
+    {
+        var s = new MenuScreen { Title = "LOCAL MULTIPLAYER" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "COUNTRY", Value = FriendlyNationLabel, OnStep = StepFriendlyNation });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
+            Label = () => "HOME", Value = () => _host.TeamTag(_host.HomeIndex), OnStep = d => StepFriendlySide(false, d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
+            Label = () => "AWAY", Value = () => _host.TeamTag(_host.AwayIndex), OnStep = d => StepFriendlySide(true, d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "PLAYER 1: ARROWS+SPACE   PLAYER 2: WASD+SHIFT" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "START 2 PLAYER MATCH", OnActivate = () => _host.StartLocalMultiplayerMatch() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    // ======================================================================
+    //  COMPETITIONS — hub, setup screens, dashboard, table/fixtures views
+    // ======================================================================
+
+    // ---- session plumbing ----------------------------------------------------
+    private bool SaveExists()
+    {
+        if (_comp is not null) return true;
+        try { return CompetitionStore.Exists(); } catch { return false; }
+    }
+
+    // Lazily load the saved competition (single slot at user://competition.json).
+    private CompetitionState? LoadedComp()
+    {
+        if (_comp is null)
+        {
+            try { if (CompetitionStore.Exists()) _comp = CompetitionStore.Load(); }
+            catch { _comp = null; }
+        }
+        return _comp;
+    }
+
+    private string ContinueLabel()
+    {
+        var c = LoadedComp();
+        if (c is null) return "CONTINUE";
+        return $"CONTINUE: {CompTitle(c)} {CompetitionEngine.RoundLabel(c)}";
+    }
+
+    private static string CompTitle(CompetitionState c)
+        => c.Career is not null ? $"{c.Name} S{c.Career.Season}" : c.Name;
+
+    private void OpenSavedCompetition()
+    {
+        if (LoadedComp() is null) { RebuildCurrent(); return; }
+        Push(BuildCompetitionDashboard());
+    }
+
+    // Pop the top screen unconditionally and push a replacement (used by the
+    // dashboard to re-generate itself after every state change).
+    private void ReplaceTop(MenuScreen s)
+    {
+        if (_stack.Count > 0) DestroyScreenNodes(_stack.Pop());
+        Push(s);
+    }
+
+    // Result hand-back from a competition match (see Tick). Maps the sim's
+    // (player, opponent) goals back onto the fixture's home/away orientation.
+    private void PollCompetitionResult()
+    {
+        var r = _host.TakeLastCompetitionResult();
+        if (r is null) return;
+        if (_comp is null || _pendingFixture is null) return;
+        string playedStage = _pendingFixture.Stage;
+        if (_pendingFixture.HomeTeam == _comp.PlayerTeam)
+            CompetitionEngine.RecordResult(_comp, _pendingFixture, r.Value.player, r.Value.opponent);
+        else
+            CompetitionEngine.RecordResult(_comp, _pendingFixture, r.Value.opponent, r.Value.player);
+        _pendingFixture = null;
+        CompetitionEngine.SimulateAiRound(_comp);
+        CompetitionStore.Save(_comp);
+        // Fresh navigation: HOME -> DASHBOARD, so BACK never lands on a stale screen.
+        ResetToHome();
+        Push(BuildCompetitionDashboard());
+        // Cup/tournament: a freshly drawn knockout round gets its ceremony on
+        // top of the dashboard (original: ChooseTeamsMenu "NEXT ROUND DRAW").
+        MaybePushDrawCeremony(playedStage);
+        _dirty = true;
+    }
+
+    // Friendly (non-competition) full-time hand-back: offer an immediate
+    // rematch, mirroring swos-port src/menus/mnu/replayExit.mnu. The Active
+    // setter's ResetToHome has already run, so this lands on top of HOME.
+    private void PollFriendlyEnd()
+    {
+        if (!_host.TakeFriendlyJustEnded()) return;
+        Push(BuildPlayAgain());
+        _dirty = true;
+    }
+
+    private MenuScreen BuildPlayAgain()
+    {
+        var s = new MenuScreen { Title = "FULL TIME" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "PLAY AGAIN", OnActivate = () => _host.StartMatch() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = true,
+            Label = () => "EXIT", OnActivate = () => ResetToHome() });
+        return s;
+    }
+
+    // ---- hub -------------------------------------------------------------------
+    private MenuScreen BuildCompetitionsHub()
+    {
+        var s = new MenuScreen { Title = "COMPETITIONS" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = true,
+            Label = () => "NEW LEAGUE", OnActivate = () => Push(BuildLeagueSetup()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = true,
+            Label = () => "NEW CUP", OnActivate = () => Push(BuildCupSetup()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = true,
+            Label = () => "NEW TOURNAMENT", OnActivate = () => Push(BuildTournamentSetup()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = true,
+            Label = () => "PRESET COMPETITION", OnActivate = () => Push(BuildPresetList()) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = true,
+            Label = () => "NEW CAREER", OnActivate = () => Push(BuildCareerSetup()) });
+        if (SaveExists())
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
+                Label = ContinueLabel, OnActivate = OpenSavedCompetition });
+        }
+        if (CompetitionStore.ListSlots().Count > 0)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "LOAD GAME", OnActivate = () => { _slotDeleteMode = false; Push(BuildLoadGame()); } });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    // ---- setup helpers ---------------------------------------------------------
+    private static int StepIdx(int idx, int d, int n) => ((idx + d) % n + n) % n;
+
+    // ---- nation picker (continent -> country -> team, like original SWOS) ----
+    private System.Collections.Generic.List<int> NationsWithTeams()
+    {
+        if (_nationsWithTeams is null)
+        {
+            _nationsWithTeams = new System.Collections.Generic.List<int>();
+            _nationTeamCount = new System.Collections.Generic.Dictionary<int, int>();
+            for (int n = 0; n < NationNames.Count; n++)
+            {
+                int count = _host.TeamsByNationDivision(n, -1, 999).Count;
+                if (count <= 0) continue;
+                _nationsWithTeams.Add(n);
+                _nationTeamCount[n] = count;
+            }
+        }
+        return _nationsWithTeams;
+    }
+
+    private int NationTeamCount(int nation)
+    {
+        NationsWithTeams();   // ensure the cache is built
+        if (_nationTeamCount!.TryGetValue(nation, out int c)) return c;
+        // nation byte outside the CN table (odd data) — probe directly
+        return _host.TeamsByNationDivision(nation, -1, 999).Count;
+    }
+
+    private System.Collections.Generic.List<int> NationsInContinent(int continent)
+    {
+        var list = new System.Collections.Generic.List<int>();
+        foreach (int n in NationsWithTeams())
+            if (NationNames.Continent(n) == continent) list.Add(n);
+        return list;
+    }
+
+    // Seed the picker from the current home team so setup screens open on the
+    // player's own continent/country (and their team pre-selected).
+    private void InitSetupNationPicker()
+    {
+        _setupTeamIdx = _host.HomeIndex;
+        _setupNation = _host.TeamNation(_setupTeamIdx);
+        _setupContinent = NationNames.Continent(_setupNation);
+    }
+
+    private void StepSetupContinent(int d)
+    {
+        // Step 0..5 with wrap, skipping continents that have no teams at all.
+        int dir = d < 0 ? -1 : 1;
+        int c = _setupContinent;
+        for (int k = 0; k < 6; k++)
+        {
+            c = StepIdx(c, dir, 6);
+            if (NationsInContinent(c).Count > 0) break;
+        }
+        if (c == _setupContinent) return;
+        _setupContinent = c;
+        SetSetupNation(NationsInContinent(c)[0]);
+    }
+
+    private void StepSetupCountry(int d)
+    {
+        var nations = NationsInContinent(_setupContinent);
+        if (nations.Count == 0) return;
+        int i = nations.IndexOf(_setupNation);
+        i = i < 0 ? 0 : StepIdx(i, d < 0 ? -1 : 1, nations.Count);
+        SetSetupNation(nations[i]);
+    }
+
+    // Country changed: snap YOUR TEAM to the country's first team.
+    private void SetSetupNation(int nation)
+    {
+        _setupNation = nation;
+        var teams = _host.TeamsByNationDivision(nation, -1, 1);
+        if (teams.Count > 0) _setupTeamIdx = teams[0];
+    }
+
+    private void StepSetupTeam(int d)
+    {
+        var teams = _host.TeamsByNationDivision(_setupNation, -1, 999);
+        if (teams.Count == 0) return;
+        int i = teams.IndexOf(_setupTeamIdx);
+        i = i < 0 ? 0 : StepIdx(i, d, teams.Count);
+        _setupTeamIdx = teams[i];
+    }
+
+    // The shared CONTINENT / COUNTRY / YOUR TEAM rows every competition setup
+    // screen opens with. Callers must InitSetupNationPicker() first.
+    private void AddNationPickerRows(MenuScreen s)
+    {
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "CONTINENT", Value = () => NationNames.ContinentName(_setupContinent),
+            OnStep = StepSetupContinent });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "COUNTRY",
+            Value = () => $"{NationNames.Name(_setupNation)} ({NationTeamCount(_setupNation)})",
+            OnStep = StepSetupCountry });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
+            Label = () => "YOUR TEAM", Value = () => _host.TeamTag(_setupTeamIdx), OnStep = StepSetupTeam });
+    }
+
+    // ---- friendly / local-MP country filter ("ALL" = whole master list) ------
+    private string FriendlyNationLabel()
+        => _friendlyNation < 0 ? "ALL"
+           : $"{NationNames.Name(_friendlyNation)} ({NationTeamCount(_friendlyNation)})";
+
+    private void StepFriendlyNation(int d)
+    {
+        var nations = NationsWithTeams();
+        if (nations.Count == 0) return;
+        // Slot 0 = ALL (no filter), then every nation that has teams.
+        int i = _friendlyNation < 0 ? 0 : nations.IndexOf(_friendlyNation) + 1;
+        i = StepIdx(i, d < 0 ? -1 : 1, nations.Count + 1);
+        _friendlyNation = i == 0 ? -1 : nations[i - 1];
+        if (_friendlyNation < 0) return;
+        // Snap both sides into the country so the rows show its teams at once.
+        var teams = _host.TeamsByNationDivision(_friendlyNation, -1, 999);
+        if (teams.Count == 0) return;
+        _host.SetHomeTeam(teams[0]);
+        _host.SetAwayTeam(teams[teams.Count > 1 ? 1 : 0]);
+    }
+
+    private void StepFriendlySide(bool away, int d)
+    {
+        if (_friendlyNation < 0) { if (away) _host.StepAway(d); else _host.StepHome(d); return; }
+        var teams = _host.TeamsByNationDivision(_friendlyNation, -1, 999);
+        if (teams.Count == 0) { if (away) _host.StepAway(d); else _host.StepHome(d); return; }
+        int cur = away ? _host.AwayIndex : _host.HomeIndex;
+        int other = away ? _host.HomeIndex : _host.AwayIndex;
+        int i = teams.IndexOf(cur);
+        i = i < 0 ? 0 : StepIdx(i, d, teams.Count);
+        // keep HOME != AWAY when the country has more than one team
+        if (teams[i] == other && teams.Count > 1) i = StepIdx(i, d < 0 ? -1 : 1, teams.Count);
+        if (away) _host.SetAwayTeam(teams[i]); else _host.SetHomeTeam(teams[i]);
+    }
+
+    // Adds one random master index not yet in pool (guaranteed to succeed:
+    // RandomTeams returns pool.Count+1 distinct indices, so one must be new).
+    private void AddRandomDistinct(System.Collections.Generic.List<int> pool)
+    {
+        foreach (int idx in _host.RandomTeams(pool.Count + 1, -1))
+            if (!pool.Contains(idx)) { pool.Add(idx); return; }
+    }
+
+    // Master-list indices for a competition: your team first, then (count-1)
+    // others per the entrants mode, random-filled if the pool runs short.
+    private System.Collections.Generic.List<int> BuildEntrants(int you, int count, int mode)
+    {
+        var result = new System.Collections.Generic.List<int> { you };
+        if (mode == 2)
+        {
+            foreach (int idx in _host.RandomTeams(count, you))
+            {
+                if (result.Count >= count) break;
+                if (idx == you || result.Contains(idx)) continue;
+                result.Add(idx);
+            }
+        }
+        else
+        {
+            int nation = _host.TeamNation(you);
+            int division = mode == 0 ? _host.TeamDivision(you) : -1;
+            foreach (int idx in _host.TeamsByNationDivision(nation, division, count + 4))
+            {
+                if (result.Count >= count) break;
+                if (idx == you || result.Contains(idx)) continue;
+                result.Add(idx);
+            }
+        }
+        while (result.Count < count) AddRandomDistinct(result);
+        return result;
+    }
+
+    private System.Collections.Generic.List<TeamRef> MakeTeamRefs(System.Collections.Generic.List<int> masters)
+    {
+        var list = new System.Collections.Generic.List<TeamRef>();
+        foreach (int m in masters)
+        {
+            list.Add(new TeamRef
+            {
+                MasterIndex = m,
+                GlobalId = _host.TeamGlobalId(m),
+                Name = (_host.TeamName(m) ?? "").Trim().ToUpperInvariant(),
+                Strength = _host.TeamStrength(m),
+            });
+        }
+        return list;
+    }
+
+    // Deterministic seed from the participant set + format selections (FNV-1a).
+    // Never wall-clock, so recreating with identical picks reproduces the draw.
+    private static int SeedFrom(System.Collections.Generic.List<int> masters, int salt)
+    {
+        uint h = 2166136261u;
+        foreach (int m in masters) { h ^= (uint)m; h *= 16777619u; }
+        h ^= (uint)salt; h *= 16777619u;
+        if (h == 0) h = 0x9E3779B9u;
+        return unchecked((int)h);
+    }
+
+    private void OpenNewCompetition(CompetitionState comp)
+    {
+        _comp = comp;
+        _pendingFixture = null;
+        CompetitionStore.Save(comp);
+        // Clean stack: HOME -> HUB -> DASHBOARD (BACK from dashboard = hub).
+        ResetToHome();
+        Push(BuildCompetitionsHub());
+        Push(BuildCompetitionDashboard());
+        // Cup: the round-1 draw ceremony sits on top of the fresh dashboard.
+        MaybePushDrawCeremony(null);
+    }
+
+    // ---- next-round-draw ceremony ---------------------------------------------
+    // Original: ChooseTeamsMenu / "NEXT ROUND DRAW" (swos.asm strings
+    // 185626-185642). Knockout = any stage that is neither the league nor a
+    // group stage ("LEAGUE" / "GROUP*" are excluded).
+    private static bool IsKnockoutStage(string stage)
+        => stage != "LEAGUE" && !stage.StartsWith("GROUP", System.StringComparison.Ordinal);
+
+    // Push the "<STAGE> DRAW" screen when the player's NEXT fixture opens a
+    // knockout stage different from the one just recorded (playedStage null =
+    // competition creation, so any knockout round-1 draw shows).
+    private void MaybePushDrawCeremony(string? playedStage)
+    {
+        var c = _comp;
+        if (c is null || c.Finished) return;
+        var next = CompetitionEngine.NextPlayerFixture(c);
+        if (next is null) return;
+        if (!IsKnockoutStage(next.Stage)) return;
+        if (playedStage is not null && next.Stage == playedStage) return;
+        Push(BuildDrawCeremony(next.Stage, next.Round));
+    }
+
+    private MenuScreen BuildDrawCeremony(string stage, int round)
+    {
+        var s = new MenuScreen { Title = stage + " DRAW", BodyReserve = 72 };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "CONTINUE", OnActivate = () => Pop() });
+        s.Body = client => client.DrawDrawCeremonyBody(s, stage, round);
+        return s;
+    }
+
+    // The round's pairings, one "HOME  V  AWAY" line each, player's line gold.
+    private void DrawDrawCeremonyBody(MenuScreen s, string stage, int round)
+    {
+        var c = _comp;
+        if (c is null) return;
+        int y = s.BodyTop, bottom = _vh - 14;
+        var normal = new Color(0.92f, 0.94f, 1f);
+        var gold = new Color(1f, 0.85f, 0.25f);
+        foreach (var f in c.Fixtures)
+        {
+            if (f.Round != round || f.Stage != stage) continue;
+            if (y + 8 > bottom) break;
+            bool mine = f.HomeTeam == c.PlayerTeam || f.AwayTeam == c.PlayerTeam;
+            BodyText(s, $"{TeamShort(c, f.HomeTeam, 15)}  V  {TeamShort(c, f.AwayTeam, 15)}",
+                false, 60, y, mine ? gold : normal);
+            y += 8;
+        }
+    }
+
+    // ---- setup screens ---------------------------------------------------------
+    private MenuScreen BuildLeagueSetup()
+    {
+        InitSetupNationPicker();
+        var s = new MenuScreen { Title = "NEW LEAGUE" };
+        AddNationPickerRows(s);
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "SIZE", Value = () => kLeagueSizes[_leagueSizeIdx] + " TEAMS",
+            OnStep = d => _leagueSizeIdx = StepIdx(_leagueSizeIdx, d, kLeagueSizes.Length) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "ENTRANTS", Value = () => kEntrantModes[_entrantsMode],
+            OnStep = d => _entrantsMode = StepIdx(_entrantsMode, d, kEntrantModes.Length) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "ROUNDS", Value = () => _leagueRoundsIdx == 0 ? "SINGLE" : "DOUBLE",
+            OnStep = d => _leagueRoundsIdx = StepIdx(_leagueRoundsIdx, d, 2) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "CREATE LEAGUE", OnActivate = CreateLeagueNow });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    private void CreateLeagueNow()
+    {
+        int size = kLeagueSizes[_leagueSizeIdx];
+        bool dbl = _leagueRoundsIdx == 1;
+        var masters = BuildEntrants(_setupTeamIdx, size, _entrantsMode);
+        int seed = SeedFrom(masters, 100 + size * 8 + _entrantsMode * 2 + (dbl ? 1 : 0));
+        OpenNewCompetition(CompetitionEngine.CreateLeague(
+            "LEAGUE", MakeTeamRefs(masters), masters.IndexOf(_setupTeamIdx), dbl, seed));
+    }
+
+    private MenuScreen BuildCupSetup()
+    {
+        InitSetupNationPicker();
+        var s = new MenuScreen { Title = "NEW CUP" };
+        AddNationPickerRows(s);
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "SIZE", Value = () => kCupSizes[_cupSizeIdx] + " TEAMS",
+            OnStep = d => _cupSizeIdx = StepIdx(_cupSizeIdx, d, kCupSizes.Length) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "ENTRANTS", Value = () => kEntrantModes[_entrantsMode],
+            OnStep = d => _entrantsMode = StepIdx(_entrantsMode, d, kEntrantModes.Length) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "CREATE CUP", OnActivate = CreateCupNow });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    private void CreateCupNow()
+    {
+        int size = kCupSizes[_cupSizeIdx];   // power of two by construction
+        var masters = BuildEntrants(_setupTeamIdx, size, _entrantsMode);
+        int seed = SeedFrom(masters, 300 + size * 4 + _entrantsMode);
+        OpenNewCompetition(CompetitionEngine.CreateCup(
+            "CUP", MakeTeamRefs(masters), masters.IndexOf(_setupTeamIdx), seed));
+    }
+
+    private MenuScreen BuildTournamentSetup()
+    {
+        InitSetupNationPicker();
+        var s = new MenuScreen { Title = "NEW TOURNAMENT" };
+        AddNationPickerRows(s);
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "GROUPS", Value = () => kTournamentGroups[_tournamentGroupsIdx] + " GROUPS OF 4",
+            OnStep = d => _tournamentGroupsIdx = StepIdx(_tournamentGroupsIdx, d, kTournamentGroups.Length) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "ENTRANTS", Value = () => kEntrantModes[_entrantsMode],
+            OnStep = d => _entrantsMode = StepIdx(_entrantsMode, d, kEntrantModes.Length) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "CREATE TOURNAMENT", OnActivate = CreateTournamentNow });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    private void CreateTournamentNow()
+    {
+        int groups = kTournamentGroups[_tournamentGroupsIdx];
+        int size = groups * 4;
+        var masters = BuildEntrants(_setupTeamIdx, size, _entrantsMode);
+        int seed = SeedFrom(masters, 500 + groups * 4 + _entrantsMode);
+        OpenNewCompetition(CompetitionEngine.CreateTournament(
+            "TOURNAMENT", MakeTeamRefs(masters), masters.IndexOf(_setupTeamIdx), groups, seed));
+    }
+
+    private MenuScreen BuildCareerSetup()
+    {
+        InitSetupNationPicker();
+        var s = new MenuScreen { Title = "NEW CAREER" };
+        AddNationPickerRows(s);
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "LEAGUE AND DOMESTIC CUP EVERY SEASON" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "WIN THE LEAGUE FOR PROMOTION, FINISH LAST AND DROP" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "START CAREER", OnActivate = OpenManagerNameEntry });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    // League pool for a career season: same nation+division as the club, up to
+    // 16 incl. the club; fewer than 8 available -> same nation, any division.
+    // Random-fills to at least 8 and an even count for clean round-robins.
+    private System.Collections.Generic.List<int> BuildCareerLeaguePool(int you, int nation, int division)
+    {
+        var pool = new System.Collections.Generic.List<int> { you };
+        foreach (int idx in _host.TeamsByNationDivision(nation, division, 24))
+        {
+            if (pool.Count >= 16) break;
+            if (idx == you || pool.Contains(idx)) continue;
+            pool.Add(idx);
+        }
+        if (pool.Count < 8)
+        {
+            pool = new System.Collections.Generic.List<int> { you };
+            foreach (int idx in _host.TeamsByNationDivision(nation, -1, 24))
+            {
+                if (pool.Count >= 16) break;
+                if (idx == you || pool.Contains(idx)) continue;
+                pool.Add(idx);
+            }
+        }
+        while (pool.Count < 8 || (pool.Count & 1) == 1) AddRandomDistinct(pool);
+        return pool;
+    }
+
+    // Cup pool for a career season: 16 same-nation teams incl. the club,
+    // random-nation fill if the nation is short.
+    private System.Collections.Generic.List<int> BuildCareerCupPool(int you, int nation)
+    {
+        var pool = new System.Collections.Generic.List<int> { you };
+        foreach (int idx in _host.TeamsByNationDivision(nation, -1, 32))
+        {
+            if (pool.Count >= 16) break;
+            if (idx == you || pool.Contains(idx)) continue;
+            pool.Add(idx);
+        }
+        while (pool.Count < 16) AddRandomDistinct(pool);
+        return pool;
+    }
+
+    // START CAREER first asks who the manager is (original career flow greets
+    // the manager by name — ManagementRecordMenu "%a %b", swos.asm:44076).
+    // ENTER creates the career with the typed name; ESC returns to the setup.
+    private void OpenManagerNameEntry()
+    {
+        PushNameEntry("MANAGER NAME", "PLAYER", 14,
+            "TYPE NAME   LEFT/RIGHT TITLE   ENTER OK   ESC CANCEL",
+            name => CreateCareerNow(name.Length == 0 ? "PLAYER" : name, kManagerTitles[_mgrTitleIdx]),
+            sideRow: () => "TITLE  " + kManagerTitles[_mgrTitleIdx],
+            onSide: _ => { _mgrTitleIdx ^= 1; _dirty = true; });
+    }
+
+    private void CreateCareerNow(string managerName, string managerTitle)
+    {
+        int you = _setupTeamIdx;
+        int nation = _host.TeamNation(you);
+        int division = _host.TeamDivision(you);
+        var leaguePool = BuildCareerLeaguePool(you, nation, division);
+        var cupPool = BuildCareerCupPool(you, nation);
+        int seed = SeedFrom(leaguePool, 900 + you);
+        // Club sits first in leaguePool, so playerTeam = 0.
+        var comp = CompetitionEngine.CreateCareer(
+            "CAREER", MakeTeamRefs(leaguePool), MakeTeamRefs(cupPool), 0, nation, division, seed);
+        // Create first, then stamp the manager identity — OpenNewCompetition
+        // saves the state, so the name/title land in the very first autosave.
+        if (comp.Career is not null)
+        {
+            comp.Career.ManagerName = managerName;
+            comp.Career.ManagerTitle = managerTitle;
+        }
+        OpenNewCompetition(comp);
+    }
+
+    // ---- dashboard ---------------------------------------------------------------
+    private MenuScreen BuildCompetitionDashboard()
+    {
+        var c = LoadedComp();
+        if (c is null) return BuildCompetitionsHub();
+        // Whatever fixture was pending is still unplayed in the engine (the
+        // match was abandoned) — clear it so PLAY NEXT MATCH works again.
+        _pendingFixture = null;
+        // The SAVE AS confirmation is one-shot: any full rebuild clears it.
+        // (It is set just before Pop()-ing back onto the live dashboard, and
+        // Pop re-lays-out the existing screen without calling this builder.)
+        _saveNotice = null;
+
+        bool retired = c.Career?.Retired == true;
+        // Reserve the mini-table / round-fixtures block below the buttons. An
+        // active career carries three extra rows (RECORD / SAVE AS / RETIRE),
+        // so it trades a slice of body space for the taller entry column.
+        var s = new MenuScreen { Title = CompTitle(c), BodyReserve = c.Career is not null && !retired ? 72 : 84 };
+        // Single status line: round + summary, with CHAMPIONS / ELIMINATED
+        // merged in so the entry column never stacks two status labels.
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = DashboardStatusLine });
+
+        if (retired)
+        {
+            // Retired career: management record + abandon only — no fixtures
+            // are playable (original retire flow: swos.asm:381,44509).
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "MANAGEMENT RECORD", OnActivate = () => Push(BuildManagementRecord(careerOver: true)) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = false,
+                Label = () => "ABANDON", OnActivate = AbandonCompetition });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+                Label = () => "BACK", OnActivate = () => Pop() });
+            s.Body = client => client.DrawCompetitionBody(s);
+            return s;
+        }
+
+        var playerNext = c.Finished ? null : CompetitionEngine.NextPlayerFixture(c);
+        var anyNext = c.Finished ? null : CompetitionEngine.NextFixture(c);
+        bool aiOnlyNext = anyNext is not null && anyNext.HomeTeam != c.PlayerTeam && anyNext.AwayTeam != c.PlayerTeam;
+        bool rollover = c.Career is not null && (CompetitionEngine.PendingSeasonRollover(c) || c.Finished);
+
+        if (playerNext is not null)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
+                Label = () => "PLAY NEXT MATCH", OnActivate = PlayNextCompetitionMatch });
+        }
+        if (aiOnlyNext)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = false,
+                Label = () => "CONTINUE", OnActivate = FastForwardAi });
+        }
+        if (rollover)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = false,
+                Label = () => "NEXT SEASON", OnActivate = AdvanceSeason });
+        }
+        if (c.Kind != CompetitionKind.Cup)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "TABLE", OnActivate = () => Push(BuildTableScreen()) });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+            Label = () => "FIXTURES", OnActivate = () => Push(BuildFixturesScreen()) });
+        if (c.Career is not null)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "RECORD", OnActivate = () => Push(BuildManagementRecord(careerOver: false)) });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+            Label = () => "SAVE AS", OnActivate = OpenSaveAsEntry });
+        if (c.Career is not null)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = false,
+                Label = () => "RETIRE", OnActivate = () => Push(BuildRetireConfirm()) });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = false,
+            Label = () => "ABANDON", OnActivate = AbandonCompetition });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+
+        s.Body = client => client.DrawCompetitionBody(s);
+        return s;
+    }
+
+    // Round + player summary, with the finished/eliminated state folded into
+    // the same line (the dashboard keeps exactly one status label).
+    private string DashboardStatusLine()
+    {
+        var c = _comp;
+        if (c is null) return "";
+        if (_saveNotice is not null) return _saveNotice;   // one-shot SAVE AS confirmation
+        if (c.Career?.Retired == true)
+            return "RETIRED  " + CompetitionEngine.PlayerSummary(c);
+        if (c.Finished && c.Champion >= 0)
+            return CompetitionEngine.RoundLabel(c) + "  CHAMPIONS: " + TeamShort(c, c.Champion, 18);
+        string line = CompetitionEngine.RoundLabel(c) + "  " + CompetitionEngine.PlayerSummary(c);
+        if (!c.Finished && CompetitionEngine.NextPlayerFixture(c) is null && !CompetitionEngine.IsPlayerAlive(c))
+            line += "  ELIMINATED";
+        return line;
+    }
+
+    private void PlayNextCompetitionMatch()
+    {
+        var c = _comp;
+        if (c is null) return;
+        var fx = CompetitionEngine.NextPlayerFixture(c);
+        if (fx is null) { ReplaceTop(BuildCompetitionDashboard()); return; }
+        // PRE MATCH MENUS off = launch straight away (as before); on = route
+        // through the versus screen (with competition + round context) and the
+        // stadium line-ups first, in the fixture's home/away orientation.
+        if (!_host.ShowPreMatchMenus) { LaunchCompetitionFixture(fx); return; }
+        int homeMaster = c.Teams[fx.HomeTeam].MasterIndex;
+        int awayMaster = c.Teams[fx.AwayTeam].MasterIndex;
+        Push(BuildVersus("NEXT MATCH",
+            () => $"{c.Name}  {CompetitionEngine.RoundLabel(c)}",
+            () => TeamShort(c, fx.HomeTeam, 20),
+            () => TeamShort(c, fx.AwayTeam, 20),
+            null,
+            () => Push(BuildStadium(homeMaster, awayMaster, () => LaunchCompetitionFixture(fx)))));
+    }
+
+    // The one true competition-match launch: marks the fixture pending and
+    // starts the sim with the human on the first slot (existing host path).
+    private void LaunchCompetitionFixture(Fixture fx)
+    {
+        var c = _comp;
+        if (c is null) return;
+        _pendingFixture = fx;
+        int opp = fx.HomeTeam == c.PlayerTeam ? fx.AwayTeam : fx.HomeTeam;
+        _host.StartCompetitionMatch(c.Teams[c.PlayerTeam].MasterIndex, c.Teams[opp].MasterIndex);
+    }
+
+    private void FastForwardAi()
+    {
+        var c = _comp;
+        if (c is null) return;
+        CompetitionEngine.FastForwardAiOnly(c);
+        CompetitionStore.Save(c);
+        ReplaceTop(BuildCompetitionDashboard());
+    }
+
+    private void AbandonCompetition()
+    {
+        try { CompetitionStore.Delete(); } catch { }
+        _comp = null;
+        _pendingFixture = null;
+        ResetToHome();
+        Push(BuildCompetitionsHub());
+    }
+
+    // Career season rollover: champion of the top table gets promoted (until
+    // division 0), bottom club drops if a lower division exists in the nation.
+    private void AdvanceSeason()
+    {
+        var c = _comp;
+        if (c is null || c.Career is null) return;
+        int you = c.Teams[c.PlayerTeam].MasterIndex;
+        int nation = c.Career.Nation;
+        var table = CompetitionEngine.Table(c, "LEAGUE");
+        int pos = 0;
+        for (int i = 0; i < table.Count; i++)
+            if (table[i].Team == c.PlayerTeam) { pos = i + 1; break; }
+        int newDivision = c.Career.Division;
+        if (pos == 1 && c.Career.Division > 0) newDivision = c.Career.Division - 1;
+        else if (pos > 0 && pos == table.Count
+                 && _host.TeamsByNationDivision(nation, c.Career.Division + 1, 1).Count > 0)
+            newDivision = c.Career.Division + 1;
+
+        // The club moves divisions logically even if its data byte disagrees.
+        var pool = new System.Collections.Generic.List<int> { you };
+        foreach (int idx in _host.TeamsByNationDivision(nation, newDivision, 24))
+        {
+            if (pool.Count >= 16) break;
+            if (idx == you || pool.Contains(idx)) continue;
+            pool.Add(idx);
+        }
+        if (pool.Count < 8)
+        {
+            pool = new System.Collections.Generic.List<int> { you };
+            foreach (int idx in _host.TeamsByNationDivision(nation, -1, 24))
+            {
+                if (pool.Count >= 16) break;
+                if (idx == you || pool.Contains(idx)) continue;
+                pool.Add(idx);
+            }
+        }
+        while (pool.Count < 8 || (pool.Count & 1) == 1) AddRandomDistinct(pool);
+        var cupPool = BuildCareerCupPool(you, nation);
+
+        CompetitionEngine.AdvanceCareerSeason(c, MakeTeamRefs(pool), MakeTeamRefs(cupPool), newDivision);
+        CompetitionStore.Save(c);
+        _pendingFixture = null;
+        ReplaceTop(BuildCompetitionDashboard());
+    }
+
+    // ---- management record (original: ManagementRecordMenu swos.asm:44076,
+    //      "MANAGEMENT RECORD OF %a %b") --------------------------------------
+    private MenuScreen BuildManagementRecord(bool careerOver)
+    {
+        var career = _comp?.Career;
+        string mgr = (career?.ManagerName ?? "").Trim();
+        string title = mgr.Length > 0
+            ? ("MANAGEMENT RECORD OF " + ((career!.ManagerTitle ?? "").Trim() + " " + mgr).Trim())
+            : "MANAGEMENT RECORD";
+        var s = new MenuScreen { Title = title, BodyReserve = 150 };
+        if (careerOver)
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => "CAREER OVER" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        s.Body = client => client.DrawManagementRecordBody(s);
+        return s;
+    }
+
+    // Body: (1) current-season aggregate over the player's played fixtures,
+    // (2) trophy cabinet (most recent four), (3) season history, newest first.
+    private void DrawManagementRecordBody(MenuScreen s)
+    {
+        var c = _comp;
+        var career = c?.Career;
+        if (c is null || career is null) return;
+        int x = 22, y = s.BodyTop, bottom = _vh - 14;
+        var head = new Color(0.7f, 0.85f, 1f);
+        var normal = new Color(0.92f, 0.94f, 1f);
+        var gold = new Color(1f, 0.85f, 0.25f);
+
+        // (1) this season, orientation-corrected onto the player's team
+        int p = 0, w = 0, d = 0, l = 0, gf = 0, ga = 0;
+        foreach (var f in c.Fixtures)
+        {
+            if (!f.Played) continue;
+            bool home = f.HomeTeam == c.PlayerTeam;
+            if (!home && f.AwayTeam != c.PlayerTeam) continue;
+            int mine = home ? f.HomeGoals : f.AwayGoals;
+            int theirs = home ? f.AwayGoals : f.HomeGoals;
+            p++; gf += mine; ga += theirs;
+            if (mine > theirs) w++; else if (mine == theirs) d++; else l++;
+        }
+        BodyText(s, $"SEASON {career.Season}  {TeamShort(c, c.PlayerTeam, 16)}  DIV {career.Division + 1}", false, x, y, head);
+        y += 9;
+        BodyText(s, $"P {p}   W {w}   D {d}   L {l}   GF {gf}   GA {ga}", false, x, y, normal);
+        y += 12;
+
+        // (2) trophies — the last four, oldest of those first
+        BodyText(s, "TROPHIES", false, x, y, head); y += 9;
+        if (career.Trophies.Count == 0) { BodyText(s, "NONE YET", false, x, y, normal); y += 8; }
+        else
+        {
+            for (int i = System.Math.Max(0, career.Trophies.Count - 4); i < career.Trophies.Count; i++)
+            {
+                if (y + 8 > bottom) return;
+                BodyText(s, career.Trophies[i], false, x, y, gold); y += 8;
+            }
+        }
+        y += 4;
+
+        // (3) history — one line per season, most recent first, clipped
+        if (y + 9 > bottom) return;
+        BodyText(s, "HISTORY", false, x, y, head); y += 9;
+        if (career.History.Count == 0)
+        {
+            if (y + 8 <= bottom) BodyText(s, "FIRST SEASON IN PROGRESS", false, x, y, normal);
+            return;
+        }
+        for (int i = career.History.Count - 1; i >= 0; i--)
+        {
+            if (y + 8 > bottom) break;
+            BodyText(s, career.History[i], false, x, y, normal); y += 8;
+        }
+    }
+
+    // ---- retire (original: retire / manager status swos.asm:381,44509) -------
+    private MenuScreen BuildRetireConfirm()
+    {
+        var s = new MenuScreen { Title = "RETIRE" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => "RETIRE FROM MANAGEMENT?" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = true,
+            Label = () => "RETIRE", OnActivate = RetireNow });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = true,
+            Label = () => "CANCEL", OnActivate = () => Pop() });
+        s.Selected = 2;   // CANCEL is the safe default, like the quit prompt
+        return s;
+    }
+
+    private void RetireNow()
+    {
+        var c = _comp;
+        if (c?.Career is null || c.Career.Retired) { Pop(); return; }
+        c.Career.Retired = true;
+        c.Career.History.Add($"S{c.Career.Season}: RETIRED");
+        CompetitionStore.Save(c);
+        Pop();                                      // confirm -> (stale) dashboard
+        ReplaceTop(BuildCompetitionDashboard());    // rebuilt with the retired layout
+        Push(BuildManagementRecord(careerOver: true));
+    }
+
+    // ---- preset competitions (original: PresetCompetitionMenu swos.asm:23781) --
+    private MenuScreen BuildPresetList()
+    {
+        var s = new MenuScreen { Title = "PRESET COMPETITION" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "REAL COMPETITIONS WITH THEIR REAL FIELDS" });
+        foreach (var p in PresetCompetitions.All)
+        {
+            var preset = p;   // capture per-iteration
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = false,
+                Label = () => preset.Name, OnActivate = () => OpenPresetSetup(preset) });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    // Resolve a preset's named field against the master list: ONE linear scan
+    // builds a name->index map (first occurrence wins), then the preset names
+    // are collected in order up to Size; any shortfall is random-filled.
+    private System.Collections.Generic.List<int> ResolvePresetEntrants(PresetCompetition p)
+    {
+        var byName = new System.Collections.Generic.Dictionary<string, int>();
+        int n = _host.TeamCount;
+        for (int i = 0; i < n; i++)
+        {
+            string nm = (_host.TeamName(i) ?? "").Trim().ToUpperInvariant();
+            if (nm.Length > 0 && !byName.ContainsKey(nm)) byName[nm] = i;
+        }
+        var resolved = new System.Collections.Generic.List<int>();
+        foreach (string name in p.TeamNames)
+        {
+            if (resolved.Count >= p.Size) break;
+            if (byName.TryGetValue(name.Trim().ToUpperInvariant(), out int idx) && !resolved.Contains(idx))
+                resolved.Add(idx);
+        }
+        if (resolved.Count < p.Size)
+        {
+            // RandomTeams returns Size distinct indices (incl. the anchor), so
+            // at least Size - resolved.Count of them are new — always enough.
+            int first = resolved.Count > 0 ? resolved[0] : -1;
+            foreach (int idx in _host.RandomTeams(p.Size, first))
+            {
+                if (resolved.Count >= p.Size) break;
+                if (!resolved.Contains(idx)) resolved.Add(idx);
+            }
+        }
+        return resolved;
+    }
+
+    private void OpenPresetSetup(PresetCompetition p)
+    {
+        _preset = p;
+        _presetEntrants = ResolvePresetEntrants(p);
+        _presetYou = 0;
+        Push(BuildPresetSetup());
+    }
+
+    private MenuScreen BuildPresetSetup()
+    {
+        var p = _preset;
+        if (p is null) return BuildPresetList();
+        var s = new MenuScreen { Title = p.Name };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => p.Kind == CompetitionKind.Cup
+                ? $"{p.Size} TEAM KNOCKOUT"
+                : $"{p.GroupCount} GROUPS OF 4 THEN KNOCKOUT" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
+            Label = () => "YOUR TEAM",
+            Value = () => _presetEntrants.Count == 0 ? "" : _host.TeamTag(_presetEntrants[_presetYou]),
+            OnStep = d => { if (_presetEntrants.Count > 0) _presetYou = StepIdx(_presetYou, d, _presetEntrants.Count); } });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "CREATE", OnActivate = CreatePresetNow });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    private void CreatePresetNow()
+    {
+        var p = _preset;
+        if (p is null || _presetEntrants.Count < p.Size) return;
+        int presetIdx = System.Array.IndexOf(PresetCompetitions.All, p);
+        int seed = SeedFrom(_presetEntrants, 700 + presetIdx * 8 + _presetYou);
+        var refs = MakeTeamRefs(_presetEntrants);
+        var comp = p.Kind == CompetitionKind.Cup
+            ? CompetitionEngine.CreateCup(p.Name, refs, _presetYou, seed)
+            : CompetitionEngine.CreateTournament(p.Name, refs, _presetYou, p.GroupCount, seed);
+        OpenNewCompetition(comp);
+    }
+
+    // ---- save slots -------------------------------------------------------------
+    private void OpenSaveAsEntry()
+    {
+        var c = _comp;
+        if (c is null) return;
+        PushNameEntry("SAVE AS", c.Name, 16,
+            "TYPE SLOT NAME   ENTER OK   ESC CANCEL",
+            name =>
+            {
+                var comp = _comp;
+                if (comp is null) { Pop(); return; }
+                string slot = CompetitionStore.SanitizeSlotName(name);
+                CompetitionStore.SaveAs(comp, slot);
+                _saveNotice = "SAVED AS " + slot;
+                Pop();   // back onto the live dashboard — status line shows the notice
+            });
+    }
+
+    private MenuScreen BuildLoadGame()
+    {
+        var s = new MenuScreen { Title = "LOAD GAME" };
+        var slots = CompetitionStore.ListSlots();
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Danger,
+            Label = () => "DELETE MODE", Value = () => _slotDeleteMode ? "ON" : "OFF",
+            OnStep = _ => { _slotDeleteMode = !_slotDeleteMode; _dirty = true; } });
+        if (slots.Count == 0)
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = () => "NO SAVED GAMES" });
+        foreach (var (slot, label) in slots)
+        {
+            string slotName = slot;
+            string text = slotName + " - " + label;
+            if (text.Length > 44) text = text.Substring(0, 44);   // keep inside the button
+            string rowText = text;
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => rowText, OnActivate = () => FireSaveSlot(slotName) });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        return s;
+    }
+
+    private void FireSaveSlot(string slot)
+    {
+        if (_slotDeleteMode)
+        {
+            CompetitionStore.DeleteSlot(slot);
+            // Deleting the AUTOSAVE kills the active competition slot too.
+            if (slot == "AUTOSAVE") { _comp = null; _pendingFixture = null; }
+            ReplaceTop(BuildLoadGame());   // rebuild the list; delete mode stays ON
+            return;
+        }
+        var loaded = CompetitionStore.LoadSlot(slot);
+        if (loaded is null) { ReplaceTop(BuildLoadGame()); return; }
+        _comp = loaded;
+        _pendingFixture = null;
+        CompetitionStore.Save(loaded);   // the loaded game becomes the active AUTOSAVE
+        ReplaceTop(BuildCompetitionDashboard());
+    }
+
+    // ---- table / fixtures screens ---------------------------------------------
+    private MenuScreen BuildTableScreen()
+    {
+        var s = new MenuScreen { Title = "TABLE" };
+        var c = _comp;
+        // VIEW WORLD (original: contestMenu VIEW COMPETITIONS/VIEW WORLD,
+        // swos.asm:227077/227097): tournaments get a group stepper so every
+        // group's table is viewable, opening on the player's own group.
+        if (c is not null && c.Kind == CompetitionKind.Tournament && c.GroupCount > 1)
+        {
+            int g = (c.PlayerTeam >= 0 && c.PlayerTeam < c.GroupOf.Count) ? c.GroupOf[c.PlayerTeam] : 0;
+            _tableGroup = g < 0 ? 0 : g;
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+                Label = () => "GROUP", Value = () => ((char)('A' + _tableGroup)).ToString(),
+                OnStep = d => { _tableGroup = StepIdx(_tableGroup, d, c.GroupCount); RebuildCurrent(); } });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        s.Body = client => client.DrawFullTableBody(s);
+        return s;
+    }
+
+    private MenuScreen BuildFixturesScreen()
+    {
+        var s = new MenuScreen { Title = "FIXTURES" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        s.Body = client => client.DrawFixturesBody(s);
+        return s;
+    }
+
+    // ---- body painters ----------------------------------------------------------
+    // All painters anchor at s.BodyTop (set by layout) and stay above the
+    // footer hint at _vh-14 — never hardcode panel Y positions.
+
+    private static string TeamShort(CompetitionState c, int team, int max)
+    {
+        string n = (team >= 0 && team < c.Teams.Count) ? c.Teams[team].Name : "";
+        n = n.Trim();
+        return n.Length > max ? n.Substring(0, max) : n;
+    }
+
+    private static string FixtureLine(CompetitionState c, Fixture f)
+    {
+        string h = TeamShort(c, f.HomeTeam, 13), a = TeamShort(c, f.AwayTeam, 13);
+        if (!f.Played) return $"{h} - {a}";
+        string line = $"{h} {f.HomeGoals}-{f.AwayGoals} {a}";
+        if (f.OnPenalties) line += " P";   // decided on penalties
+        return line;
+    }
+
+    private void DrawCompetitionBody(MenuScreen s)
+    {
+        var c = _comp;
+        if (c is null) return;
+        int x = 22, y = s.BodyTop;
+        int bottom = _vh - 14;
+        var head = new Color(0.7f, 0.85f, 1f);
+
+        if (c.Career is not null)
+        {
+            string extra = $"DIV {c.Career.Division + 1}  SEASON {c.Career.Season}";
+            // Manager identity (title + name) when a name has been entered
+            // (name entry itself arrives in a later wave — omit while empty).
+            string mgrName = (c.Career.ManagerName ?? "").Trim();
+            if (mgrName.Length > 0)
+                extra += "  " + ((c.Career.ManagerTitle ?? "").Trim() + " " + mgrName).Trim();
+            if (c.Career.Trophies.Count > 0)
+                extra += "  " + c.Career.Trophies[c.Career.Trophies.Count - 1];
+            BodyText(s, extra, false, x, y, head);
+            y += 9;
+        }
+
+        switch (c.Kind)
+        {
+            case CompetitionKind.League:
+            case CompetitionKind.Career:
+                DrawTableRows(s, c, CompetitionEngine.Table(c, "LEAGUE"), x, y, (bottom - y - 9) / 8);
+                break;
+            case CompetitionKind.Cup:
+                DrawRoundFixtures(s, c, x, y, (bottom - y - 9) / 8);
+                break;
+            case CompetitionKind.Tournament:
+                if (InGroupStage(c))
+                    DrawTableRows(s, c, CompetitionEngine.Table(c, PlayerGroupStage(c)), x, y, (bottom - y - 9) / 8);
+                else
+                    DrawRoundFixtures(s, c, x, y, (bottom - y - 9) / 8);
+                break;
+        }
+    }
+
+    private static bool InGroupStage(CompetitionState c)
+    {
+        foreach (var f in c.Fixtures)
+            if (!f.Played) return f.Stage.StartsWith("GROUP");
+        return false;   // everything played -> show the (knockout) final round
+    }
+
+    private static string PlayerGroupStage(CompetitionState c)
+    {
+        int g = (c.PlayerTeam >= 0 && c.PlayerTeam < c.GroupOf.Count) ? c.GroupOf[c.PlayerTeam] : 0;
+        if (g < 0) g = 0;
+        return "GROUP " + (char)('A' + g);
+    }
+
+    // Standings block at fixed column anchors (the SWOS font is proportional,
+    // so string padding would not line columns up).
+    private void DrawTableRows(MenuScreen s, CompetitionState c,
+        System.Collections.Generic.List<TableRow> rows, int x, int y, int maxRows)
+    {
+        if (maxRows <= 0) return;
+        var head = new Color(0.7f, 0.85f, 1f);
+        var normal = new Color(0.92f, 0.94f, 1f);
+        var gold = new Color(1f, 0.85f, 0.25f);
+        int cPos = x + 16, cName = x + 22;
+        int cP = x + 158, cW = x + 180, cD = x + 202, cL = x + 224, cGF = x + 252, cGA = x + 280, cPts = x + 312;
+
+        BodyText(s, "POS", false, x, y, head);
+        BodyText(s, "TEAM", false, cName, y, head);
+        BodyText(s, "P", false, cP, y, head, rightAlign: true);
+        BodyText(s, "W", false, cW, y, head, rightAlign: true);
+        BodyText(s, "D", false, cD, y, head, rightAlign: true);
+        BodyText(s, "L", false, cL, y, head, rightAlign: true);
+        BodyText(s, "GF", false, cGF, y, head, rightAlign: true);
+        BodyText(s, "GA", false, cGA, y, head, rightAlign: true);
+        BodyText(s, "PTS", false, cPts, y, head, rightAlign: true);
+        y += 9;
+
+        int n = System.Math.Min(rows.Count, maxRows);
+        for (int i = 0; i < n; i++)
+        {
+            var r = rows[i];
+            Color rc = r.Team == c.PlayerTeam ? gold : normal;
+            BodyText(s, (i + 1).ToString(), false, cPos, y, rc, rightAlign: true);
+            BodyText(s, TeamShort(c, r.Team, 16), false, cName, y, rc);
+            BodyText(s, r.Played.ToString(), false, cP, y, rc, rightAlign: true);
+            BodyText(s, r.Won.ToString(), false, cW, y, rc, rightAlign: true);
+            BodyText(s, r.Drawn.ToString(), false, cD, y, rc, rightAlign: true);
+            BodyText(s, r.Lost.ToString(), false, cL, y, rc, rightAlign: true);
+            BodyText(s, r.GoalsFor.ToString(), false, cGF, y, rc, rightAlign: true);
+            BodyText(s, r.GoalsAgainst.ToString(), false, cGA, y, rc, rightAlign: true);
+            BodyText(s, r.Points.ToString(), false, cPts, y, rc, rightAlign: true);
+            y += 8;
+        }
+    }
+
+    // Current round's fixture list (or the last round once everything played).
+    private void DrawRoundFixtures(MenuScreen s, CompetitionState c, int x, int y, int maxRows)
+    {
+        if (c.Fixtures.Count == 0 || maxRows <= 0) return;
+        int round = -1;
+        foreach (var f in c.Fixtures)
+            if (!f.Played) { round = f.Round; break; }
+        if (round < 0) round = c.Fixtures[c.Fixtures.Count - 1].Round;
+
+        var head = new Color(0.7f, 0.85f, 1f);
+        var normal = new Color(0.92f, 0.94f, 1f);
+        var gold = new Color(1f, 0.85f, 0.25f);
+        int shown = 0;
+        foreach (var f in c.Fixtures)
+        {
+            if (f.Round != round) continue;
+            if (shown == 0 && f.Stage.Length > 0) { BodyText(s, f.Stage, false, x, y, head); y += 9; }
+            bool mine = f.HomeTeam == c.PlayerTeam || f.AwayTeam == c.PlayerTeam;
+            BodyText(s, FixtureLine(c, f), false, x, y, mine ? gold : normal);
+            y += 8;
+            shown++;
+            if (shown >= maxRows) break;
+        }
+    }
+
+    private void DrawFullTableBody(MenuScreen s)
+    {
+        var c = _comp;
+        if (c is null) return;
+        int y = s.BodyTop;
+        // Tournament: the TABLE screen's GROUP stepper picks which group's
+        // standings render; league/career keep the single LEAGUE table.
+        string stage = "LEAGUE";
+        if (c.Kind == CompetitionKind.Tournament)
+        {
+            int g = System.Math.Clamp(_tableGroup, 0, System.Math.Max(0, c.GroupCount - 1));
+            stage = "GROUP " + (char)('A' + g);
+        }
+        if (c.Kind == CompetitionKind.Tournament)
+        {
+            BodyText(s, stage, false, 22, y, new Color(0.7f, 0.85f, 1f));
+            y += 9;
+        }
+        DrawTableRows(s, c, CompetitionEngine.Table(c, stage), 22, y, (_vh - 14 - y - 9) / 8);
+    }
+
+    // The player's team fixtures: recent results plus what is coming up, with
+    // the window anchored a few rows before the first unplayed fixture.
+    private void DrawFixturesBody(MenuScreen s)
+    {
+        var c = _comp;
+        if (c is null) return;
+        int y = s.BodyTop;
+        int maxRows = (_vh - 14 - y) / 8;
+        if (maxRows <= 0) return;
+
+        var mine = new System.Collections.Generic.List<Fixture>();
+        foreach (var f in c.Fixtures)
+            if (f.HomeTeam == c.PlayerTeam || f.AwayTeam == c.PlayerTeam) mine.Add(f);
+        mine.Sort((a, b) => a.Round.CompareTo(b.Round));
+
+        int first = mine.FindIndex(f => !f.Played);
+        int start = 0;
+        if (mine.Count > maxRows)
+        {
+            start = first < 0 ? mine.Count - maxRows
+                              : System.Math.Clamp(first - 4, 0, mine.Count - maxRows);
+        }
+
+        var played = new Color(0.62f, 0.66f, 0.78f);
+        var upcoming = new Color(0.92f, 0.94f, 1f);
+        for (int i = start; i < mine.Count && i - start < maxRows; i++)
+        {
+            var f = mine[i];
+            BodyText(s, f.Stage + "  " + FixtureLine(c, f), false, 22, y, f.Played ? played : upcoming);
+            y += 8;
+        }
+    }
+
+    // Team & squad configuration screen — a hand-crafted squad table with kit
+    // swatches and tactics, in the SWOS spirit (like the original team screen).
+    private int _cfgTeamIsAway;   // 0 = home, 1 = away
+    private MenuScreen BuildTeamConfig()
+    {
+        // Reserve the full squad table (header + 16 rows) — pushes the control
+        // strip onto compact metrics so all 16 players fit above the footer.
+        var s = new MenuScreen { Title = "TEAM SETUP", BodyReserve = 160 };
+        // A tiny control strip at the top: toggle which team, then BACK.
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
+            Label = () => "TEAM", Value = () => (_cfgTeamIsAway == 0 ? "HOME  " : "AWAY  ") + _host.TeamName(_cfgTeamIsAway == 0 ? _host.HomeIndex : _host.AwayIndex),
+            FastScroll = true,
+            OnStep = d => { if (_cfgTeamIsAway == 0) _host.StepHome(d); else _host.StepAway(d); RebuildCurrent(); } });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "SWITCH HOME / AWAY", OnActivate = () => { _cfgTeamIsAway ^= 1; RebuildCurrent(); } });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "BACK", OnActivate = () => Pop() });
+        s.Body = client => client.DrawSquadBody(s, _cfgTeamIsAway == 0 ? _host.HomeIndex : _host.AwayIndex);
+        return s;
+    }
+
+    private void RebuildCurrent() { LayoutAndBuild(Current); _dirty = true; }
+
+    // Draws the squad table + kit + tactics for a team below the control strip.
+    private void DrawSquadBody(MenuScreen s, int teamIdx)
+    {
+        TeamRecord t;
+        try { t = _host.Team(teamIdx); } catch { return; }
+
+        int panelX = 20, panelY = s.BodyTop, panelW = _vw - 40, panelH = _vh - panelY - 14;
+        if (panelH < 40) return;   // nothing sensible fits — bail rather than overlap
+        BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
+
+        int col1 = panelX + 8;         // number
+        int col2 = panelX + 30;        // name
+        int col3 = panelX + 150;       // position
+        int col4 = panelX + 196;       // skills line
+
+        // panel header: coach + division on the left, kit swatches on the right.
+        var head = new Color(0.7f, 0.85f, 1f);
+        string coach = (t.Coach ?? "").Trim().TrimEnd('\0');
+        string info = string.IsNullOrEmpty(coach) ? $"DIV {t.Division + 1}" : $"COACH {coach}   DIV {t.Division + 1}";
+        BodyText(s, info, false, col1, panelY + 4, head);
+        int sw = 11, gap = 3, kx = panelX + panelW - (sw + gap) * 3 - 4, ky = panelY + 3;
+        DrawKitStrip(s, kx, ky, sw, t.HomeKit);
+        DrawKitStrip(s, kx + sw + gap, ky, sw, t.AwayKit);
+        DrawKitStrip(s, kx + (sw + gap) * 2, ky, sw, t.GoalkeeperKit);
+
+        // column header
+        int y = panelY + 15;
+        BodyText(s, "#", false, col1, y, head);
+        BodyText(s, "NAME", false, col2, y, head);
+        BodyText(s, "POS", false, col3, y, head);
+        BodyText(s, "PA TA SH HE CO SP FI", false, col4, y, head);
+        y += 10;
+
+        var rowCol = new Color(0.92f, 0.94f, 1f);
+        // rows start 25px into the panel (info + column header); 8px per row,
+        // clipped to what actually fits above the panel's bottom edge.
+        int maxRows = (panelH - 27) / 8;
+        int rows = System.Math.Min(System.Math.Min(t.Players.Count, 16), maxRows);
+        for (int i = 0; i < rows; i++)
+        {
+            var p = t.Players[i];
+            bool starter = i < 11;   // 0..10 line up, 11..15 the bench (dimmer)
+            Color rc = starter ? rowCol : new Color(0.62f, 0.66f, 0.78f);
+            BodyText(s, p.ShirtNumber.ToString(), false, col1 + 8, y, rc, rightAlign: true);
+            string nm = (p.Name ?? "").Trim();
+            if (nm.Length > 15) nm = nm.Substring(0, 15);
+            BodyText(s, nm, false, col2, y, rc);
+            BodyText(s, p.Position ?? "", false, col3, y, rc);
+            string skills = $"{p.Passing,2} {p.Tackling,2} {p.Shooting,2} {p.Heading,2} {p.Control,2} {p.Speed,2} {p.Finishing,2}";
+            BodyText(s, skills, false, col4, y, rc);
+            y += 8;
+        }
+    }
+
+    private void DrawKitStrip(MenuScreen s, int x, int y, int sw, byte[] kit)
+    {
+        // kit layout {type, shirt1, shirt2, shorts, socks} → shirt / shorts / socks bands
+        byte shirt = kit.Length > 2 ? kit[2] : (byte)0;
+        byte shorts = kit.Length > 3 ? kit[3] : (byte)0;
+        byte socks = kit.Length > 4 ? kit[4] : (byte)0;
+        BodySwatch(s, x, y, sw, 8, _host.KitSwatch(shirt));
+        BodySwatch(s, x, y + 8, sw, 4, _host.KitSwatch(shorts));
+        BodySwatch(s, x, y + 12, sw, 4, _host.KitSwatch(socks));
+    }
+}

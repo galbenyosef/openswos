@@ -21,19 +21,17 @@ byte[] packed;
 try { packed = File.ReadAllBytes(input); }
 catch (Exception ex) { Console.Error.WriteLine($"read failed: {ex.Message}"); return 1; }
 
-if (packed.Length >= 4 && packed[0] == 'R' && packed[1] == 'N' && packed[2] == 'C' && packed[3] == 0x01)
+int method = Rnc.DetectMethod(packed);
+if (method == 0)
 {
-    Console.WriteLine($"RNC1 header detected ({packed.Length} bytes compressed)");
-}
-else
-{
-    Console.Error.WriteLine($"{input}: not an RNC1 stream (magic mismatch)");
+    Console.Error.WriteLine($"{input}: not an RNC stream (magic mismatch)");
     return 2;
 }
+Console.WriteLine($"RNC v{method} header detected ({packed.Length} bytes compressed)");
 
 byte[] unpacked;
-try { unpacked = RncV1.Decode(packed); }
-catch (RncV1Exception ex)
+try { unpacked = Rnc.Decode(packed); }
+catch (Exception ex) when (ex is RncV1Exception || ex is RncV2Exception || ex is InvalidDataException)
 {
     Console.Error.WriteLine($"decode failed: {ex.Message}");
     return 3;

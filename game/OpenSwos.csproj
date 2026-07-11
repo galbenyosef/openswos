@@ -11,6 +11,12 @@
     <!-- Single source of truth: pull the format parsers from tools/ rather than copying.
          Both the CLI tools and the game compile these same files. -->
     <Compile Include="..\tools\rnc-decode\RncV1.cs" Link="Imported\RncV1.cs" />
+    <Compile Include="..\tools\rnc-decode\RncV2.cs" Link="Imported\RncV2.cs" />
+    <Compile Include="..\tools\rnc-decode\RncHeader.cs" Link="Imported\RncHeader.cs" />
     <Compile Include="..\tools\team-decode\TeamFile.cs" Link="Imported\TeamFile.cs" />
+    <Compile Include="..\tools\sprite-decode\Bitplane.cs" Link="Imported\Bitplane.cs" />
+    <Compile Include="..\tools\sprite-decode\Palette.cs" Link="Imported\Palette.cs" />
+    <Compile Include="..\tools\pitch-decode\PitchFile.cs" Link="Imported\PitchFile.cs" />
+    <Compile Include="..\tools\adf-extract\AdfReader.cs" Link="Imported\AdfReader.cs" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,11 @@
 Swos9697_Amiga/
 Swos9697_PC/
 
+# "Bring your own game files" drop folders — may be auto-created during a dev run;
+# they hold proprietary SWOS data and must NEVER be committed.
+/original_swos_adf/
+/original_swos_files/
+
 # Extracted assets — regenerable from originals via tools/
 assets/extracted/
 
@@ -12,6 +17,13 @@ dist/
 
 # Portable downloaded tools (Godot, unADF, etc.) — fetched, not source
 .tools/
+
+# External reference repos (swos-port, original-amiga-swos, etc.) — cloned for
+# read-only study, NOT part of our codebase. See docs/porting/README.md.
+external/
+
+# Local timestamped snapshots from tools/backup.ps1
+.backups/
 
 # Godot 4
 .godot/
@@ -37,3 +49,28 @@ obj/
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# ── Copyright-sensitive dev artifacts — NEVER commit ─────────────────────────
+# Decoded original SWOS graphics, reverse-engineered original sources, original
+# palettes, and third-party docs/tools used only for local study. These are
+# derived from proprietary material and must not be redistributed.
+game/_research/
+player1.png
+player2.png
+player*.png
+swos_graphics_sheet*
+*.RAW
+*.256
+*.adf
+
+# Runtime / scratch output (also often contains original team names → keep out)
+*.log
+err.txt
+stdout.txt
+swos.ini
+swos.log*
+smoke_*.log
+.smoke*.log
+
+# Stray experimental 3D model dumps (not used by the game yet)
+/player_model_*.glb
