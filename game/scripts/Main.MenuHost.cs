@@ -86,15 +86,23 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     }
 
     // ---- pitch ---------------------------------------------------------------
+    // Cycle is: RANDOM (default) then each available pitch. RANDOM rolls a fresh
+    // ground at every kick-off (RollRandomPitch, called from match init).
     string OpenSwos.Menu.IMenuHost.PitchLabel =>
-        _availablePitches.Count > 0 ? $"SWCPICH{PitchId}  ({_pitchSlot + 1}/{_availablePitches.Count})" : "(NONE)";
+        _availablePitches.Count == 0 ? "(NONE)"
+        : _pitchRandom ? "RANDOM"
+        : $"SWCPICH{PitchId}  ({_pitchSlot + 1}/{_availablePitches.Count})";
 
     void OpenSwos.Menu.IMenuHost.StepPitch(int delta)
     {
         if (_availablePitches.Count == 0) return;
-        int d = System.Math.Sign(delta);
-        _pitchSlot = (_pitchSlot + d + _availablePitches.Count) % _availablePitches.Count;
-        LoadPitchVariant(PitchId);
+        int d = System.Math.Sign(delta == 0 ? 1 : delta);
+        // Positions 0..N-1 = fixed pitches, position N = RANDOM.
+        int n = _availablePitches.Count;
+        int cur = _pitchRandom ? n : _pitchSlot;
+        int next = ((cur + d) % (n + 1) + (n + 1)) % (n + 1);
+        if (next == n) { _pitchRandom = true; }
+        else { _pitchRandom = false; _pitchSlot = next; LoadPitchVariant(PitchId); }
     }
 
     // ---- opponent ------------------------------------------------------------

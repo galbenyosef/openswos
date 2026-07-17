@@ -223,6 +223,10 @@ public partial class Main : Node2D
     // from this extracted set so we cycle through whatever actually exists on disk).
     private readonly System.Collections.Generic.List<int> _availablePitches = new();
     private int _pitchSlot = 0;        // index into _availablePitches
+    // RANDOM pitch (default): each match rolls a random available pitch so play
+    // isn't always on the same ground. A future "season" pitch mode goes here too.
+    private bool _pitchRandom = true;
+    private readonly System.Random _pitchRng = new();
     private int _homeTeamIndex = 0;
     private int _awayTeamIndex = 1;
     private int _menuFocus = 0;        // 0=pitch, 1=home, 2=away, 3=opponent, 4=length, 5=speed
@@ -4902,6 +4906,15 @@ public partial class Main : Node2D
         // boot, but that ran ONCE; this runs PER MATCH. A future re-entry
         // path (cancel-to-menu, second-leg start, replay restart) will land
         // here without a fresh Memory.Init and need the per-match scrub.
+        // RANDOM pitch: roll a fresh ground for this match (visual only — pitch
+        // variants don't yet change physics; see backlog #198). Non-deterministic
+        // is fine here; when netplay lands the roll will be seeded/shared.
+        if (_pitchRandom && _availablePitches.Count > 1)
+        {
+            _pitchSlot = _pitchRng.Next(_availablePitches.Count);
+            LoadPitchVariant(PitchId);
+        }
+
         // Wire the menu HALF LENGTH into the clock BEFORE InitGameVariables (which
         // calls InitTimeDelta). timeDelta = 2700 / SecondsPerHalf makes a full
         // 45-game-minute half take exactly SecondsPerHalf real seconds at 70 Hz —
