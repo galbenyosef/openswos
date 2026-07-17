@@ -101,6 +101,9 @@ public static class DataPaths
     /// <summary>Preferred (non-creating) display path for the OUTPUT folder.</summary>
     public static string PreferredOutputPath() => PreferredPath(OutputFolderName);
 
+    /// <summary>Preferred (non-creating) display path for the OPTIONAL PC folder.</summary>
+    public static string PreferredPcInputPath() => PreferredPath(PcInputFolderName);
+
     private static string PreferredPath(string folder)
     {
         string exeDir = ExeDir();

@@ -1,6 +1,122 @@
 # RESUME HERE — Phase B port progress
 
-**Last updated: 2026-07-11 (Session 31 — play-test fixes: writhe animation, keeper-name swap, head-number H2, HEADER ball-contact.)**
+**Last updated: 2026-07-16 (Session 33: FULL in-match AUDIO shipped — SFX + crowd + chants + English commentary. Still next: #216 dashboard redesign.)**
+
+## SESSION 33 (2026-07-16) — in-match sound system (#226 DONE)
+- Source of truth: `external/swos-port/docs/SWOS/sound.txt` + `src/audio/*` (paraphrased, cited).
+- Assets: PC RAW files, 8-bit unsigned mono 22050 Hz (ENDGAMEW/FOUL = 11025). Core pitch
+  SFX + PIERCE commentary are on the **CD, not the HD install** — extracted the data track
+  from `Swos9697_PC\SensiWs9\cd\SWOS96-97.img` (MODE1/2352 → ISO, 2048 B/sector) to
+  `assets/extracted/pc/SFX/` (gitignored). HARD\ holds the on-demand set (result chants,
+  cards/corner/sub/throw-in/end-game commentary).
+- New `game/scripts/Audio/`: RawSample (XOR 0x80 → AudioStreamWav), MatchAudio (12-player
+  SFX pool + dedicated crowd-bed/chant/commentary/whistle channels, vol 0..127→dB, static
+  null-safe API, own RNG — never sim RNG, lockstep-pure), ChantEngine (fade 128 ticks,
+  intro chant by shirt colour, result chants ONENIL..EASY/EREWEGO/NOTSING), CommentaryEngine
+  (big-interrupts/small-yields, 16 preloaded groups + on-demand queues, max 1/frame).
+- All 22 audio stubs in Sim/Port wired at their faithful sites (PlayerActions, PlayerTackle,
+  PlayerUpdate, UpdatePlayers, BallOutOfPlay, BallUpdate, GameLoop, GameTime, Referee, Bench).
+  Main.cs: EnsureMatchAudio/DestroyMatchAudio, skipped headless.
+- Verified: build 0/0, --competition-test PASSED, `--swos-smoke 30 --audio-driver Dummy`
+  logs `[audio] 107 samples loaded (0 missing)`. Backup `20260716_221803_match_audio_s33.7z`.
+- NOT yet: OPTIONS volume sliders; user listening test pending.
+
+## SESSION 33b (2026-07-17) — Amiga SFX rip + SOUND toggle + CD auto-import (#227 DONE)
+- Speed bug fixed: old menu-shot harness had persisted gameSpeedScale=3.00 (+skillScaling
+  off) into settings.json; reset to 1.00/ON and SaveSettings now early-returns in harness
+  mode so test runs can never pollute user settings again.
+- **Amiga sound format CRACKED**: RJP1 (Richard Joseph Player). SFX.SNG = 7 sections
+  (sec0 = 72×32B instrument table, big-endian), sample bank = SFX.IN1++IN2 concatenated
+  (verified $8CA5A−$67662 = 71500+81068). 8-bit SIGNED PCM; rate = 3546895/period (PAL).
+  Full event→sample map recovered from original-amiga-swos.asm (kick 2 pitch variants,
+  pass, bounce, post, keeper-catch, whistles incl. triple end blast, crowd oooh + 10-tick
+  delayed reaction, 4 wordless chants, looped crowd bed). Amiga has NO commentary.
+  Parser+player: game/scripts/Audio/AmigaSfxBank.cs; sanity-asserted sample sizes at load.
+- **OPTIONS → SOUND: PC / AMIGA**, persisted ("soundSource"), unavailable source shows
+  (N/A) and can't be selected; auto-resolves at match start. AMIGA mode: no commentary,
+  Amiga chants, dedicated post/keeper samples, kick suppressed during crowd reactions.
+- **CD auto-import**: game/scripts/Assets/CdSfxImport.cs — finds *.cue/.img/.iso/.bin in
+  original_swos_pc/ (or dev cd/ path), converts MODE1/2352→2048, minimal ISO9660 walker,
+  extracts SFX/FX + SFX/PIERCE to user://cache/pc_sfx/ (idempotent, marker file).
+  Byte-identical to manual extraction (verified on SWOS96-97.img).
+- **Preload + fade**: samples load on background thread at match init (triggers no-op
+  until ready), crowd bed starts during walk-in with 1.5 s fade-in (approved deviation —
+  original masked start with a loading screen).
+- Verified: build 0/0, --competition-test PASSED, amiga smoke logs
+  "[audio] amiga bank: 51 instruments, 14 samples mapped" + all SANITY OK, --menu-shot
+  passes, settings.json clean. Backup 20260717_005522_amiga_sfx_toggle_cdimport.7z.
+- Follow-ups: Amiga goal cheer is approximated (original = multi-channel RJP "song 6"
+  crowd layers; full RJP pattern-player emulation would be the faithful path); crowd bed
+  rate guessed 8000 Hz; per-instrument Amiga volumes (0-64) not yet honoured.
+
+## SESSION 33c/d (2026-07-17) — play-test wave + fatigue + injuries + menu music
+- **Game-speed bug**: old harness had persisted gameSpeedScale=3.00 + skillScaling=false
+  into settings.json; reset + SaveSettings now no-ops in harness mode.
+- **HOME**: vertically centred column, CAREER shortcut (shimmer two-colour sheen) between
+  OPTIONS and EXIT, "BY GRZEGORZ KORYCKI" bottom-right instead of the control legend.
+- **List picker**: original-SWOS 3-column grid for 6+ items (column-major, LEFT/RIGHT =
+  column jump, paging), <=5 items = single centred column. TeamTag "AVGn" suffix removed.
+- **Flags**: field shrunk 1px per side (8x4 in 12x8 box, natural gaps); nation code raised
+  1px (no bleed into next row).
+- **Text entry**: DOWN leaves the field onto an OK button (gamepad-only handhelds), UP
+  returns to typing; ENTER still confirms.
+- **In-match fatigue + energy bar (#230)**: original has NO in-match fitness (verified —
+  dead 'FITNESS' string only, swos.asm:186013). OpenTTD-style optional enhancement:
+  energy 0..4096 in sprite-slot padding, integer drain by movement (keeper ~4x slower),
+  speed -1 step <50% / -2 <20% via the port's 46/step machinery. OPTIONS: ENERGY BAR
+  (default ON, renderer-only) + PLAYER FATIGUE (default OFF; career/competition auto-ON).
+  Career hand-back: real drain replaces kMatchDistanceSurrogate for the player's club.
+  Determinism verified byte-identical.
+- **Throw-in near corner bug**: right-touchline bottom-team branch had REVERSED Y-zone
+  order vs ball.cpp:3854-3879 (states 18/20 swapped) — support players parked past the
+  goal line; also fixed AI_throwInDirections indexing. BallOutOfPlay.cs one-swap fix.
+- **Post-match injuries (#232)**: ROOT CAUSE was memory corruption — inGameTeamPlayerOffsets
+  stride 54 vs original 61 (swos.asm:208198) + header-relative rebase; injury AND card
+  writes scattered into neighbours' name/skill bytes. Fixed. Then full original model:
+  severity 0-7 persists (human club only), per-fixture recovery walk (1: 50% heal; 2-5:
+  decrement; 6: 1/8 re-roll; 7: never — auto-retire at season end, kind deviation),
+  sev>=2 = red row + INJ + excluded from XI (graceful PreferredLineup demote, >=11 guard),
+  sev 1 = yellow FIT knock with doubled re-injury odds carried into next match.
+  VIEW RESULT + AI clubs never injure (faithful). Tests added to --competition-test.
+- **Menu music (#234, wrapping up)**: RJP1 music player emulation (MENU.SNG/INS, 50 Hz
+  sequencer + sample-accurate mixer into AudioStreamGenerator, song loops forever,
+  fade-in to 35/64 like asm 17521-17550) = default AMIGA source; PC = CD audio TRACK 2
+  (2:52 CDDA at sector 94080, verified music, cached to user:// on import); CUSTOM =
+  3 user-owned Suno MP3s committed at game/data/music/ (playlist). OPTIONS page 2 =
+  MUSIC + SOUND + DISPLAY. Everything decodes at runtime from user's own source files
+  (ADF/CD) into user:// caches — repo never ships derived original data (.gitignore
+  gained /new_music/ + /_research/).
+- Still open: #216 dashboard redesign (needs user sign-off on a web mockup first),
+  #233 TEAM SETUP misaligned skill columns + wrong kit swatch colours.
+
+## ▶ NEXT TASK ON RESUME (read first): #216 dashboard/league redesign
+Career mode is IMPLEMENTED and play-test-polished (engine + UI + transfers +
+lineup editor + flags/heads/skills + colour pass). Full live status, per-task
+history and open items: **`docs/design/07-career-progress.md`** (read its top
+"S32 feedback wave" section first). The ONLY remaining task is **#216**:
+redesign the career dashboard + league view as a 2-column modern-manager
+layout — the user explicitly wants the orchestrator to design a WEB MOCKUP
+first (he trusts our web design), get his sign-off, then reproduce it in the
+576x408 (x2) menu space. Workflow reminders: Claude agents (fable investigator
+/ opus implementer) or Codex (gpt-5.6-terra via
+`I:\GITHUB\W_OPEN_SWOS\_codex_worker\offload_to_codex.sh`, needs
+`-s danger-full-access` on this machine) per whichever quota the user says is
+healthy; verify each step with build + `--competition-test` + windowed
+`--menu-shot` (headless can't save PNGs) + eyeball; backup via
+`I:\GITHUB\W_OPEN_SWOS\tools\backup.ps1 -label ...`; ALWAYS end messages after
+a build with the full absolute test commands (CLAUDE.md rule). Also open: a
+one-off unexplained freeze the user hit (need repro), AI clubs never buy
+players, in-match fatigue wiring awaits a live play-test with the user.
+
+## PUBLISHED (2026-07-14)
+Repo is PUBLIC: https://github.com/angree/openswos (MIT, Grzegorz Korycki).
+Release v0.1-dev (prerelease) with Win64 + Linux-x86_64 zips:
+https://github.com/angree/openswos/releases/tag/v0.1-dev . Commits authored
+angree@wp.pl (no gmail anywhere — verified). Builds self-extract user-provided
+Amiga ADFs; determinism EMPIRICALLY verified (same match twice = byte-identical
+log) — netcode-friendly foundation, transport not yet built.
+
+
 
 ## SESSION 31h (2026-07-11) — Linux release + FIRST PUSH TO GITHUB
 

@@ -135,6 +135,14 @@ public static class TeamDataLoader
 
             PlayerRecord p = team.Players![rosterIdx];
 
+            // OpenSWOS in-match energy seed: in-game slots 0..10 map to the 11
+            // physical sprite slots for this side (top => 0..10, bottom =>
+            // 11..21). Seeds each on-pitch player's starting energy from their
+            // career stamina/carried-fatigue (neutral 7/0 for non-career
+            // records). See Sim/Port/PlayerEnergy.cs.
+            if (i < 11)
+                PlayerEnergy.SeedSlot((top ? 0 : 11) + i, p.Stamina, p.FatigueCarry);
+
             Memory.WriteByte(slotAddr + OffSubstituted, 0);
             // PlayerInfo.index = index in the team FILE, not the in-game slot
             // (InitInGamePlayer, swos.asm:36013-36015: playerIndex = D1, where
@@ -215,6 +223,22 @@ public static class TeamDataLoader
                 Memory.WriteByte(slotAddr + OffGoalieSkill,
                                  GoalieSkillFromPrice(p.ValueCode, top));
             }
+
+            // Carried career injury ("knock"): seed the persistent severity into
+            // the in-game injuriesBitfield (top 3 bits) so PlayerTackled's
+            // re-injury roll uses the doubled "already injured" probability/level
+            // tables (gated on injuriesBitfield & 0xE0 == 0x20,
+            // PlayerTackle.cs:1004-1035 / swos.asm:14495-14507). Only severity>=1
+            // players reach a match team (>=2 are excluded from the XI unless the
+            // fit-pool guard re-admits them); isInjured stays 0 — a knock carrier
+            // starts fit, not actively injured. Ported from InitInGamePlayer's
+            // cardsInjuries copy (swos.asm:36142-36148). Non-career records default
+            // InjurySeverity 0, so this is a no-op for friendlies (determinism
+            // preserved). The human-only Sprite.injuryLevel speed handicap is
+            // intentionally NOT seeded here (it would paint a kickoff injury-cross
+            // over a fit starter) — a documented minor deviation.
+            if (p.InjurySeverity >= 1)
+                Memory.WriteByte(slotAddr + OffInjuriesBits, (byte)((p.InjurySeverity & 7) << 5));
 
             // Names — truncate + ASCII-encode + null-terminate.
             WriteAsciiTrunc(slotAddr + OffShortName, p.Name, 14);   // 15 bytes incl null

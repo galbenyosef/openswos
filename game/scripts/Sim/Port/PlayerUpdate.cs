@@ -445,14 +445,16 @@ public static class PlayerUpdate
                 BallSprite.Speed = 0;
                 TeamData.SetGoalkeeperDivingLeft(isTopTeam, 1);
                 GoalkeeperClaimedTheBall(keeperSpriteAddr, isTopTeam);
-                // PlayKeeperClaimedComment is audio-only; defer.
+                // updatePlayers.cpp:3143 — PlayKeeperClaimedComment().
+                OpenSwos.Audio.MatchAudio.KeeperClaimedComment();
                 return true;
             }
             else
             {
                 // 3144 — goalkeeperDeflectedBall(); PlayKeeperClaimedComment().
                 GoalkeeperDeflectedBall(BallSprite.Base, teamBase);
-                // PlayKeeperClaimedComment is audio-only; defer.
+                // updatePlayers.cpp:3144 — PlayKeeperClaimedComment().
+                OpenSwos.Audio.MatchAudio.KeeperClaimedComment();
                 return false;
             }
         }
@@ -1533,9 +1535,5 @@ public static class PlayerUpdate
     }
 
     // player.cpp:2527 — SWOS::PlayKickSample. Plays the kick / parry SFX.
-    // TODO: wire to audio bus once samples are loaded.
-    private static void PlayKickSample()
-    {
-        // STUB — no-op.
-    }
+    private static void PlayKickSample() => OpenSwos.Audio.MatchAudio.PlayKick();
 }

@@ -21,14 +21,63 @@ public sealed class MenuScreen
     // First free Y below the last laid-out entry (set by LayoutAndBuild before
     // Body runs). Body painters MUST anchor here, never at hardcoded Y values.
     public int BodyTop;
+    // Inline table-select binding: screens that already paint a data table in
+    // their body (transfer market, squad, offers, ...) expose it here so the
+    // PLAYER/OFFER/CANDIDATE field can drive the visible table's own row
+    // selection in place, rather than pushing a redundant full-screen picker.
+    public MenuTableSelect? TableSelect;
+    // When true the screen drops straight into its TableSelect on Push, so the
+    // 16 slot rows are the default focus (lineup editor) instead of the entry
+    // column. The entries stay reachable by scrolling UP out of the table.
+    public bool AutoTableSelect;
+}
+
+// Binds a table-showing screen's body highlight to inline row navigation. The
+// bound Field renders in an accent colour while the mode is active; Count /
+// GetIndex / SetIndex read+write the screen's existing per-screen selection var
+// (SetIndex also flips the page it lives on, mirroring the old picker onPick).
+public sealed class MenuTableSelect
+{
+    public MenuEntry? Field;                        // the table-bound option (accent while active)
+    public System.Func<int> Count = () => 0;        // number of selectable rows
+    public System.Func<int> GetIndex = () => 0;     // current row index
+    public System.Action<int> SetIndex = _ => { };  // move selection to an absolute row (also flips page)
+    public System.Action? OnConfirm;                // optional action on FIRE (else just exit to entries)
+    // When true FIRE runs OnConfirm but STAYS in table mode (multi-step flows
+    // like the lineup swap: pick a row, then pick another to swap). Default
+    // false keeps the classic "confirm then return to entries" behaviour.
+    public bool StayOnConfirm;
+    // Optional ESC override. Default ESC exits the table back to the entries;
+    // when set (lineup editor: ESC leaves the whole screen) ESC runs this after
+    // exiting table mode. Scrolling UP off row 0 always returns to the entries.
+    public System.Action? OnCancel;
+    // Optional footer control hint shown while this table is active (else the
+    // generic "UP/DOWN ROW  FIRE OK  ESC BACK").
+    public string? Hint;
 }
 
 // The OpenSWOS front-end: a SWOS-styled, stack-navigated menu client that lives
 // on the game's UI CanvasLayer and drives match setup, team config and launch.
 // Replaces the old single plain-text label. All visuals come from MenuTheme.
-public sealed class MenuClient
+public sealed partial class MenuClient
 {
     private readonly Node2D _root;
+    // Career data tables paint to _tableRoot, which is now simply _root: the whole
+    // front-end (menu + tables) shares one 576×408 ×2 CanvasLayer. (Tables used to
+    // live on a separate ×2 layer while the menu ran at ×3; now that the menu is
+    // ×2 as well there is nothing to separate — one space, one scale.) The field
+    // and InTableSpace routing are kept so the shared BodyBox/BodyText helpers and
+    // the Active visibility toggle continue to work unchanged.
+    private readonly Node2D? _tableRoot;
+    private bool _tableSpace;
+    // "Fine print" layer (#223): a SEPARATE CanvasLayer at scale 1 (native
+    // 1152×816 px) sitting ABOVE the ×2 menu layer, so the tiny 3-letter nation
+    // codes can render at true x1 with a 1 px black outline — the bitmap charset
+    // cannot be fractionally scaled, so a x1 glyph on the ×2 menu layer is
+    // impossible. Sprites live under _finePrintRoot (toggled with Active); each
+    // one is still registered in the owning screen's BodyNodes for cleanup.
+    private CanvasLayer? _finePrintLayer;
+    private Node2D? _finePrintRoot;
     private readonly SwosFont? _font;
     private readonly IMenuHost _host;
     private readonly int _vw, _vh;
@@ -77,13 +126,29 @@ public sealed class MenuClient
     // the host and cached (the master team list never changes at runtime).
     private System.Collections.Generic.List<int>? _nationsWithTeams;
     private System.Collections.Generic.Dictionary<int, int>? _nationTeamCount;
+    // Built on demand because the career views are the only ones that need to
+    // resolve arbitrary TEAM.* GlobalIds back to their full master-list names.
+    private System.Collections.Generic.Dictionary<ushort, string>? _teamNamesByGlobalId;
 
     public MenuClient(Node uiLayer, SwosFont? font, IMenuHost host, int viewportW, int viewportH)
     {
         _font = font; _host = host; _vw = viewportW; _vh = viewportH;
-        _optionsPages = new System.Action<MenuScreen>[] { AddOptionsPageAll };
+        _optionsPages = new System.Action<MenuScreen>[] { AddOptionsPageGameplay, AddOptionsPageAudioDisplay };
         _root = new Node2D { Name = "MenuClient" };
         uiLayer.AddChild(_root);
+        // Tables share the menu's own root now (see _tableRoot note above).
+        _tableRoot = _root;
+
+        // Fine-print layer: a scale-1 sibling CanvasLayer added to the menu
+        // layer's parent (Main). uiLayer is already in the tree at this point
+        // (Main adds it before constructing us), so GetParent() resolves. Layer
+        // 2 keeps it above the ×2 menu (0) and the HUD (1) but below the fade /
+        // pause overlays (100).
+        var finePrintHost = uiLayer.GetParent() ?? uiLayer;
+        _finePrintLayer = new CanvasLayer { Layer = 2 };
+        finePrintHost.AddChild(_finePrintLayer);
+        _finePrintRoot = new Node2D { Name = "MenuFinePrint" };
+        _finePrintLayer.AddChild(_finePrintRoot);
 
         BuildBackdrop();
         _cursor = new Sprite2D { Visible = false, Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, ZIndex = 60 };
@@ -99,6 +164,10 @@ public sealed class MenuClient
         {
             bool was = _root.Visible;
             _root.Visible = value;
+            if (_tableRoot is not null) _tableRoot.Visible = value;
+            // The fine-print codes live on their own layer; hide them with the
+            // rest of the menu so they never bleed over a match or overlay.
+            if (_finePrintRoot is not null) _finePrintRoot.Visible = value;
             if (value)
             {
                 // First time we (re)appear — e.g. on boot or after a match ends —
@@ -114,6 +183,23 @@ public sealed class MenuClient
     {
         while (_stack.Count > 0) DestroyScreenNodes(_stack.Pop());
         Push(BuildHome());
+    }
+
+    private System.Collections.Generic.Dictionary<ushort, string> TeamNamesByGlobalId()
+    {
+        if (_teamNamesByGlobalId is not null) return _teamNamesByGlobalId;
+
+        var names = new System.Collections.Generic.Dictionary<ushort, string>();
+        for (int i = 0; i < _host.TeamCount; i++)
+        {
+            TeamRecord team;
+            try { team = _host.Team(i); }
+            catch { continue; }
+
+            string name = (team.Name ?? "").Trim().TrimEnd('\0');
+            if (name.Length > 0) names.TryAdd(team.GlobalId, name);
+        }
+        return _teamNamesByGlobalId = names;
     }
 
     private void BuildBackdrop()
@@ -152,6 +238,9 @@ public sealed class MenuClient
         if (_stack.Count > 0) DestroyScreenNodes(Current);
         _stack.Push(s);
         LayoutAndBuild(s);
+        // Screens that want the inline table as their default focus (lineup
+        // editor) drop straight into it, so the 16 slot rows are live on entry.
+        if (s.AutoTableSelect && s.TableSelect is { } ts && ts.Count() > 0) EnterTableSelect(s);
         _dirty = true;
     }
 
@@ -209,6 +298,18 @@ public sealed class MenuClient
         // First free row below the last entry — where a body painter may start.
         int bottom = 40;
         foreach (var e in s.Entries) if (e.Y + e.H > bottom) bottom = e.Y + e.H;
+        // Pure button/option screens (no body painter) centre their column
+        // vertically between the title bar and the footer instead of hugging
+        // the top (user ask: "wysrodkuj te menu").
+        if (s.Body is null)
+        {
+            int shift = (limit - bottom) / 2;
+            if (shift > 0)
+            {
+                foreach (var e in s.Entries) e.Y += shift;
+                bottom += shift;
+            }
+        }
         s.BodyTop = bottom + 6;
     }
 
@@ -222,14 +323,19 @@ public sealed class MenuClient
         {
             switch (e.Kind)
             {
+                // Widths scaled to the 576-wide design space (×1.5 vs the old
+                // 384 space) so buttons keep the same RELATIVE width. Heights and
+                // gaps are left as-is: the taller 408 viewport gives the column
+                // extra room (this is what lets the CAREER dashboard fit).
                 case EntryKind.Label:
-                    e.W = 300; e.H = compact ? 10 : 12;
+                    e.W = 450; e.H = compact ? 10 : 12;
                     break;
                 case EntryKind.Button:
-                    e.W = 208; e.H = e.Big ? (compact ? 15 : 20) : (compact ? 13 : 16);
+                    e.W = e.WidthOverride > 0 ? e.WidthOverride : 312;
+                    e.H = e.Big ? (compact ? 15 : 20) : (compact ? 13 : 16);
                     break;
                 case EntryKind.Option:
-                    e.W = 300; e.H = compact ? 13 : 16;
+                    e.W = 450; e.H = compact ? 13 : 16;
                     break;
             }
             e.X = (_vw - e.W) / 2; e.Y = y; y += e.H + gap;
@@ -237,7 +343,7 @@ public sealed class MenuClient
         return y - gap <= limit;
     }
 
-    private const int OptLabelW = 150;   // option row: label box | value box
+    private const int OptLabelW = 225;   // option row: label box | value box (×1.5 for 576 space)
 
     private void BuildEntryNodes(MenuEntry e)
     {
@@ -254,7 +360,7 @@ public sealed class MenuClient
         }
         // Option: label box (left) + value box (right) with arrows.
         int labelW = OptLabelW, valueW = e.W - labelW - 4;
-        e.Bg = MakeSprite(MenuTheme.Button(labelW, e.H, MenuTheme.Style.Plain), e.X, e.Y, 10);
+        e.Bg = MakeSprite(MenuTheme.Button(labelW, e.H, MenuTheme.Style.Field), e.X, e.Y, 10);
         e.ValueBg = MakeSprite(MenuTheme.Button(valueW, e.H, e.Style), e.X + labelW + 4, e.Y, 10);
         e.LabelSpr = MakeText();
         e.ValueSpr = MakeText();
@@ -262,18 +368,34 @@ public sealed class MenuClient
         e.ArrowR = MakeText();
     }
 
-    private Sprite2D MakeSprite(Texture2D tex, int x, int y, int z)
+    private Sprite2D MakeSprite(Texture2D tex, int x, int y, int z, Node2D? parent = null)
     {
         var s = new Sprite2D { Texture = tex, Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, Position = new Vector2(x, y), ZIndex = z };
-        _root.AddChild(s);
+        (parent ?? _root).AddChild(s);
         return s;
     }
 
-    private Sprite2D MakeText()
+    private Sprite2D MakeText(Node2D? parent = null)
     {
         var s = new Sprite2D { Visible = false, Centered = false, TextureFilter = CanvasItem.TextureFilterEnum.Nearest, ZIndex = 20 };
-        _root.AddChild(s);
+        (parent ?? _root).AddChild(s);
         return s;
+    }
+
+    // The parent for body-painter sprites: the ×2 table layer while a career
+    // table painter runs inside InTableSpace, else the ×3 menu root. Keeping the
+    // routing in this one place is what lets the SAME BodyBox/BodyText helpers
+    // serve both the menu-space lineups and the table-space career screens.
+    private Node2D BodyParent => _tableSpace && _tableRoot is not null ? _tableRoot : _root;
+
+    // Runs a career table body painter with its sprites routed to _tableRoot.
+    // try/finally so an early-return painter can never leak table-space routing
+    // onto the next (menu-space) screen.
+    private void InTableSpace(System.Action paint)
+    {
+        _tableSpace = true;
+        try { paint(); }
+        finally { _tableSpace = false; }
     }
 
     private enum Align { Left, Center, Right }
@@ -298,14 +420,14 @@ public sealed class MenuClient
 
     public Sprite2D BodyBox(MenuScreen s, int x, int y, int w, int h, MenuTheme.Style style, int z = 6)
     {
-        var spr = MakeSprite(MenuTheme.Button(w, h, style), x, y, z);
+        var spr = MakeSprite(MenuTheme.Button(w, h, style), x, y, z, BodyParent);
         s.BodyNodes.Add(spr);
         return spr;
     }
 
     public Sprite2D BodyText(MenuScreen s, string text, bool big, int x, int y, Color color, bool rightAlign = false)
     {
-        var spr = MakeText();
+        var spr = MakeText(BodyParent);
         spr.ZIndex = 22;
         // reuse SetText with a zero box so alignment is anchor-based
         if (_font is not null && !string.IsNullOrEmpty(text))
@@ -320,6 +442,66 @@ public sealed class MenuClient
             }
         }
         s.BodyNodes.Add(spr);
+        return spr;
+    }
+
+    // Draws a short string at true x1 (native px) on the fine-print layer with a
+    // 1 px black outline, so the tiny nation codes stay legible over a flag. The
+    // anchor (xMenu,yMenu) is in the ×2 menu design space; it is doubled into the
+    // scale-1 layer. The glyph face is baked WHITE with four black cardinal
+    // offsets underneath for the outline. Every sprite is registered in the
+    // screen's BodyNodes so it is freed on the next rebuild. (#223)
+    public void FinePrintText(MenuScreen s, string text, int xMenu, int yMenu, bool rightAlign = false)
+    {
+        if (_font is null || _finePrintRoot is null || string.IsNullOrEmpty(text)) return;
+        var white = _font.Render(text, false, new Color(1f, 1f, 1f));
+        if (white is null) return;
+        var black = _font.Render(text, false, new Color(0f, 0f, 0f));
+        int w = white.GetWidth();
+        int sx = rightAlign ? xMenu * 2 - w : xMenu * 2;
+        int sy = yMenu * 2;
+        if (black is not null)
+        {
+            (int dx, int dy)[] outline = { (1, 0), (-1, 0), (0, 1), (0, -1) };
+            foreach (var (dx, dy) in outline)
+                s.BodyNodes.Add(MakeFinePrintSprite(black, sx + dx, sy + dy, 30));
+        }
+        s.BodyNodes.Add(MakeFinePrintSprite(white, sx, sy, 31));
+    }
+
+    // Like FinePrintText but centered horizontally on centerXMenu (menu-space).
+    public void FinePrintTextCentered(MenuScreen s, string text, int centerXMenu, int yMenu)
+    {
+        if (_font is null || _finePrintRoot is null || string.IsNullOrEmpty(text)) return;
+        var white = _font.Render(text, false, new Color(1f, 1f, 1f));
+        if (white is null) return;
+        var black = _font.Render(text, false, new Color(0f, 0f, 0f));
+        int w = white.GetWidth();
+        // +1: w/2 truncation left the code hanging 2px over the flag's left edge
+        // (user report, e.g. "RUS"); +3 on y: code sits on the flag's lower part
+        // (was +4 — bled one pixel into the row below, user report).
+        int sx = centerXMenu * 2 - w / 2 + 1;
+        int sy = yMenu * 2 + 3;
+        if (black is not null)
+        {
+            (int dx, int dy)[] outline = { (1, 0), (-1, 0), (0, 1), (0, -1) };
+            foreach (var (dx, dy) in outline)
+                s.BodyNodes.Add(MakeFinePrintSprite(black, sx + dx, sy + dy, 30));
+        }
+        s.BodyNodes.Add(MakeFinePrintSprite(white, sx, sy, 31));
+    }
+
+    private Sprite2D MakeFinePrintSprite(Texture2D tex, int x, int y, int z)
+    {
+        var spr = new Sprite2D
+        {
+            Texture = tex,
+            Centered = false,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            Position = new Vector2(x, y),
+            ZIndex = z,
+        };
+        _finePrintRoot!.AddChild(spr);
         return spr;
     }
 
@@ -344,7 +526,9 @@ public sealed class MenuClient
     {
         EnsureTitleNodes();
         var s = Current;
-        SetText(_titleSpr, s.Title, true, Align.Center, 0, 14, _vw, 22, MenuTheme.TextColor(MenuTheme.Style.Header));
+        // y=11 (was 14): the title text sat visibly too low in its bar (user
+        // reported it twice) — raised 6 screen px to sit centred in the band.
+        SetText(_titleSpr, s.Title, true, Align.Center, 0, 11, _vw, 22, MenuTheme.TextColor(MenuTheme.Style.Header));
         _titleBar!.Visible = true;
 
         foreach (var e in s.Entries)
@@ -360,20 +544,47 @@ public sealed class MenuClient
                     break;
                 case EntryKind.Option:
                     int labelW = OptLabelW, valueW = e.W - labelW - 4, valueX = e.X + labelW + 4;
-                    SetText(e.LabelSpr, e.Label(), false, Align.Left, e.X, e.Y, labelW, e.H, new Color(0.85f, 0.88f, 0.96f));
-                    SetText(e.ValueSpr, e.Value?.Invoke() ?? "", false, Align.Center, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
-                    SetText(e.ArrowL, "<", false, Align.Left, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
-                    SetText(e.ArrowR, ">", false, Align.Right, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
+                    // Picker options open a list on FIRE, so they show no value-
+                    // stepping ‹ › arrows — just the current selection in the box.
+                    bool picker = e.OnActivate is not null;
+                    // Accent-gold the bound field while its inline table is active.
+                    bool tableField = _tableSelect is not null && ReferenceEquals(e, _tableSelect.Field);
+                    Color labelCol = tableField ? kActiveFieldColor : new Color(0.85f, 0.88f, 0.96f);
+                    Color valueCol = tableField ? kActiveFieldColor : MenuTheme.TextColor(e.Style);
+                    SetText(e.LabelSpr, e.Label(), false, Align.Left, e.X, e.Y, labelW, e.H, labelCol);
+                    SetText(e.ValueSpr, e.Value?.Invoke() ?? "", false, Align.Center, valueX, e.Y, valueW, e.H, valueCol);
+                    SetText(e.ArrowL, picker ? "" : "<", false, Align.Left, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
+                    SetText(e.ArrowR, picker ? "" : ">", false, Align.Right, valueX, e.Y, valueW, e.H, MenuTheme.TextColor(e.Style));
                     break;
             }
         }
 
-        // context footer (control hints)
-        bool hasOption = s.Entries.Exists(e => e.Kind == EntryKind.Option);
-        string hint = hasOption
-            ? "UP/DOWN SELECT   LEFT/RIGHT CHANGE   FIRE OK   ESC BACK"
-            : "UP/DOWN SELECT   FIRE OK   ESC BACK";
-        SetText(_footerSpr, hint, false, Align.Center, 0, _vh - 11, _vw, 10, new Color(0.55f, 0.6f, 0.72f));
+        // context footer: the HOME (root) screen shows the author credit in the
+        // bottom-right corner instead of the control legend (user ask); every
+        // other screen keeps the context-sensitive control hints.
+        if (_stack.Count == 1 && _listPicker is null && _tableSelect is null)
+        {
+            SetText(_footerSpr, "BY GRZEGORZ KORYCKI", false, Align.Right,
+                0, _vh - 11, _vw - 3, 10, new Color(0.55f, 0.6f, 0.72f));
+        }
+        else
+        {
+            string hint;
+            if (_tableSelect is not null)
+                hint = _tableSelect.Hint ?? "UP/DOWN ROW   FIRE OK   ESC BACK";
+            else if (_listPicker is not null)
+                hint = _listPicker.Columns > 1
+                ? "UP/DOWN SCROLL   LEFT/RIGHT COLUMN   FIRE SELECT   ESC CANCEL"
+                : "UP/DOWN SCROLL   FIRE SELECT   ESC CANCEL";
+            else
+            {
+                bool hasStepper = s.Entries.Exists(e => e.Kind == EntryKind.Option && e.OnActivate is null);
+                hint = hasStepper
+                    ? "UP/DOWN SELECT   LEFT/RIGHT CHANGE   FIRE OK   ESC BACK"
+                    : "UP/DOWN SELECT   FIRE OK   ESC BACK";
+            }
+            SetText(_footerSpr, hint, false, Align.Center, 0, _vh - 11, _vw, 10, new Color(0.55f, 0.6f, 0.72f));
+        }
     }
 
     private Sprite2D? _titleBar, _titleSpr, _footerSpr;
@@ -382,7 +593,7 @@ public sealed class MenuClient
     {
         if (_titleBar is null)
         {
-            _titleBar = MakeSprite(MenuTheme.Button(300, 22, MenuTheme.Style.Header), (_vw - 300) / 2, 12, 10);
+            _titleBar = MakeSprite(MenuTheme.Button(450, 22, MenuTheme.Style.Header), (_vw - 450) / 2, 12, 10);
             _titleSpr = MakeText();
             _titleSpr!.ZIndex = 21;
             _footerSpr = MakeText();
@@ -414,7 +625,21 @@ public sealed class MenuClient
             if (!ReferenceEquals(_textInputScreen, s)) EndTextInput();   // screen changed under us
             else
             {
-                TickTextInput();
+                var ti = _textInput;
+                if (ti.Typing)
+                {
+                    TickTextInput();
+                    // DOWN (action = keyboard arrow OR gamepad dpad) leaves the
+                    // field for the OK button — retro handhelds have no ENTER.
+                    if (_textInput is not null && Input.IsActionJustPressed("ui_down"))
+                    { ti.Typing = false; _dirty = true; }
+                }
+                else
+                {
+                    if (Input.IsActionJustPressed("ui_up")) { ti.Typing = true; _dirty = true; }
+                    else if (Input.IsActionJustPressed("ui_accept")) HandleTextKey(ti, Key.Enter);
+                    else if (Input.IsActionJustPressed("ui_cancel")) HandleTextKey(ti, Key.Escape);
+                }
                 _cursorFrame++;
                 UpdateCursor();
                 if (_dirty) { Refresh(); _dirty = false; }
@@ -422,20 +647,77 @@ public sealed class MenuClient
             }
         }
 
+        // List-picker mode: while a SWOS-style full-list picker is open the
+        // keyboard belongs to the list (UP/DOWN scroll, FIRE selects, ESC
+        // cancels) — normal menu navigation is suspended, exactly like text
+        // input above.
+        if (_listPicker is not null)
+        {
+            if (!ReferenceEquals(_listPickerScreen, s)) EndListPicker();   // screen changed under us
+            else
+            {
+                TickListPicker();
+                _cursorFrame++;
+                UpdateCursor();
+                // Refresh() alone never re-runs s.Body, and the picker's rows +
+                // highlight + ITEM n/N header all live in the body — without a
+                // LayoutAndBuild the selection moves invisibly (user-reported:
+                // "up/down does nothing, only enter exits").
+                if (_dirty && _listPicker is not null) { LayoutAndBuild(s); Refresh(); _dirty = false; }
+                return;
+            }
+        }
+
+        // Table-select mode: inline row selection inside a screen that already
+        // paints the data table. Mirrors the list-picker branch — the keyboard
+        // drives the table's own selection var while the bound field shows an
+        // accent colour. Like the picker, the highlight lives in s.Body, so a
+        // bare Refresh never re-runs it: redraw via LayoutAndBuild on every
+        // change (and on the exit frame, to clear the accent + footer hint).
+        if (_tableSelect is not null)
+        {
+            if (!ReferenceEquals(_tableSelectScreen, s)) ExitTableSelect();   // screen changed under us
+            else
+            {
+                TickTableSelect();
+                _cursorFrame++;
+                UpdateCursor();
+                if (_dirty) { LayoutAndBuild(s); Refresh(); _dirty = false; }
+                return;
+            }
+        }
+
         bool up = Input.IsActionJustPressed("ui_up");
         bool down = Input.IsActionJustPressed("ui_down");
+        // Drop into the inline table by scrolling DOWN off the last menu entry
+        // ("albo móc na nią sam zjechać") — only on screens that expose one.
+        if (down && s.TableSelect is { } tsCfg && tsCfg.Count() > 0 && s.Selected == LastSelectable(s))
+        {
+            EnterTableSelect(s);
+            _cursorFrame++;
+            UpdateCursor();
+            if (_dirty) { LayoutAndBuild(s); Refresh(); _dirty = false; }
+            return;
+        }
         if (up) { MoveSelection(s, -1); _dirty = true; }
         else if (down) { MoveSelection(s, +1); _dirty = true; }
 
         var sel = (s.Selected >= 0 && s.Selected < s.Entries.Count) ? s.Entries[s.Selected] : null;
 
-        // LEFT/RIGHT — step an Option value (with optional accelerated hold).
+        // A "picker option" is an Option whose FIRE opens a pushed list picker
+        // (OnActivate set) rather than cycling a value in place. It never
+        // responds to LEFT/RIGHT — value-stepping is reserved for true option
+        // toggles (OPTIONS screen, match length, sizes, ...).
+        bool selIsPicker = sel is { Kind: EntryKind.Option } && sel.OnActivate is not null;
+
+        // LEFT/RIGHT — step a value-cycling Option (with optional accelerated
+        // hold). Picker options are deliberately excluded.
         bool leftHeld = Input.IsActionPressed("ui_left");
         bool rightHeld = Input.IsActionPressed("ui_right");
         int step = 0;
         if (Input.IsActionJustPressed("ui_left")) { step = -1; _heldTicks = 0; }
         else if (Input.IsActionJustPressed("ui_right")) { step = 1; _heldTicks = 0; }
-        else if ((leftHeld || rightHeld) && sel is { Kind: EntryKind.Option, FastScroll: true })
+        else if ((leftHeld || rightHeld) && sel is { Kind: EntryKind.Option, FastScroll: true } && !selIsPicker)
         {
             _heldTicks++;
             int dir = leftHeld ? -1 : 1;
@@ -444,16 +726,17 @@ public sealed class MenuClient
         }
         else _heldTicks = 0;
 
-        if (step != 0 && sel is { Kind: EntryKind.Option })
+        if (step != 0 && sel is { Kind: EntryKind.Option } && !selIsPicker)
         {
             sel.OnStep?.Invoke(step);
             _dirty = true;
         }
 
-        // FIRE — activate a Button (or nudge an Option forward).
+        // FIRE — activate a Button, OPEN a picker option, or nudge a value Option.
         if (Input.IsActionJustPressed("ui_accept"))
         {
             if (sel is { Kind: EntryKind.Button }) sel.OnActivate?.Invoke();
+            else if (selIsPicker) sel!.OnActivate?.Invoke();
             else if (sel is { Kind: EntryKind.Option }) { sel.OnStep?.Invoke(+1); _dirty = true; }
         }
 
@@ -463,8 +746,25 @@ public sealed class MenuClient
         // cursor flash cadence
         _cursorFrame++;
         UpdateCursor();
+        UpdateShimmer(s);
 
         if (_dirty) { Refresh(); _dirty = false; }
+    }
+
+    // Gentle two-colour sheen on Shimmer-flagged buttons (HOME "CAREER"): the
+    // background texture is modulated between a neutral and a warm-bright tint
+    // on a slow sine, so the gradient appears to breathe. Pure per-frame
+    // Modulate — no texture re-render, no Refresh needed.
+    private int _shimmerFrame;
+    private static readonly Color kShimmerA = new(1.00f, 1.00f, 1.00f);
+    private static readonly Color kShimmerB = new(1.30f, 1.22f, 0.88f);
+    private void UpdateShimmer(MenuScreen s)
+    {
+        _shimmerFrame++;
+        float t = (Mathf.Sin(_shimmerFrame * 0.045f) + 1f) * 0.5f;
+        foreach (var e in s.Entries)
+            if (e.Shimmer && e.Bg is not null)
+                e.Bg.Modulate = kShimmerA.Lerp(kShimmerB, t);
     }
 
     private bool IsSelectable(MenuScreen s, int i) => i >= 0 && i < s.Entries.Count && s.Entries[i].Selectable;
@@ -472,6 +772,11 @@ public sealed class MenuClient
     {
         for (int i = 0; i < s.Entries.Count; i++) if (s.Entries[i].Selectable) return i;
         return 0;
+    }
+    private int LastSelectable(MenuScreen s)
+    {
+        for (int i = s.Entries.Count - 1; i >= 0; i--) if (s.Entries[i].Selectable) return i;
+        return -1;
     }
     private void MoveSelection(MenuScreen s, int dir)
     {
@@ -487,7 +792,11 @@ public sealed class MenuClient
     {
         var s = Current;
         if (_cursor is null) return;
-        if (_textInput is not null) { _cursor.Visible = false; return; }   // typing owns the screen
+        // While TYPING the caret is the focus indicator; once DOWN moves focus
+        // to the OK button the normal flashing cursor frames it.
+        if (_textInput is not null && _textInput.Typing) { _cursor.Visible = false; return; }
+        if (_listPicker is not null) { _cursor.Visible = false; return; }  // list owns the screen (its own highlight)
+        if (_tableSelect is not null) { _cursor.Visible = false; return; } // inline table owns the screen (row highlight + accent field)
         if (s.Selected < 0 || s.Selected >= s.Entries.Count) { _cursor.Visible = false; return; }
         var e = s.Entries[s.Selected];
         if (!e.Selectable) { _cursor.Visible = false; return; }
@@ -514,6 +823,7 @@ public sealed class MenuClient
         var s = Current; if (s.Selected < 0 || s.Selected >= s.Entries.Count) return;
         var sel = s.Entries[s.Selected];
         if (sel.Kind == EntryKind.Button) sel.OnActivate?.Invoke();
+        else if (sel.Kind == EntryKind.Option && sel.OnActivate is not null) sel.OnActivate.Invoke();
         else if (sel.Kind == EntryKind.Option) sel.OnStep?.Invoke(+1);
         _dirty = true; Refresh(); UpdateCursor();
     }
@@ -532,6 +842,7 @@ public sealed class MenuClient
             if (!e.Label().Contains(label)) continue;
             s.Selected = i;
             if (e.Kind == EntryKind.Button) e.OnActivate?.Invoke();
+            else if (e.OnActivate is not null) e.OnActivate.Invoke();   // picker option opens its list
             else e.OnStep?.Invoke(+1);
             _dirty = true; Refresh(); UpdateCursor();
             return true;
@@ -542,7 +853,7 @@ public sealed class MenuClient
     {
         var s = Current; if (s.Selected < 0 || s.Selected >= s.Entries.Count) return;
         var sel = s.Entries[s.Selected];
-        if (sel.Kind == EntryKind.Option) sel.OnStep?.Invoke(d);
+        if (sel.Kind == EntryKind.Option && sel.OnActivate is null) sel.OnStep?.Invoke(d);
         _dirty = true; Refresh();
     }
     // One-line competition state for the orchestrator's screenshot harness.
@@ -568,6 +879,10 @@ public sealed class MenuClient
         public System.Action<string>? OnConfirm;
         public System.Action? OnCancel;
         public System.Action<int>? OnSide;
+        // True while the keyboard types into the field. DOWN drops focus onto
+        // the OK button below (gamepad-only handhelds have no ENTER key);
+        // UP returns to typing. While false, FIRE confirms and ESC cancels.
+        public bool Typing = true;
     }
 
     private TextInputState? _textInput;
@@ -663,7 +978,9 @@ public sealed class MenuClient
     // The live entry row: current text plus a blinking underscore caret
     // (space keeps the rendered width steady while the caret is off).
     private string TextInputDisplay()
-        => _textInput is null ? "" : _textInput.Text.ToString() + (_textBlinkPhase == 0 ? "_" : " ");
+        => _textInput is null ? ""
+         : !_textInput.Typing ? _textInput.Text.ToString()   // caret off while OK has focus
+         : _textInput.Text.ToString() + (_textBlinkPhase == 0 ? "_" : " ");
 
     // Generic typed-entry screen: big live-text row, optional side-value row
     // (stepped with LEFT/RIGHT via onSide), and a key-hint caption. Input
@@ -676,6 +993,11 @@ public sealed class MenuClient
         if (sideRow is not null)
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = sideRow });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = () => hint });
+        // OK confirm button: reachable with DOWN from the field (gamepad-only
+        // consoles have no ENTER). ui_accept on it is handled by the !Typing
+        // branch of Tick; OnActivate is the keyboard/mouse-parity fallback.
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
+            Label = () => "OK", OnActivate = () => { if (_textInput is not null) HandleTextKey(_textInput, Key.Enter); } });
         Push(s);
         StartTextInput(s, initial, maxLen, onConfirm, onCancel: () => Pop(), onSide: onSide);
     }
@@ -712,6 +1034,307 @@ public sealed class MenuClient
     }
 
     // ======================================================================
+    //  LIST PICKER — SWOS-style pushed scrollable list (replaces the
+    //  left/right value-steppers everywhere an ITEM is chosen from a set).
+    // ======================================================================
+    // The user's model: FIRE on a picker field pushes a full-screen list (like
+    // the original league/team selectors), UP/DOWN scroll through it (held-key
+    // fast scroll), FIRE selects the highlighted row and returns, ESC cancels.
+    // Rows are plain strings; the caller keeps the index->domain mapping in its
+    // onPick closure. Handles thousands of rows via a windowed body painter.
+    private sealed class ListPickerState
+    {
+        public System.Collections.Generic.IReadOnlyList<string> Rows = System.Array.Empty<string>();
+        public int Selected;
+        public System.Action<int>? OnPick;
+        // Grid geometry published by DrawListPickerBody for the input tick:
+        // >5 items lay out in 3 columns like the original SWOS selectors, and
+        // LEFT/RIGHT then jump a whole column (ColRows items).
+        public int Columns = 1;
+        public int ColRows = 1;
+    }
+
+    private ListPickerState? _listPicker;
+    private MenuScreen? _listPickerScreen;
+
+    // Push a list picker. `current` pre-highlights a row; `onPick` receives the
+    // chosen row index AFTER the picker screen has popped, so the opener can
+    // update its own selection state and rebuild in place.
+    private void PushListPicker(string title, System.Collections.Generic.IReadOnlyList<string> rows,
+        int current, System.Action<int> onPick)
+    {
+        int n = rows.Count;
+        _listPicker = new ListPickerState
+        {
+            Rows = rows,
+            Selected = n == 0 ? 0 : System.Math.Clamp(current, 0, n - 1),
+            OnPick = onPick,
+        };
+        var s = new MenuScreen { Title = title, BodyReserve = _vh };   // list owns the whole body
+        s.Body = client => client.DrawListPickerBody(s);
+        _listPickerScreen = s;
+        _heldTicks = 0;
+        Push(s);
+    }
+
+    private void EndListPicker()
+    {
+        _listPicker = null;
+        _listPickerScreen = null;
+        _heldTicks = 0;
+        _dirty = true;
+    }
+
+    private void TickListPicker()
+    {
+        var lp = _listPicker!;
+        if (Input.IsActionJustPressed("ui_cancel")) { EndListPicker(); Pop(); return; }
+        int n = lp.Rows.Count;
+        if (n == 0) return;
+
+        bool upHeld = Input.IsActionPressed("ui_up");
+        bool downHeld = Input.IsActionPressed("ui_down");
+        int move = 0;
+        if (Input.IsActionJustPressed("ui_up")) { move = -1; _heldTicks = 0; }
+        else if (Input.IsActionJustPressed("ui_down")) { move = 1; _heldTicks = 0; }
+        else if (upHeld || downHeld)
+        {
+            _heldTicks++;
+            int dir = upHeld ? -1 : 1;
+            if (_heldTicks >= 90) move = dir * 5;          // long hold: page-fast
+            else if (_heldTicks >= 24 && (_heldTicks - 24) % 3 == 0) move = dir;
+        }
+        else _heldTicks = 0;
+
+        if (move != 0) { lp.Selected = ((lp.Selected + move) % n + n) % n; _dirty = true; }
+
+        // Multi-column grid (original-SWOS style): LEFT/RIGHT jump one column.
+        if (lp.Columns > 1)
+        {
+            if (Input.IsActionJustPressed("ui_left") && lp.Selected > 0)
+            { lp.Selected = System.Math.Max(0, lp.Selected - lp.ColRows); _dirty = true; }
+            else if (Input.IsActionJustPressed("ui_right") && lp.Selected < n - 1)
+            { lp.Selected = System.Math.Min(n - 1, lp.Selected + lp.ColRows); _dirty = true; }
+        }
+
+        if (Input.IsActionJustPressed("ui_accept"))
+        {
+            int idx = lp.Selected;
+            var pick = lp.OnPick;
+            EndListPicker();
+            Pop();               // return to the opener (rebuilt fresh)
+            pick?.Invoke(idx);   // opener applies the choice + rebuilds/refreshes
+        }
+    }
+
+    // Windowed list body: a scrolling viewport of rows with the selected row
+    // boxed, kept roughly centred so long lists scroll smoothly under the
+    // cursor. A header shows the 1-based position out of the total.
+    private void DrawListPickerBody(MenuScreen s)
+    {
+        var lp = _listPicker;
+        if (lp is null) return;
+        int panelX = 8, panelY = s.BodyTop, panelW = _vw - 16, panelH = _vh - panelY - 21;
+        if (panelH < 24) return;
+        BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
+        var head = new Color(0.7f, 0.85f, 1f);
+        var normal = new Color(0.92f, 0.94f, 1f);
+        int n = lp.Rows.Count;
+        if (n == 0) { BodyText(s, "NOTHING TO CHOOSE", false, panelX + 8, panelY + 8, head); return; }
+
+        int rowsFit = System.Math.Max(1, (panelH - 15) / 9);
+        BodyText(s, "ITEM " + (lp.Selected + 1) + " / " + n, false, panelX + 8, panelY + 3, head);
+
+        if (n <= 5)
+        {
+            // Short list: single column, centred in the panel (user ask).
+            lp.Columns = 1; lp.ColRows = rowsFit;
+            const int colW = 340;
+            int x0 = panelX + (panelW - colW) / 2;
+            int y0 = panelY + 15 + System.Math.Max(0, (panelH - 15 - n * 9) / 2);
+            for (int i = 0; i < n; i++)
+            {
+                int y = y0 + i * 9;
+                if (i == lp.Selected) BodyBox(s, x0, y - 1, colW, 9, MenuTheme.Style.Info, 21);
+                BodyText(s, FitText(lp.Rows[i] ?? "", false, colW - 12), false, x0 + 6, y, normal);
+            }
+            return;
+        }
+
+        // 6+ items: 3 columns filled top-to-bottom then left-to-right, paged —
+        // the original SWOS selector layout. LEFT/RIGHT jump a column (Tick).
+        const int cols = 3;
+        int colRows = rowsFit;
+        int capacity = cols * colRows;
+        lp.Columns = cols; lp.ColRows = colRows;
+        int page = lp.Selected / capacity;
+        int start = page * capacity;
+        if (n > capacity)
+        {
+            string more = (page > 0 ? "^ " : "  ") + (start + capacity < n ? "MORE v" : "");
+            BodyText(s, more.Trim(), false, panelX + panelW - 6, panelY + 3, head, rightAlign: true);
+        }
+        int cw = (panelW - 16) / cols;
+        for (int i = start; i < n && i < start + capacity; i++)
+        {
+            int k = i - start;
+            int cx = panelX + 8 + (k / colRows) * cw;
+            int cy = panelY + 15 + (k % colRows) * 9;
+            if (i == lp.Selected) BodyBox(s, cx - 2, cy - 1, cw - 4, 9, MenuTheme.Style.Info, 21);
+            BodyText(s, FitText(lp.Rows[i] ?? "", false, cw - 16), false, cx + 4, cy, normal);
+        }
+    }
+
+    // ---- list-picker debug hooks (screenshot/orchestrator harness) -----------
+    public bool DebugListPickerActive => _listPicker is not null;
+    public int DebugListPickerCount => _listPicker?.Rows.Count ?? 0;
+    public int DebugListPickerSelected => _listPicker?.Selected ?? -1;
+    public void DebugListPickerSelect(int i)
+    {
+        var lp = _listPicker; if (lp is null || lp.Rows.Count == 0) return;
+        lp.Selected = System.Math.Clamp(i, 0, lp.Rows.Count - 1);
+        _dirty = true; Refresh();
+    }
+    public void DebugListPickerConfirm()
+    {
+        var lp = _listPicker; if (lp is null) return;
+        int idx = lp.Selected; var pick = lp.OnPick;
+        EndListPicker(); Pop(); pick?.Invoke(idx);
+        _dirty = true; Refresh(); UpdateCursor();
+    }
+    public void DebugListPickerCancel()
+    {
+        if (_listPicker is null) return;
+        EndListPicker(); Pop();
+        _dirty = true; Refresh(); UpdateCursor();
+    }
+    // Selects+confirms the first row whose text CONTAINS `label`. Returns false
+    // when no picker is open or no row matches.
+    public bool DebugListPickerPick(string label)
+    {
+        var lp = _listPicker; if (lp is null) return false;
+        for (int i = 0; i < lp.Rows.Count; i++)
+            if ((lp.Rows[i] ?? "").Contains(label)) { lp.Selected = i; DebugListPickerConfirm(); return true; }
+        return false;
+    }
+
+    // ======================================================================
+    //  TABLE SELECT — inline row selection inside a screen that already shows
+    //  the data table (transfer market, squad, offers, ...). Mirrors the list
+    //  picker, but instead of pushing a new screen it drives the visible
+    //  table's own selection var in place. Entered by FIRE on the bound field
+    //  or by scrolling DOWN off the last menu entry; exited by FIRE (confirm),
+    //  ESC (cancel), or scrolling UP off the first row — selection is kept in
+    //  every case. The bound field shows an accent colour while active.
+    // ======================================================================
+    private MenuTableSelect? _tableSelect;
+    private MenuScreen? _tableSelectScreen;
+    private static readonly Color kActiveFieldColor = new Color(1f, 0.84f, 0.2f);   // accent gold
+
+    private void EnterTableSelectCurrent() => EnterTableSelect(Current);
+
+    private void EnterTableSelect(MenuScreen s)
+    {
+        var cfg = s.TableSelect;
+        if (cfg is null || cfg.Count() == 0) return;
+        _tableSelect = cfg;
+        _tableSelectScreen = s;
+        // Park the menu cursor on the bound field so exiting returns there.
+        int fi = cfg.Field is null ? -1 : s.Entries.IndexOf(cfg.Field);
+        if (fi >= 0) s.Selected = fi;
+        _heldTicks = 0;
+        _dirty = true;
+    }
+
+    private void ExitTableSelect()
+    {
+        _tableSelect = null;
+        _tableSelectScreen = null;
+        _heldTicks = 0;
+        _dirty = true;
+    }
+
+    private void TickTableSelect()
+    {
+        var ts = _tableSelect!;
+        if (Input.IsActionJustPressed("ui_cancel"))
+        {
+            // ESC: default returns to the entry column (keeping selection); an
+            // OnCancel override (lineup editor) leaves the whole screen instead.
+            var onCancel = ts.OnCancel;
+            ExitTableSelect();
+            onCancel?.Invoke();
+            return;
+        }
+        int n = ts.Count();
+        if (n == 0) { ExitTableSelect(); return; }
+        int cur = System.Math.Clamp(ts.GetIndex(), 0, n - 1);
+
+        bool upHeld = Input.IsActionPressed("ui_up");
+        bool downHeld = Input.IsActionPressed("ui_down");
+        int move = 0;
+        if (Input.IsActionJustPressed("ui_up")) { move = -1; _heldTicks = 0; }
+        else if (Input.IsActionJustPressed("ui_down")) { move = 1; _heldTicks = 0; }
+        else if (upHeld || downHeld)
+        {
+            _heldTicks++;
+            int dir = upHeld ? -1 : 1;
+            if (_heldTicks >= 90) move = dir * 5;          // long hold: page-fast
+            else if (_heldTicks >= 24 && (_heldTicks - 24) % 3 == 0) move = dir;
+        }
+        else _heldTicks = 0;
+
+        // Scroll out the top: UP at the first row returns to the entry column
+        // (the inverse of dropping into the table with DOWN on the last entry).
+        if (move < 0 && cur == 0) { ExitTableSelect(); return; }
+
+        if (move != 0)
+        {
+            int next = System.Math.Clamp(cur + move, 0, n - 1);
+            if (next != cur) { ts.SetIndex(next); _dirty = true; }
+        }
+
+        if (Input.IsActionJustPressed("ui_accept"))
+        {
+            if (ts.StayOnConfirm) { ts.OnConfirm?.Invoke(); _dirty = true; }
+            else { var confirm = ts.OnConfirm; ExitTableSelect(); confirm?.Invoke(); }
+        }
+    }
+
+    // ---- table-select debug hooks (screenshot/orchestrator harness) ----------
+    public bool DebugTableSelectActive => _tableSelect is not null;
+    public int DebugTableSelectCount => _tableSelect?.Count() ?? 0;
+    public int DebugTableSelectIndex => _tableSelect?.GetIndex() ?? -1;
+    public void DebugTableSelectEnter()
+    {
+        var s = Current;
+        EnterTableSelect(s);
+        LayoutAndBuild(s); Refresh(); UpdateCursor();
+    }
+    public void DebugTableSelectMove(int delta)
+    {
+        var ts = _tableSelect; if (ts is null) return;
+        int n = ts.Count(); if (n == 0) return;
+        int cur = System.Math.Clamp(ts.GetIndex(), 0, n - 1);
+        ts.SetIndex(System.Math.Clamp(cur + delta, 0, n - 1));
+        var s = Current; LayoutAndBuild(s); Refresh(); UpdateCursor();
+    }
+    public void DebugTableSelectConfirm()
+    {
+        var ts = _tableSelect; if (ts is null) return;
+        // Mirror TickTableSelect's FIRE: StayOnConfirm flows (lineup swap) run
+        // the action and remain in table mode; others confirm then exit.
+        if (ts.StayOnConfirm) ts.OnConfirm?.Invoke();
+        else { var confirm = ts.OnConfirm; ExitTableSelect(); confirm?.Invoke(); }
+        var s = Current; LayoutAndBuild(s); Refresh(); UpdateCursor();
+    }
+    public void DebugTableSelectCancel()
+    {
+        ExitTableSelect();
+        var s = Current; LayoutAndBuild(s); Refresh(); UpdateCursor();
+    }
+
+    // ======================================================================
     //  SCREEN BUILDERS
     // ======================================================================
     private MenuScreen BuildHome()
@@ -733,6 +1356,10 @@ public sealed class MenuClient
             Label = () => "TEAM SETUP", OnActivate = () => Push(BuildTeamConfig()) });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = true,
             Label = () => "OPTIONS", OnActivate = () => Push(BuildOptions(0)) });
+        // Career shortcut: straight into the saved career if one exists, else
+        // the new-career setup. Shimmer = gentle two-colour sheen (user ask).
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = true, Shimmer = true,
+            Label = () => "CAREER", OnActivate = OpenCareerShortcut });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = true,
             Label = () => "EXIT", OnActivate = () => Push(BuildQuitConfirm()) });
         return s;
@@ -756,12 +1383,12 @@ public sealed class MenuClient
     {
         var s = new MenuScreen { Title = "FRIENDLY MATCH" };
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
-            Label = () => "COUNTRY", Value = FriendlyNationLabel, OnStep = StepFriendlyNation });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
-            Label = () => "HOME", Value = () => _host.TeamTag(_host.HomeIndex), OnStep = d => StepFriendlySide(false, d) });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
-            Label = () => "AWAY", Value = () => _host.TeamTag(_host.AwayIndex), OnStep = d => StepFriendlySide(true, d) });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => "COUNTRY", Value = FriendlyNationLabel, OnActivate = OpenFriendlyCountryPicker });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
+            Label = () => "HOME", Value = () => _host.TeamTag(_host.HomeIndex), OnActivate = () => OpenFriendlySidePicker(false) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
+            Label = () => "AWAY", Value = () => _host.TeamTag(_host.AwayIndex), OnActivate = () => OpenFriendlySidePicker(true) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
             Label = () => "SWAP TEAMS", OnActivate = () => { _host.SwapTeams(); _dirty = true; } });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => "PITCH", Value = () => _host.PitchLabel, OnStep = d => _host.StepPitch(d) });
@@ -796,7 +1423,7 @@ public sealed class MenuClient
     // pass a launch action directly).
     private MenuScreen BuildVersus(string title, System.Func<string> context,
         System.Func<string> homeName, System.Func<string> awayName,
-        System.Func<string>? detail, System.Action onPlay)
+        System.Func<string>? detail, System.Action onPlay, System.Action? onViewResult = null)
     {
         var s = new MenuScreen { Title = title };
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = context });
@@ -807,6 +1434,11 @@ public sealed class MenuClient
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = detail });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
             Label = () => "PLAY", OnActivate = onPlay });
+        // Competition fixtures offer VIEW RESULT: simulate the tie instantly
+        // instead of playing it (original SWOS had exactly this option).
+        if (onViewResult is not null)
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = false,
+                Label = () => "VIEW RESULT", OnActivate = onViewResult });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
             Label = () => "BACK", OnActivate = () => Pop() });
         return s;
@@ -816,31 +1448,43 @@ public sealed class MenuClient
     // both starting XIs side by side, bench dimmed underneath, shown between
     // the versus screen and the actual kick-off for friendlies AND
     // competition fixtures. `kickOff` performs the real match launch.
-    private MenuScreen BuildStadium(int homeMaster, int awayMaster, System.Action kickOff)
+    // Overrides are supplied as funcs (not fixed records) so the body — which
+    // re-runs on every re-layout, e.g. when we Pop back from the lineup editor —
+    // re-synthesizes the live career squad and reflects any lineup edit at once.
+    private MenuScreen BuildStadium(int homeMaster, int awayMaster, System.Action kickOff,
+        System.Func<TeamRecord?>? homeOverride = null, System.Func<TeamRecord?>? awayOverride = null,
+        System.Action? editLineup = null)
     {
         var s = new MenuScreen { Title = "TEAMS", BodyReserve = 156 };
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
             Label = () => "KICK OFF", OnActivate = kickOff });
+        if (editLineup is not null)
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "EDIT LINEUP", OnActivate = editLineup });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
             Label = () => "BACK", OnActivate = () => Pop() });
-        s.Body = client => client.DrawLineupsBody(s, homeMaster, awayMaster);
+        s.Body = client => client.DrawLineupsBody(s, homeMaster, awayMaster, homeOverride, awayOverride);
         return s;
     }
 
     // Two-column line-ups body: home XI left, away XI right, bench (in-game
     // slots 11..15) dimmed below each, kit swatch + team name as headers.
-    private void DrawLineupsBody(MenuScreen s, int homeMaster, int awayMaster)
+    // Overrides (when supplied) render the live career squad in place of the
+    // master roster.
+    private void DrawLineupsBody(MenuScreen s, int homeMaster, int awayMaster,
+        System.Func<TeamRecord?>? homeOverride = null, System.Func<TeamRecord?>? awayOverride = null)
     {
         int y = s.BodyTop;
         int colW = (_vw - 44) / 2;
-        DrawLineupColumn(s, homeMaster, 22, y);
-        DrawLineupColumn(s, awayMaster, 22 + colW + 8, y);
+        DrawLineupColumn(s, homeMaster, 22, y, homeOverride?.Invoke());
+        DrawLineupColumn(s, awayMaster, 22 + colW + 8, y, awayOverride?.Invoke());
     }
 
-    private void DrawLineupColumn(MenuScreen s, int teamIdx, int x, int y)
+    private void DrawLineupColumn(MenuScreen s, int teamIdx, int x, int y, TeamRecord? overrideTeam = null)
     {
         TeamRecord t;
-        try { t = _host.Team(teamIdx); } catch { return; }
+        if (overrideTeam is not null) t = overrideTeam;
+        else try { t = _host.Team(teamIdx); } catch { return; }
         int bottom = _vh - 14;
         var head = new Color(0.7f, 0.85f, 1f);
         var normal = new Color(0.92f, 0.94f, 1f);
@@ -872,9 +1516,10 @@ public sealed class MenuClient
             var p = t.Players[roster];
             Color rc = i < 11 ? normal : dim;
             BodyText(s, p.ShirtNumber.ToString(), false, x + 12, y, rc, rightAlign: true);
+            BodyHeadIcon(s, p.Face, x + 17, y - 1);
             string pn = (p.Name ?? "").Trim();
-            if (pn.Length > 14) pn = pn.Substring(0, 14);
-            BodyText(s, pn, false, x + 17, y, rc);
+            if (pn.Length > 13) pn = pn.Substring(0, 13);
+            BodyText(s, pn, false, x + 17 + HeadIconAdvance, y, rc);
             y += 8;
         }
     }
@@ -907,7 +1552,7 @@ public sealed class MenuClient
         Current.Selected = 0;
     }
 
-    private void AddOptionsPageAll(MenuScreen s)
+    private void AddOptionsPageGameplay(MenuScreen s)
     {
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => "HALF LENGTH", Value = () => _host.LengthLabel, OnStep = d => _host.StepLength(d) });
@@ -931,6 +1576,24 @@ public sealed class MenuClient
             Label = () => "PRE MATCH MENUS", Value = () => _host.ShowPreMatchMenus ? "ON" : "OFF",
             OnStep = _ => _host.ToggleShowPreMatchMenus() });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "ENERGY BAR", Value = () => _host.EnergyBar ? "ON" : "OFF",
+            OnStep = _ => _host.ToggleEnergyBar() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "PLAYER FATIGUE", Value = () => _host.FatigueSim ? "ON" : "OFF",
+            OnStep = _ => _host.ToggleFatigueSim() });
+    }
+
+    private void AddOptionsPageAudioDisplay(MenuScreen s)
+    {
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "MUSIC", Value = () => _host.MenuMusicLabel, OnStep = d => _host.StepMenuMusic(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "AMIGA / PC / CUSTOM MENU MUSIC" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "SOUND", Value = () => _host.SoundSourceLabel, OnStep = d => _host.StepSoundSource(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => "PC OR AMIGA IN-MATCH SOUNDS" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => "DISPLAY", Value = () => _host.DisplayModeLabel,
             OnStep = _ => _host.CycleDisplayMode() });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
@@ -944,11 +1607,11 @@ public sealed class MenuClient
     {
         var s = new MenuScreen { Title = "LOCAL MULTIPLAYER" };
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
-            Label = () => "COUNTRY", Value = FriendlyNationLabel, OnStep = StepFriendlyNation });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
-            Label = () => "HOME", Value = () => _host.TeamTag(_host.HomeIndex), OnStep = d => StepFriendlySide(false, d) });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
-            Label = () => "AWAY", Value = () => _host.TeamTag(_host.AwayIndex), OnStep = d => StepFriendlySide(true, d) });
+            Label = () => "COUNTRY", Value = FriendlyNationLabel, OnActivate = OpenFriendlyCountryPicker });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
+            Label = () => "HOME", Value = () => _host.TeamTag(_host.HomeIndex), OnActivate = () => OpenFriendlySidePicker(false) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
+            Label = () => "AWAY", Value = () => _host.TeamTag(_host.AwayIndex), OnActivate = () => OpenFriendlySidePicker(true) });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
             Label = () => "PLAYER 1: ARROWS+SPACE   PLAYER 2: WASD+SHIFT" });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
@@ -976,8 +1639,26 @@ public sealed class MenuClient
         {
             try { if (CompetitionStore.Exists()) _comp = CompetitionStore.Load(); }
             catch { _comp = null; }
+            EnsureCareerWorld(_comp);
         }
         return _comp;
+    }
+
+    // Every career system (ageing, retirement, regen, growth, finances, scouting)
+    // runs off Career.World and is guarded by `World is not null` in
+    // CompetitionEngine.AdvanceCareerSeason — so without a materialized world they
+    // ALL silently do nothing. Build it when a career is created, and rebuild it
+    // lazily for saves written before the world existed.
+    private void EnsureCareerWorld(CompetitionState? c)
+    {
+        if (c?.Career is null || c.Career.World is not null) return;
+        int n = _host.TeamCount;
+        if (n <= 0) return;
+        var master = new System.Collections.Generic.List<OpenSwos.Assets.TeamRecord>(n);
+        for (int i = 0; i < n; i++) master.Add(_host.Team(i));
+        var world = OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(c, master);
+        GD.Print($"[career] world materialized: {world.Clubs.Count} clubs, " +
+            $"{OpenSwos.Competition.Career.CareerWorldBuilder.CountPlayers(world)} players");
     }
 
     private string ContinueLabel()
@@ -996,6 +1677,14 @@ public sealed class MenuClient
         Push(BuildCompetitionDashboard());
     }
 
+    // HOME "CAREER" shortcut: resume the saved game when it IS a career,
+    // otherwise jump straight to the new-career setup.
+    private void OpenCareerShortcut()
+    {
+        if (LoadedComp()?.Career is not null) { Push(BuildCompetitionDashboard()); return; }
+        Push(BuildCareerSetup());
+    }
+
     // Pop the top screen unconditionally and push a replacement (used by the
     // dashboard to re-generate itself after every state change).
     private void ReplaceTop(MenuScreen s)
@@ -1009,14 +1698,89 @@ public sealed class MenuClient
     private void PollCompetitionResult()
     {
         var r = _host.TakeLastCompetitionResult();
+        // The human's real in-match energy consumption (0..10), captured at the
+        // same FullTime the score was; hand it to MatchEffects for the human's club.
+        int? realDist = _host.TakeLastMatchHomeDistance();
         if (r is null) return;
         if (_comp is null || _pendingFixture is null) return;
-        string playedStage = _pendingFixture.Stage;
-        if (_pendingFixture.HomeTeam == _comp.PlayerTeam)
-            CompetitionEngine.RecordResult(_comp, _pendingFixture, r.Value.player, r.Value.opponent);
-        else
-            CompetitionEngine.RecordResult(_comp, _pendingFixture, r.Value.opponent, r.Value.player);
+        var fx = _pendingFixture;
+        string playedStage = fx.Stage;
+        // Map the sim's (player, opponent) goals onto the fixture's home/away
+        // orientation before handing off to the shared result pipeline.
+        int homeGoals, awayGoals;
+        if (fx.HomeTeam == _comp.PlayerTeam) { homeGoals = r.Value.player; awayGoals = r.Value.opponent; }
+        else                                 { homeGoals = r.Value.opponent; awayGoals = r.Value.player; }
+        // The human always sims on the top/home slots (0..10) regardless of the
+        // fixture's home/away orientation, so the drain always feeds the player's club.
+        ushort humanClubId = (_comp.PlayerTeam >= 0 && _comp.PlayerTeam < _comp.Teams.Count)
+            ? _comp.Teams[_comp.PlayerTeam].GlobalId : (ushort)0;
+        // Resolve the human's post-match injuries (captured in-game slot ->
+        // CareerPlayer id) against the SAME lineup the match launched with, i.e.
+        // BEFORE ApplyFixtureResult mutates the world (recovery would shuffle
+        // availability). Persisted, OR-max, AFTER recovery inside the pipeline.
+        var resolvedInjuries = ResolveMatchInjuries(_host.TakeLastMatchInjuries(), humanClubId);
+        ApplyFixtureResult(fx, homeGoals, awayGoals, playedStage, humanClubId, realDist ?? -1,
+            resolvedInjuries);
+    }
+
+    // Maps captured (in-game slot, severity) pairs onto stable CareerPlayer ids
+    // using the SAME CareerMatchTeam.BuildOrder the launch used (LineupOrder is
+    // identity, so the captured PlayerInfo.index equals the BuildOrder slot).
+    // Returns null when there is nothing to persist. Human club only.
+    private System.Collections.Generic.List<(int playerId, int severity)>? ResolveMatchInjuries(
+        System.Collections.Generic.List<(int slot, int severity)>? injuries, ushort humanClubId)
+    {
+        if (injuries is null || injuries.Count == 0 || humanClubId == 0) return null;
+        var world = _comp?.Career?.World;
+        if (world?.Clubs is null || !world.Clubs.TryGetValue(humanClubId, out var club) || club is null)
+            return null;
+        int playerMaster = _comp!.Teams[_comp.PlayerTeam].MasterIndex;
+        var order = OpenSwos.Competition.Career.CareerMatchTeam.BuildOrder(club, _host.Team(playerMaster));
+        var resolved = new System.Collections.Generic.List<(int, int)>(injuries.Count);
+        foreach (var (slot, severity) in injuries)
+            if (slot >= 0 && slot < order.Count)
+                resolved.Add((order[slot].Id, System.Math.Clamp(severity, 1, 7)));
+        return resolved.Count > 0 ? resolved : null;
+    }
+
+    // Shared post-result pipeline for BOTH the played-match hand-back
+    // (PollCompetitionResult) and instant VIEW RESULT: record the score in the
+    // fixture's home/away orientation, run the career match effects + transfer
+    // market, simulate the rest of the AI round, save, and rebuild navigation
+    // (HOME -> DASHBOARD, plus any freshly drawn knockout ceremony on top).
+    private void ApplyFixtureResult(Fixture fx, int homeGoals, int awayGoals, string playedStage,
+        ushort realDrainClubId = 0, int realDrainDistance = -1,
+        System.Collections.Generic.List<(int playerId, int severity)>? matchInjuries = null)
+    {
+        if (_comp is null) return;
+        CompetitionEngine.RecordResult(_comp, fx, homeGoals, awayGoals);
         _pendingFixture = null;
+        // Career: the match moves form / growth / fatigue for both clubs.
+        if (_comp.Career?.World is not null && fx.Played)
+        {
+            OpenSwos.Competition.Career.MatchEffects.ApplyFixture(
+                _comp.Career.World,
+                _comp.Teams[fx.HomeTeam].GlobalId,
+                _comp.Teams[fx.AwayTeam].GlobalId,
+                fx.HomeGoals, fx.AwayGoals, fx.Round,
+                realDrainClubId, realDrainDistance);
+            // Persist the human's NEW match injuries (OR-max) AFTER MatchEffects
+            // ran the per-fixture recovery, matching the original order
+            // (UpdatePlayerInjuries writes after the round's recover pass,
+            // swos.asm:35207 recover -> 35651 write). Human club only.
+            if (matchInjuries is not null && realDrainClubId != 0
+                && _comp.Career.World.Clubs.TryGetValue(realDrainClubId, out var injClub) && injClub is not null)
+            {
+                foreach (var (playerId, severity) in matchInjuries)
+                {
+                    var cp = injClub.Squad.Find(q => q.Id == playerId);
+                    if (cp is not null)
+                        cp.InjurySeverity = System.Math.Max(cp.InjurySeverity, System.Math.Clamp(severity, 0, 7));
+                }
+            }
+            // Advance the transfer market one round: age offers, maybe generate new bids.
+            OpenSwos.Competition.Career.TransferOffers.Tick(_comp);
+        }
         CompetitionEngine.SimulateAiRound(_comp);
         CompetitionStore.Save(_comp);
         // Fresh navigation: HOME -> DASHBOARD, so BACK never lands on a stale screen.
@@ -1123,30 +1887,6 @@ public sealed class MenuClient
         _setupContinent = NationNames.Continent(_setupNation);
     }
 
-    private void StepSetupContinent(int d)
-    {
-        // Step 0..5 with wrap, skipping continents that have no teams at all.
-        int dir = d < 0 ? -1 : 1;
-        int c = _setupContinent;
-        for (int k = 0; k < 6; k++)
-        {
-            c = StepIdx(c, dir, 6);
-            if (NationsInContinent(c).Count > 0) break;
-        }
-        if (c == _setupContinent) return;
-        _setupContinent = c;
-        SetSetupNation(NationsInContinent(c)[0]);
-    }
-
-    private void StepSetupCountry(int d)
-    {
-        var nations = NationsInContinent(_setupContinent);
-        if (nations.Count == 0) return;
-        int i = nations.IndexOf(_setupNation);
-        i = i < 0 ? 0 : StepIdx(i, d < 0 ? -1 : 1, nations.Count);
-        SetSetupNation(nations[i]);
-    }
-
     // Country changed: snap YOUR TEAM to the country's first team.
     private void SetSetupNation(int nation)
     {
@@ -1155,28 +1895,101 @@ public sealed class MenuClient
         if (teams.Count > 0) _setupTeamIdx = teams[0];
     }
 
-    private void StepSetupTeam(int d)
-    {
-        var teams = _host.TeamsByNationDivision(_setupNation, -1, 999);
-        if (teams.Count == 0) return;
-        int i = teams.IndexOf(_setupTeamIdx);
-        i = i < 0 ? 0 : StepIdx(i, d, teams.Count);
-        _setupTeamIdx = teams[i];
-    }
-
     // The shared CONTINENT / COUNTRY / YOUR TEAM rows every competition setup
-    // screen opens with. Callers must InitSetupNationPicker() first.
+    // screen opens with. Callers must InitSetupNationPicker() first. Each row is
+    // a list picker (FIRE opens a scrollable list), never a value stepper.
     private void AddNationPickerRows(MenuScreen s)
     {
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => "CONTINENT", Value = () => NationNames.ContinentName(_setupContinent),
-            OnStep = StepSetupContinent });
+            OnActivate = OpenSetupContinentPicker });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => "COUNTRY",
             Value = () => $"{NationNames.Name(_setupNation)} ({NationTeamCount(_setupNation)})",
-            OnStep = StepSetupCountry });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
-            Label = () => "YOUR TEAM", Value = () => _host.TeamTag(_setupTeamIdx), OnStep = StepSetupTeam });
+            OnActivate = OpenSetupCountryPicker });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
+            Label = () => "YOUR TEAM", Value = () => _host.TeamTag(_setupTeamIdx), OnActivate = OpenSetupTeamPicker });
+    }
+
+    // ---- list-picker openers for the nation/team choosers --------------------
+    private System.Collections.Generic.List<int> AllMasterIndices()
+    {
+        int n = _host.TeamCount;
+        var list = new System.Collections.Generic.List<int>(n);
+        for (int i = 0; i < n; i++) list.Add(i);
+        return list;
+    }
+
+    // FRIENDLY / LOCAL-MP country filter picker: "ALL" plus every nation that
+    // has teams. Selecting a country snaps both sides into it (SetFriendlyNation).
+    private void OpenFriendlyCountryPicker()
+    {
+        var nations = NationsWithTeams();
+        var rows = new System.Collections.Generic.List<string> { "ALL COUNTRIES" };
+        foreach (int n in nations) rows.Add($"{NationNames.Name(n)} ({NationTeamCount(n)})");
+        int cur = _friendlyNation < 0 ? 0 : nations.IndexOf(_friendlyNation) + 1;
+        PushListPicker("SELECT COUNTRY", rows, cur, idx =>
+        {
+            SetFriendlyNation(idx <= 0 ? -1 : nations[idx - 1]);
+            _dirty = true;
+        });
+    }
+
+    private void OpenFriendlySidePicker(bool away)
+    {
+        var masters = _friendlyNation < 0
+            ? AllMasterIndices()
+            : _host.TeamsByNationDivision(_friendlyNation, -1, 999);
+        if (masters.Count == 0) return;
+        var rows = new System.Collections.Generic.List<string>(masters.Count);
+        foreach (int m in masters) rows.Add(_host.TeamTag(m));
+        int cur = masters.IndexOf(away ? _host.AwayIndex : _host.HomeIndex);
+        PushListPicker(away ? "SELECT AWAY TEAM" : "SELECT HOME TEAM", rows, cur < 0 ? 0 : cur, idx =>
+        {
+            int pick = masters[idx];
+            int other = away ? _host.HomeIndex : _host.AwayIndex;
+            // Keep HOME != AWAY when the list has more than one team.
+            if (pick == other && masters.Count > 1) pick = masters[(idx + 1) % masters.Count];
+            if (away) _host.SetAwayTeam(pick); else _host.SetHomeTeam(pick);
+            _dirty = true;
+        });
+    }
+
+    private void OpenSetupContinentPicker()
+    {
+        var conts = new System.Collections.Generic.List<int>();
+        for (int c = 0; c < 6; c++) if (NationsInContinent(c).Count > 0) conts.Add(c);
+        if (conts.Count == 0) return;
+        var rows = new System.Collections.Generic.List<string>();
+        foreach (int c in conts) rows.Add(NationNames.ContinentName(c));
+        int cur = conts.IndexOf(_setupContinent);
+        PushListPicker("SELECT CONTINENT", rows, cur < 0 ? 0 : cur, idx =>
+        {
+            _setupContinent = conts[idx];
+            var nations = NationsInContinent(_setupContinent);
+            if (nations.Count > 0) SetSetupNation(nations[0]);
+            _dirty = true;
+        });
+    }
+
+    private void OpenSetupCountryPicker()
+    {
+        var nations = NationsInContinent(_setupContinent);
+        if (nations.Count == 0) return;
+        var rows = new System.Collections.Generic.List<string>();
+        foreach (int n in nations) rows.Add($"{NationNames.Name(n)} ({NationTeamCount(n)})");
+        int cur = nations.IndexOf(_setupNation);
+        PushListPicker("SELECT COUNTRY", rows, cur < 0 ? 0 : cur, idx => { SetSetupNation(nations[idx]); _dirty = true; });
+    }
+
+    private void OpenSetupTeamPicker()
+    {
+        var teams = _host.TeamsByNationDivision(_setupNation, -1, 999);
+        if (teams.Count == 0) return;
+        var rows = new System.Collections.Generic.List<string>();
+        foreach (int m in teams) rows.Add(_host.TeamTag(m));
+        int cur = teams.IndexOf(_setupTeamIdx);
+        PushListPicker("SELECT YOUR TEAM", rows, cur < 0 ? 0 : cur, idx => { _setupTeamIdx = teams[idx]; _dirty = true; });
     }
 
     // ---- friendly / local-MP country filter ("ALL" = whole master list) ------
@@ -1184,34 +1997,16 @@ public sealed class MenuClient
         => _friendlyNation < 0 ? "ALL"
            : $"{NationNames.Name(_friendlyNation)} ({NationTeamCount(_friendlyNation)})";
 
-    private void StepFriendlyNation(int d)
+    // Apply a friendly/local-MP country filter (nation < 0 = ALL). Snaps both
+    // sides into the chosen country so the HOME/AWAY rows show its teams at once.
+    private void SetFriendlyNation(int nation)
     {
-        var nations = NationsWithTeams();
-        if (nations.Count == 0) return;
-        // Slot 0 = ALL (no filter), then every nation that has teams.
-        int i = _friendlyNation < 0 ? 0 : nations.IndexOf(_friendlyNation) + 1;
-        i = StepIdx(i, d < 0 ? -1 : 1, nations.Count + 1);
-        _friendlyNation = i == 0 ? -1 : nations[i - 1];
-        if (_friendlyNation < 0) return;
-        // Snap both sides into the country so the rows show its teams at once.
-        var teams = _host.TeamsByNationDivision(_friendlyNation, -1, 999);
+        _friendlyNation = nation;
+        if (nation < 0) return;
+        var teams = _host.TeamsByNationDivision(nation, -1, 999);
         if (teams.Count == 0) return;
         _host.SetHomeTeam(teams[0]);
         _host.SetAwayTeam(teams[teams.Count > 1 ? 1 : 0]);
-    }
-
-    private void StepFriendlySide(bool away, int d)
-    {
-        if (_friendlyNation < 0) { if (away) _host.StepAway(d); else _host.StepHome(d); return; }
-        var teams = _host.TeamsByNationDivision(_friendlyNation, -1, 999);
-        if (teams.Count == 0) { if (away) _host.StepAway(d); else _host.StepHome(d); return; }
-        int cur = away ? _host.AwayIndex : _host.HomeIndex;
-        int other = away ? _host.HomeIndex : _host.AwayIndex;
-        int i = teams.IndexOf(cur);
-        i = i < 0 ? 0 : StepIdx(i, d, teams.Count);
-        // keep HOME != AWAY when the country has more than one team
-        if (teams[i] == other && teams.Count > 1) i = StepIdx(i, d < 0 ? -1 : 1, teams.Count);
-        if (away) _host.SetAwayTeam(teams[i]); else _host.SetHomeTeam(teams[i]);
     }
 
     // Adds one random master index not yet in pool (guaranteed to succeed:
@@ -1514,6 +2309,9 @@ public sealed class MenuClient
             comp.Career.ManagerName = managerName;
             comp.Career.ManagerTitle = managerTitle;
         }
+        // Materialize the persistent career world BEFORE the first autosave, so
+        // ages / potential / stamina exist and the season systems actually run.
+        EnsureCareerWorld(comp);
         OpenNewCompetition(comp);
     }
 
@@ -1532,9 +2330,9 @@ public sealed class MenuClient
 
         bool retired = c.Career?.Retired == true;
         // Reserve the mini-table / round-fixtures block below the buttons. An
-        // active career carries three extra rows (RECORD / SAVE AS / RETIRE),
-        // so it trades a slice of body space for the taller entry column.
-        var s = new MenuScreen { Title = CompTitle(c), BodyReserve = c.Career is not null && !retired ? 72 : 84 };
+        // active career carries RECORD / SQUAD / SAVE AS / RETIRE, so leave
+        // enough room for the taller compact entry column before the body.
+        var s = new MenuScreen { Title = CompTitle(c), BodyReserve = c.Career is not null && !retired ? 60 : 84 };
         // Single status line: round + summary, with CHAMPIONS / ELIMINATED
         // merged in so the entry column never stacks two status labels.
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = DashboardStatusLine });
@@ -1583,6 +2381,20 @@ public sealed class MenuClient
         if (c.Career is not null)
         {
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "SQUAD", OnActivate = () => Push(BuildSquadScreen()) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "LINEUP", OnActivate = () => Push(BuildLineupEditor()) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "TRANSFERS", OnActivate = () => Push(BuildTransferMarket()) });
+            // OFFERS: incoming bids for your players. Blinks with a "!" prefix
+            // while any bid is unseen (original SWOS: the entry flashes).
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
+                Label = OffersEntryLabel, OnActivate = () => Push(BuildOffersScreen()) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "STAFF", OnActivate = () => Push(BuildStaffScreen()) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => "SCOUTING", OnActivate = () => Push(BuildScoutingScreen()) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
                 Label = () => "RECORD", OnActivate = () => Push(BuildManagementRecord(careerOver: false)) });
         }
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
@@ -1630,23 +2442,84 @@ public sealed class MenuClient
         if (!_host.ShowPreMatchMenus) { LaunchCompetitionFixture(fx); return; }
         int homeMaster = c.Teams[fx.HomeTeam].MasterIndex;
         int awayMaster = c.Teams[fx.AwayTeam].MasterIndex;
+        // Offer EDIT LINEUP only when the manager's own club is a live career
+        // club (so there is a squad + PreferredLineup to edit). The editor
+        // mutates that club; on Pop the stadium body re-synthesizes and the
+        // kick-off re-synthesizes too, so the edit shows up immediately.
+        System.Action? editLineup = CurrentCareerClub() is not null
+            ? () => Push(BuildLineupEditor())
+            : null;
         Push(BuildVersus("NEXT MATCH",
             () => $"{c.Name}  {CompetitionEngine.RoundLabel(c)}",
             () => TeamShort(c, fx.HomeTeam, 20),
             () => TeamShort(c, fx.AwayTeam, 20),
             null,
-            () => Push(BuildStadium(homeMaster, awayMaster, () => LaunchCompetitionFixture(fx)))));
+            () => Push(BuildStadium(homeMaster, awayMaster, () => LaunchCompetitionFixture(fx),
+                () => SynthesizeCareerTeam(homeMaster), () => SynthesizeCareerTeam(awayMaster),
+                editLineup)),
+            () => ViewResultCompetitionMatch(fx)));
+    }
+
+    // SWOS-style VIEW RESULT: simulate the pending player fixture instantly
+    // (deterministic strength-weighted score) and run it through the same
+    // post-result pipeline as a played match — no sim launch. Ends on a small
+    // FULL TIME notice showing the score, on top of the rebuilt dashboard.
+    private void ViewResultCompetitionMatch(Fixture fx)
+    {
+        var c = _comp;
+        if (c is null) return;
+        string playedStage = fx.Stage;
+        string homeName = TeamShort(c, fx.HomeTeam, 20);
+        string awayName = TeamShort(c, fx.AwayTeam, 20);
+        var (h, a) = CompetitionEngine.SimulateResult(c, fx);
+        _pendingFixture = fx;   // ApplyFixtureResult clears it
+        ApplyFixtureResult(fx, h, a, playedStage);
+        // ApplyFixtureResult rebuilt HOME -> DASHBOARD (+ any draw ceremony);
+        // show the simulated score on top, CONTINUE returns to that stack.
+        Push(BuildViewResultFullTime(homeName, awayName, h, a));
+        _dirty = true;
+    }
+
+    private MenuScreen BuildViewResultFullTime(string homeName, string awayName, int home, int away)
+    {
+        var s = new MenuScreen { Title = "FULL TIME" };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = () => "RESULT" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => $"{homeName}  {home}" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => $"{awayName}  {away}" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
+            Label = () => "CONTINUE", OnActivate = () => Pop() });
+        return s;
     }
 
     // The one true competition-match launch: marks the fixture pending and
     // starts the sim with the human on the first slot (existing host path).
+    // For a career competition, both sides are synthesized from the LIVE
+    // CareerWorld squad (bought/sold/developed players) instead of the frozen
+    // TEAM.* master roster; the player's club is passed as homeOverride because
+    // the host always seats the human on the home slot (Main.MenuHost.cs).
     private void LaunchCompetitionFixture(Fixture fx)
     {
         var c = _comp;
         if (c is null) return;
         _pendingFixture = fx;
         int opp = fx.HomeTeam == c.PlayerTeam ? fx.AwayTeam : fx.HomeTeam;
-        _host.StartCompetitionMatch(c.Teams[c.PlayerTeam].MasterIndex, c.Teams[opp].MasterIndex);
+        int playerMaster = c.Teams[c.PlayerTeam].MasterIndex;
+        int oppMaster = c.Teams[opp].MasterIndex;
+        _host.StartCompetitionMatch(playerMaster, oppMaster,
+            SynthesizeCareerTeam(playerMaster), SynthesizeCareerTeam(oppMaster));
+    }
+
+    // Builds a match-ready TeamRecord from the current career squad of the club
+    // occupying `masterIndex`, or null when there is no career world / no such
+    // club (friendly, cup of master-roster teams, etc.) so callers fall back to
+    // the read-only master record.
+    private OpenSwos.Assets.TeamRecord? SynthesizeCareerTeam(int masterIndex)
+    {
+        var world = _comp?.Career?.World;
+        if (world?.Clubs is null) return null;
+        ushort gid = _host.TeamGlobalId(masterIndex);
+        if (gid == 0 || !world.Clubs.TryGetValue(gid, out var club) || club is null) return null;
+        return OpenSwos.Competition.Career.CareerMatchTeam.Build(_host.Team(masterIndex), club);
     }
 
     private void FastForwardAi()
@@ -1721,7 +2594,7 @@ public sealed class MenuClient
         string title = mgr.Length > 0
             ? ("MANAGEMENT RECORD OF " + ((career!.ManagerTitle ?? "").Trim() + " " + mgr).Trim())
             : "MANAGEMENT RECORD";
-        var s = new MenuScreen { Title = title, BodyReserve = 150 };
+        var s = new MenuScreen { Title = FitText(title, true, 294), BodyReserve = 150 };
         if (careerOver)
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => "CAREER OVER" });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
@@ -1870,6 +2743,14 @@ public sealed class MenuClient
         Push(BuildPresetSetup());
     }
 
+    private void OpenPresetTeamPicker()
+    {
+        if (_presetEntrants.Count == 0) return;
+        var rows = new System.Collections.Generic.List<string>(_presetEntrants.Count);
+        foreach (int m in _presetEntrants) rows.Add(_host.TeamTag(m));
+        PushListPicker("SELECT YOUR TEAM", rows, _presetYou, idx => { _presetYou = idx; _dirty = true; });
+    }
+
     private MenuScreen BuildPresetSetup()
     {
         var p = _preset;
@@ -1879,10 +2760,10 @@ public sealed class MenuClient
             Label = () => p.Kind == CompetitionKind.Cup
                 ? $"{p.Size} TEAM KNOCKOUT"
                 : $"{p.GroupCount} GROUPS OF 4 THEN KNOCKOUT" });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info, FastScroll = true,
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
             Label = () => "YOUR TEAM",
             Value = () => _presetEntrants.Count == 0 ? "" : _host.TeamTag(_presetEntrants[_presetYou]),
-            OnStep = d => { if (_presetEntrants.Count > 0) _presetYou = StepIdx(_presetYou, d, _presetEntrants.Count); } });
+            OnActivate = OpenPresetTeamPicker });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = true,
             Label = () => "CREATE", OnActivate = CreatePresetNow });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
@@ -1956,6 +2837,7 @@ public sealed class MenuClient
         }
         var loaded = CompetitionStore.LoadSlot(slot);
         if (loaded is null) { ReplaceTop(BuildLoadGame()); return; }
+        EnsureCareerWorld(loaded);       // legacy saves carry no world — rebuild it
         _comp = loaded;
         _pendingFixture = null;
         CompetitionStore.Save(loaded);   // the loaded game becomes the active AUTOSAVE
@@ -2031,7 +2913,7 @@ public sealed class MenuClient
                 extra += "  " + ((c.Career.ManagerTitle ?? "").Trim() + " " + mgrName).Trim();
             if (c.Career.Trophies.Count > 0)
                 extra += "  " + c.Career.Trophies[c.Career.Trophies.Count - 1];
-            BodyText(s, extra, false, x, y, head);
+            BodyText(s, FitText(extra, false, _vw - x - 4), false, x, y, head);
             y += 9;
         }
 
@@ -2198,14 +3080,28 @@ public sealed class MenuClient
         // A tiny control strip at the top: toggle which team, then BACK.
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Info,
             Label = () => "TEAM", Value = () => (_cfgTeamIsAway == 0 ? "HOME  " : "AWAY  ") + _host.TeamName(_cfgTeamIsAway == 0 ? _host.HomeIndex : _host.AwayIndex),
-            FastScroll = true,
-            OnStep = d => { if (_cfgTeamIsAway == 0) _host.StepHome(d); else _host.StepAway(d); RebuildCurrent(); } });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            OnActivate = OpenTeamConfigPicker });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
             Label = () => "SWITCH HOME / AWAY", OnActivate = () => { _cfgTeamIsAway ^= 1; RebuildCurrent(); } });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
             Label = () => "BACK", OnActivate = () => Pop() });
         s.Body = client => client.DrawSquadBody(s, _cfgTeamIsAway == 0 ? _host.HomeIndex : _host.AwayIndex);
         return s;
+    }
+
+    // TEAM SETUP team chooser: pick the previewed side's team from the full
+    // master list (replaces the old left/right team stepper).
+    private void OpenTeamConfigPicker()
+    {
+        var masters = AllMasterIndices();
+        var rows = new System.Collections.Generic.List<string>(masters.Count);
+        foreach (int m in masters) rows.Add(_host.TeamTag(m));
+        int cur = _cfgTeamIsAway == 0 ? _host.HomeIndex : _host.AwayIndex;
+        PushListPicker(_cfgTeamIsAway == 0 ? "SELECT HOME TEAM" : "SELECT AWAY TEAM", rows, cur, idx =>
+        {
+            if (_cfgTeamIsAway == 0) _host.SetHomeTeam(masters[idx]); else _host.SetAwayTeam(masters[idx]);
+            RebuildCurrent();
+        });
     }
 
     private void RebuildCurrent() { LayoutAndBuild(Current); _dirty = true; }

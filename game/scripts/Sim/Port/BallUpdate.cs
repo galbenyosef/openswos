@@ -282,7 +282,11 @@ public static class BallUpdate
                     // Small bounce — settle.
                     dz = 0;
                 }
-                // else: would play bounce sample (audio cue) — skip in port.
+                else
+                {
+                    // ball.cpp:537-547 — bounce loud enough → play BOUNCEX.
+                    OpenSwos.Audio.MatchAudio.PlayBounce();
+                }
 
             }
         }
@@ -1027,15 +1031,13 @@ public static class BallUpdate
 
     // ball.cpp:1521 — fallback comment when ball hit goal frame.
     // TODO from external/swos-port/src/sound/commentary.cpp
-    private static void StubPlayPostHitComment() { /* TODO from ball.cpp:1521 */ }
+    private static void StubPlayPostHitComment() => OpenSwos.Audio.MatchAudio.PostHitComment();
 
     // ball.cpp:1515 — comment when ball hit crossbar.
-    // TODO from external/swos-port/src/sound/commentary.cpp
-    private static void StubPlayBarHitComment() { /* TODO from ball.cpp:1515 */ }
+    private static void StubPlayBarHitComment() => OpenSwos.Audio.MatchAudio.BarHitComment();
 
     // ball.cpp:1525 — generic "miss goal" sound effect.
-    // TODO from external/swos-port/src/sound/samples.cpp
-    private static void StubPlayMissGoalSample() { /* TODO from ball.cpp:1525 */ }
+    private static void StubPlayMissGoalSample() => OpenSwos.Audio.MatchAudio.PlayMissGoal();
 
     // ball.cpp:1583/1615/1647/1679 — produces throw-in / corner / goal-out events.
     // Fully ported in BallOutOfPlay.cs (ball.cpp:3007-4020 port). This local

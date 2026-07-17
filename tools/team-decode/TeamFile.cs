@@ -24,7 +24,10 @@ namespace OpenSwos.Tools.TeamDecode;
 //   +0x3C  16   player display order (each byte is a player index 0..15)
 //
 // Player record (38 bytes):
-//   +0x00  u8   nationality
+//   +0x00  u8   nationality — uses SWOS's PLAYER-nation numbering
+//                (0=ALB..152=CUS; 18=ITA, 46=IRL, 70=BRA), NOT the TEAM.*
+//                filename-suffix numbering. See game PlayerNationNames.cs
+//                (teams.txt:109-161, swos.asm:186797-186806).
 //   +0x01  u8   reserved (0)
 //   +0x02  u8   shirt number
 //   +0x03  23   name (ASCII, null-padded)

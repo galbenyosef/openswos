@@ -50,6 +50,20 @@ Thumbs.db
 .DS_Store
 desktop.ini
 
+# User's local music staging folder — the SHIPPED copies live in
+# game/data/music/ (committed); this is just the drop-off area.
+/new_music/
+
+# Local agent tooling + session artifacts (may contain transcripts)
+/_codex_worker/
+/.claude/
+
+# Intermediate Wikidata dump — the shipped CC0 table is game/data/known_ages_1997.csv
+tools/wikidata-ages/raw_players.csv
+
+# Root-level research dumps (screenshots contain original-derived graphics)
+/_research/
+
 # ── Copyright-sensitive dev artifacts — NEVER commit ─────────────────────────
 # Decoded original SWOS graphics, reverse-engineered original sources, original
 # palettes, and third-party docs/tools used only for local study. These are

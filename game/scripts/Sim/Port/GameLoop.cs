@@ -1109,9 +1109,8 @@ public static class GameLoop
         Memory.WriteWord(Memory.Addr.breakState, gameState);   // :1842-1843
     }
 
-    // External: sfx.cpp PlayRefereeWhistleSample — audio-only, no audio bus
-    // wired yet. TODO from external/swos-port/src/audio/sfx.cpp.
-    private static void StubPlayRefereeWhistleSample() { /* TODO */ }
+    // sfx.cpp PlayRefereeWhistleSample — whistle before a restart (gameLoop.cpp:1824).
+    private static void StubPlayRefereeWhistleSample() => OpenSwos.Audio.MatchAudio.PlayWhistle();
 
     // updatePlayers.cpp — main game engine update. The largest single function
     // in the port (~25 000+ LOC asm). Drives all AI, kick handling, pass
@@ -1148,8 +1147,10 @@ public static class GameLoop
     {
         if (Memory.ReadWord(Memory.Addr.loadCrowdChantSampleFlag) != 0)
         {
-            // loadCrowdChantSample() is audio-only; flag clear matches the
-            // original "fire once" contract.
+            // gameLoop.cpp:1904 — loadCrowdChantSample(): recompute the result
+            // chant from the current score. Reads sim state only (audio side).
+            OpenSwos.Audio.MatchAudio.LoadCrowdChant();
+            // flag clear matches the original "fire once" contract.
             Memory.WriteWord(Memory.Addr.loadCrowdChantSampleFlag, 0);
         }
     }
@@ -1305,7 +1306,11 @@ public static class GameLoop
             Memory.WriteWord(Memory.Addr.goalCounter, (short)(goalCounter - 1));
         }
 
-        // comments.cpp:209 — playCrowdChants(). Pure audio (chants.cpp) — omitted.
+        // comments.cpp:180-209 — drain the enqueued commentary timers + advance
+        // the crowd-chant state machine (playCrowdChants). Audio-only, no-op
+        // headless (MatchAudio.Instance is null). Uses its own RNG so the
+        // lockstep sim RNG stream is untouched.
+        OpenSwos.Audio.MatchAudio.Tick();
     }
 
     // Mechanical port of gameLoop.cpp:1911-1915 — initGoalSprites.
@@ -1971,7 +1976,9 @@ public static class GameLoop
         Memory.WriteWord(Memory.Addr.cameraXVelocity, 0);
         Memory.WriteWord(Memory.Addr.cameraYVelocity, 0);
 
-        // gameLoop.cpp:392 — playEndGameCrowdSampleAndComment(): audio-only.
+        // gameLoop.cpp:392 — playEndGameCrowdSampleAndComment(): HOMEWINL /
+        // BOOWHISL / CHEER + rout/sensational result comment (comments.cpp:110).
+        OpenSwos.Audio.MatchAudio.PlayEndGameCrowd();
 
         // gameLoop.cpp:394 — m_doFadeIn = true. Tracked in the outer-loop
         // (gameLoop.cpp:110-116) which we don't have; Godot's screen-effects

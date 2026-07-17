@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cxkkjuexdpkgp"
+
+[deps]
+
+files=["res://data/known_ages_1997. diacritics stripped)..translation"]
+
+source_file="res://data/known_ages_1997.csv"
+dest_files=["res://data/known_ages_1997. diacritics stripped)..translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

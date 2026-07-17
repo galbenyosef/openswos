@@ -112,6 +112,15 @@ public static class PlayerSprite
     public const int OffTacklingTimer       = 106;  // word
     public const int OffSentAway            = 108;  // word
 
+    // ---- OpenSWOS extension: in-match energy/fatigue (NOT in original SWOS) ---
+    // Stored in the 18 bytes of slot padding (110..127) that follow the 110-byte
+    // Sprite struct, so they live in the deterministic Memory pool and are NOT
+    // cleared by Init() (which only zeroes bytes 0..SpriteSize-1). Seeded per
+    // match by PlayerEnergy.SeedSlot. See Sim/Port/PlayerEnergy.cs.
+    public const int OffEnergy    = 110;  // word  — current energy 0..4096
+    public const int OffEnergyAcc = 112;  // word  — drain sub-unit accumulator
+    public const int OffStamina   = 114;  // byte  — 0..7 quantised career stamina
+
     // ---- Per-slot accessors --------------------------------------------------
     // Each accessor takes the slot index and reads/writes the appropriate
     // Memory address. All reads are bounds-unchecked for performance — caller's

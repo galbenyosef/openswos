@@ -585,9 +585,13 @@ public static class Memory
         // of the nearest non-controlled, non-sent-off teammate (closest substitute
         // candidate). Reused later by referee/substitution logic.
         public const int lastTackleNearestTeammate  = DataBase + 0x58C;  // dword
-        // g_memByte[332510] — `inGameTeamPlayerOffsets`. 11 words, indexed by
+        // g_memByte[332510] — `inGameTeamPlayerOffsets` (swos.asm:208198,
+        // `dw 0,61,122,...` = index × 61). 11 words used, indexed by
         // (playerOrdinal - 1) × 2, giving the byte offset within InGameTeam to
-        // that player's PlayerGameHeader. Caller does `inGameTeamPtr + offset`.
+        // that player's record. In the original the caller does
+        // `inGameTeamPtr(=TeamGame start) + offset`; OpenSWOS's inGameTeamPtr is
+        // players[0], so PlayerTackle's four header-relative sites subtract the
+        // 42-byte TeamGame header (PlayerTackle.kTeamGameHeaderSize).
         public const int inGameTeamPlayerOffsets    = DataBase + 0x590;  // 11 × word = 22 bytes
         // g_memByte[524232] / [524237] — `dseg_17E3EE` / `dseg_17E3F3`. Two 5-byte
         // lookup tables for new-card values, indexed by (currentCards XOR 1) + 3
@@ -2078,11 +2082,14 @@ public static class Memory
         WriteWord(Addr.team2NumAllowedInjuries, 4);
         WriteDword(Addr.lastTackleNearestTeammate, 0);
 
-        // inGameTeamPlayerOffsets — 11 words, byte offset from InGameTeam base
-        // to each player's PlayerGameHeader (54 bytes per player in swos.h).
-        // 0..10 × 54.
+        // inGameTeamPlayerOffsets — byte offset from the InGameTeam base to each
+        // player record. The original table (swos.asm:208198) is
+        // `dw 0,61,122,...` — index × 61 (sizeof(PlayerGame) = 0x3D = 61), NOT
+        // 54. The earlier 54 was wrong and scattered PlayerTackled's injury/card
+        // writes across neighbouring 61-byte records. Only on-pitch ordinals
+        // 1..11 (index 0..10) reach the consumers, so 11 entries suffice.
         for (int i = 0; i < 11; i++)
-            WriteWord(Addr.inGameTeamPlayerOffsets + i * 2, (short)(i * 54));
+            WriteWord(Addr.inGameTeamPlayerOffsets + i * 2, (short)(i * 61));
 
         // dseg_17E3EE / dseg_17E3F3 — 5-byte yellow-card / red-card progression
         // tables (swos-port pulls these out of the data segment). The exact

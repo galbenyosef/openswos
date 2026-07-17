@@ -276,7 +276,22 @@ public static class CompetitionEngine
         if (idx < 0)
             throw new ArgumentException("PLAYER CLUB NOT FOUND IN NEW LEAGUE TEAMS", nameof(newLeagueTeams));
 
+        if (c.World is not null)
+        {
+            OpenSwos.Competition.Career.SeasonProgression.AgeAndRetire(c.World);
+            OpenSwos.Competition.Career.RegenModel.RunRegen(c.World);
+            OpenSwos.Competition.Career.StaffModel.RunClubStaffAI(c.World);
+            OpenSwos.Competition.Career.Scouting.RunScoutingAI(c.World);
+            OpenSwos.Competition.Career.GrowthModel.ApplySeasonGrowth(c.World);
+            OpenSwos.Competition.Career.Finance.ApplySeasonFinances(c.World);
+            // Transfer market resets each season: offers/list cleared, negotiation
+            // budget refilled to 6, sell/buy quotas zeroed (swos.asm:127226).
+            OpenSwos.Competition.Career.TransferOffers.ResetForNewSeason(c);
+        }
+
         c.Season++;
+        if (c.World is not null)
+            c.World.Season = c.Season;
         c.Division = newDivision;
         c.ClubName = newLeagueTeams[idx].Name;
         c.ClubGlobalId = newLeagueTeams[idx].GlobalId;

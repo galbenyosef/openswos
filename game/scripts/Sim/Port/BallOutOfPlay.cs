@@ -517,10 +517,16 @@ public static class BallOutOfPlay
 
             if (A6 != TeamData.TopBase)
             {
-                // l_rh_right_team_throw_in — from ball.cpp:3854-3879.
+                // l_rh_right_team_throw_in — from ball.cpp:3854-3879. NOTE the
+                // Y-order is REVERSED vs the left-touchline branch: y<342 picks
+                // BACK_LEFT (ball.cpp:3865 -> cseg_7DAFE = state 20) and y>=556
+                // picks FORWARD_LEFT (ball.cpp:3879 -> cseg_7DAE8 = state 18).
+                // The port originally copied the top-team order here, which
+                // indexed break tables with outward Y offsets and parked two
+                // support players past the goal line on near-corner throw-ins.
                 if (D2 < 342)
                 {
-                    Memory.WriteWord(Memory.Addr.gameState, ST_THROW_IN_FORWARD_LEFT);
+                    Memory.WriteWord(Memory.Addr.gameState, ST_THROW_IN_BACK_LEFT);
                 }
                 else if (D2 < 556)
                 {
@@ -528,7 +534,7 @@ public static class BallOutOfPlay
                 }
                 else
                 {
-                    Memory.WriteWord(Memory.Addr.gameState, ST_THROW_IN_BACK_LEFT);
+                    Memory.WriteWord(Memory.Addr.gameState, ST_THROW_IN_FORWARD_LEFT);
                 }
             }
             else
@@ -676,22 +682,20 @@ public static class BallOutOfPlay
 
     // External: comments.cpp PlayGoalComment / PlayOwnGoalComment.
     // TODO from external/swos-port/src/audio/comments.cpp
-    private static void StubPlayGoalComment()       { /* TODO */ }
-    private static void StubPlayOwnGoalComment()    { /* TODO */ }
+    private static void StubPlayGoalComment()    => OpenSwos.Audio.MatchAudio.GoalComment();
+    private static void StubPlayOwnGoalComment() => OpenSwos.Audio.MatchAudio.OwnGoalComment();
 
-    // External: sfx.cpp PlayHomeGoalSample / PlayAwayGoalSample /
-    // PlayRefereeWhistleSample / PlayMissGoalSample.
-    // TODO from external/swos-port/src/audio/sfx.cpp
-    private static void StubPlayHomeGoalSample()        { /* TODO */ }
-    private static void StubPlayAwayGoalSample()        { /* TODO */ }
-    private static void StubPlayRefereeWhistleSample()  { /* TODO */ }
-    private static void StubPlayMissGoalSample()        { /* TODO */ }
-    private static void StubPlayNearMissComment()       { /* TODO */ }
+    // sfx.cpp — both teams use HOMEGOAL (sound.txt:304-306); the crowd chant
+    // reload (result chant) is driven separately via loadCrowdChantSampleFlag.
+    private static void StubPlayHomeGoalSample()        => OpenSwos.Audio.MatchAudio.PlayGoal();
+    private static void StubPlayAwayGoalSample()        => OpenSwos.Audio.MatchAudio.PlayGoal();
+    private static void StubPlayRefereeWhistleSample()  => OpenSwos.Audio.MatchAudio.PlayWhistle();
+    private static void StubPlayMissGoalSample()        => OpenSwos.Audio.MatchAudio.PlayMissGoal();
+    private static void StubPlayNearMissComment()       => OpenSwos.Audio.MatchAudio.NearMissComment();
 
-    // External: comments.cpp enqueueCornerSample / enqueueThrowInSample.
-    // TODO from external/swos-port/src/audio/comments.cpp
-    private static void StubEnqueueCornerSample()  { /* TODO */ }
-    private static void StubEnqueueThrowInSample() { /* TODO */ }
+    // comments.cpp enqueueCornerSample / enqueueThrowInSample (on-demand HARD).
+    private static void StubEnqueueCornerSample()  => OpenSwos.Audio.MatchAudio.EnqueueCorner();
+    private static void StubEnqueueThrowInSample() => OpenSwos.Audio.MatchAudio.EnqueueThrowIn();
 
     // Port of comments.cpp:240-243 — clearPenaltyFlag (audio side: m_performingPenalty).
     // We keep this minimal: write swos.penalty = 0. The audio-side

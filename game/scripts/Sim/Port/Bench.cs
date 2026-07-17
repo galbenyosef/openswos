@@ -1014,8 +1014,8 @@ public static class Bench
         Memory.WriteWord(Memory.Addr.g_waitForPlayerToGoInTimer, kPlayerGoingInDelay);
         s_blockFire = true;
 
-        // updateBench.cpp:589 — enqueueSubstituteSample(). Audio not wired
-        // in the port yet (PlayEnqueuedSamples is a stub) — skipped.
+        // updateBench.cpp:589 — enqueueSubstituteSample().
+        OpenSwos.Audio.MatchAudio.EnqueueSubstitute();
         LeaveBench();
     }
 
@@ -1037,7 +1037,8 @@ public static class Bench
         // updateBench.cpp:601-602 — A4 = m_teamGame; ApplyTeamTactics().
         // PORT-DIVERGENCE — see SelectOrSwapPlayers note.
 
-        // updateBench.cpp:604 — enqueueTacticsChangedSample(): audio stub.
+        // updateBench.cpp:604 — enqueueTacticsChangedSample().
+        OpenSwos.Audio.MatchAudio.EnqueueTactics();
         LeaveBenchFromMenu();
     }
 

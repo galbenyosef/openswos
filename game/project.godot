@@ -27,10 +27,8 @@ project/assembly_name="OpenSwos"
 
 [display]
 
-window/size/viewport_width=384
-window/size/viewport_height=272
-window/size/window_width_override=1152
-window/size/window_height_override=816
+window/size/viewport_width=1152
+window/size/viewport_height=816
 window/stretch/mode="viewport"
 window/stretch/aspect="keep"
 

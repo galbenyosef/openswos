@@ -62,4 +62,18 @@ public sealed class PlayerRecord
     // price table. Source of the goalkeeper's effective skill in the original
     // (AdjustPlayerSkills, swos.asm:37783-37867: (value+3)/7 + rand bonus).
     public int ValueCode { get; init; }
+
+    // OpenSWOS career->match bridge for the in-match energy model (Sim/Port/
+    // PlayerEnergy). Neutral defaults (full fitness) for non-career records
+    // loaded straight from TEAM.*; CareerMatchTeam overrides them from the live
+    // CareerPlayer. Not part of the on-disk TEAM.* format.
+    public int Stamina { get; init; } = 7;        // 0..7
+    public int FatigueCarry { get; init; } = 0;   // 0..100 carried between matches
+
+    // Career->match bridge for a persistent injury (CareerPlayer.InjurySeverity,
+    // 0..7). 0 for records loaded straight from TEAM.*; CareerMatchTeam sets it
+    // from the live squad so a "carrying a knock" player (severity 1) has his
+    // in-game speed handicap + doubled re-injury odds seeded by TeamDataLoader.
+    // Not part of the on-disk TEAM.* format.
+    public int InjurySeverity { get; init; } = 0;
 }

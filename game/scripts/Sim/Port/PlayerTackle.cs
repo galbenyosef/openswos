@@ -38,6 +38,21 @@ public static class PlayerTackle
     // player.cpp:1961 (writeMemory + literal 2).
     private const int TS_GOOD_TACKLE = 2;
 
+    // kTeamGameHeaderSize = offsetof(TeamGame, players) = 42 (swos.h:296-317;
+    // 10 kit words + markedPlayer + teamName[17] + 3 pad). In the ORIGINAL,
+    // team.inGameTeamPtr points at the TeamGame START, so the injury/card writes
+    // here use PlayerGameHeader = TeamGameHeader(42) + PlayerInfo, i.e. field
+    // offsets +48 isInjured / +50 fasterTackle / +51 previousCards / +52 cards /
+    // +77 injuriesBitfield (all 42 + the PlayerInfo offset). OpenSWOS's port
+    // instead points inGameTeamPtr at players[0] (TeamDataLoader.WireTeamFields),
+    // so every one of these four sites must subtract the 42-byte header to land
+    // on the SAME bytes TeamDataLoader/PlayerActions read as PlayerInfo (+6/+8/
+    // +9/+10/+35). Paired with inGameTeamPlayerOffsets = index*61 (swos.asm:
+    // 208198). Without this, PlayerTackled scattered injuries into neighbouring
+    // players' name/skill bytes (only ordinal 7 landed correctly) and injuries
+    // never persisted — the bug this task fixes.
+    private const int kTeamGameHeaderSize = 42;
+
     // Absolute addresses of topTeamData / bottomTeamData in the asm — preserve
     // identity tests so the port branches the same way the original did.
     // Our backing memory is TeamData.TopBase / TeamData.BottomBase, so the
@@ -597,8 +612,10 @@ public static class PlayerTackle
 
     l_player_has_no_cards:
         // 13966-13996 — A5 = team.inGameTeamPtr + inGameTeamPlayerOffsets[(ordinal-1)*2].
+        // Port fix: inGameTeamPtr is players[0]; the +51/+52 field literals below
+        // are TeamGame-header-relative, so rebase to the TeamGame start (−42).
         esi = A6;
-        int eax = Memory.ReadSignedDword(esi + 10);            // OffInGameTeamPtr
+        int eax = Memory.ReadSignedDword(esi + 10) - kTeamGameHeaderSize;   // OffInGameTeamPtr − TeamGame header
         A5 = eax;
         esi = A1;
         short D0 = (short)Memory.ReadWord(esi + 2);            // ordinal
@@ -777,8 +794,10 @@ public static class PlayerTackle
 
     cseg_7972E:
         // 14229-14258 — A5 = team.inGameTeamPtr + offsets[(ordinal-1)*2].
+        // Port fix: rebase inGameTeamPtr(players[0]) to the TeamGame start (−42)
+        // so the +51/+52 header-relative field literals land correctly.
         esi = A6;
-        int eax = Memory.ReadSignedDword(esi + 10);
+        int eax = Memory.ReadSignedDword(esi + 10) - kTeamGameHeaderSize;
         A5 = eax;
         esi = A1;
         short D0 = (short)Memory.ReadWord(esi + 2);
@@ -971,7 +990,10 @@ public static class PlayerTackle
         short ordinal = Memory.ReadSignedWord(A1 + 2);
         int idx2 = (ordinal - 1) << 1;
         int byteOff = Memory.ReadSignedWord(Memory.Addr.inGameTeamPlayerOffsets + (ushort)idx2);
-        int inGameTeamPtr = Memory.ReadSignedDword(A6 + 10);
+        // Port fix: inGameTeamPtr is players[0]; the +48/+77 field literals below
+        // are TeamGame-header-relative, so rebase to the TeamGame start (−42) —
+        // A0+48 then lands on PlayerInfo+6 (isInjured), A0+77 on +35 (injuriesBits).
+        int inGameTeamPtr = Memory.ReadSignedDword(A6 + 10) - kTeamGameHeaderSize;
         A0 = inGameTeamPtr + (ushort)byteOff;
 
         // 14490-14491 — D1 = gameLengthInGame (probability table index).
@@ -1093,15 +1115,15 @@ public static class PlayerTackle
     // SWOS::PlayInjuryComment — audio cue at updatePlayers.cpp:14529. Plays an
     // injury-related commentary line. Defer until the audio bus lands.
     // TODO from external/swos-port/src/audio/comments.cpp PlayInjuryComment.
-    private static void StubPlayInjuryComment() { /* TODO */ }
+    private static void StubPlayInjuryComment() => OpenSwos.Audio.MatchAudio.InjuryComment();
 
     // SWOS::PlayDangerousPlayComment / PlayFoulWhistleSample / PlayPenaltyComment
     // / PlayFoulComment — audio cues. No audio backend wired yet.
     // TODO from external/swos-port/src/swos/swos.h SWOS::PlayXxx hooks
-    private static void StubPlayDangerousPlayComment() { /* TODO */ }
-    private static void StubPlayFoulWhistleSample() { /* TODO */ }
-    private static void StubPlayPenaltyComment() { /* TODO */ }
-    private static void StubPlayFoulComment() { /* TODO */ }
+    private static void StubPlayDangerousPlayComment() => OpenSwos.Audio.MatchAudio.DangerousPlayComment();
+    private static void StubPlayFoulWhistleSample() => OpenSwos.Audio.MatchAudio.PlayFoulWhistle();
+    private static void StubPlayPenaltyComment() => OpenSwos.Audio.MatchAudio.PenaltyComment();
+    private static void StubPlayFoulComment() => OpenSwos.Audio.MatchAudio.FoulComment();
 
     // SWOS::Rand — table-driven xor-stream PRNG. updatePlayers.cpp:13343 and
     // :13367 use this for foul-severity → card-colour selection (Rand() < 32
@@ -1175,8 +1197,10 @@ public static class PlayerTackle
         D1 = axOff;
 
         // 14870-14879 — A0 = team.inGameTeamPtr + D1 = PlayerGameHeader.
+        // Port fix: rebase inGameTeamPtr(players[0]) to the TeamGame start (−42)
+        // so the +50 fasterTackle header-relative literal lands correctly.
         esi = A6;
-        int eax = Memory.ReadSignedDword(esi + 10);             // TeamGeneralInfo.inGameTeamPtr
+        int eax = Memory.ReadSignedDword(esi + 10) - kTeamGameHeaderSize;   // TeamGeneralInfo.inGameTeamPtr − header
         ebx = (ushort)(short)D1;
         eax = eax + ebx;
         A0 = eax;
@@ -1501,6 +1525,6 @@ public static class PlayerTackle
     // SWOS::PlayGoodTackleComment / PlayKickSample — audio cues. Audio backend
     // not wired yet. The existing PlayerActions stubs are private; mirror them
     // locally so PlayerTackle stays self-contained.
-    private static void StubPlayGoodTackleComment() { /* TODO */ }
-    private static void StubPlayKickSample() { /* TODO */ }
+    private static void StubPlayGoodTackleComment() => OpenSwos.Audio.MatchAudio.GoodTackleComment();
+    private static void StubPlayKickSample() => OpenSwos.Audio.MatchAudio.PlayKick();
 }

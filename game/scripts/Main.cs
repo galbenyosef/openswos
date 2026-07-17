@@ -151,6 +151,17 @@ public partial class Main : Node2D
     private readonly Sprite2D?[] _injuryCrossSprites =
         new Sprite2D?[OpenSwos.SwosVm.PlayerSprite.TotalSlots];
     private ImageTexture? _injuryCrossTexture;
+
+    // OpenSWOS energy/fatigue overlay (renderer only). One tiny 8×2 bar per
+    // sprite slot, drawn just above the head number, reading PlayerEnergy from
+    // the sim. Cloned from the injury-cross overlay pattern above. _energyBar
+    // gates VISIBILITY; _fatigueSim (a Main.cs option field) gates the SPEED
+    // EFFECT in non-career matches — see LoadSettings / InitSwosVmFromMatchSetup.
+    private readonly Sprite2D?[] _energyBarSprites =
+        new Sprite2D?[OpenSwos.SwosVm.PlayerSprite.TotalSlots];
+    private readonly System.Collections.Generic.Dictionary<int, ImageTexture> _energyBarTextures = new();
+    private bool _energyBar = true;    // energy bar visibility (renderer only)
+    private bool _fatigueSim = false;  // master toggle: fatigue speed effect in non-career matches
     // SWOS bench / substitutions panel (port mode). PORT-VISUAL: the original
     // draws the bench as sprite rows by the dugout (drawBench.cpp); we
     // approximate with a screen-space text panel. ALL state comes from the
@@ -192,6 +203,11 @@ public partial class Main : Node2D
     // Paused freezes mid-match (ESC).
     private enum AppState { Menu, Match, Paused }
     private AppState _appState = AppState.Menu;
+
+    // Front-end MUSIC preference (persisted). Default AMIGA. Resolved against
+    // availability by ResolveMenuMusic(); the MenuMusic node (host-side only)
+    // plays it while _appState == Menu and hard-stops otherwise.
+    private OpenSwos.Audio.MenuMusic.MusicSource _menuMusic = OpenSwos.Audio.MenuMusic.MusicSource.Amiga;
 
     // Match setup state, driven by the menu.
     private readonly System.Collections.Generic.List<TeamRecord> _allTeams = new();
@@ -517,6 +533,16 @@ public partial class Main : Node2D
                     Visible = false,
                 };
                 AddChild(_injuryCrossSprites[slot]);
+
+                // Energy bar overlay (OpenSWOS fatigue) — hidden until
+                // UpdateEnergyBars shows it over an on-pitch player.
+                _energyBarSprites[slot] = new Sprite2D
+                {
+                    Centered = true,
+                    TextureFilter = TextureFilterEnum.Nearest,
+                    Visible = false,
+                };
+                AddChild(_energyBarSprites[slot]);
             }
 
             // Camera follows the player but is clamped to the pitch bounds so it never
@@ -526,6 +552,9 @@ public partial class Main : Node2D
             _camera = new Camera2D
             {
                 AnchorMode = Camera2D.AnchorModeEnum.DragCenter,
+                // Native viewport is design ×RenderScale; the match world is
+                // authored in design pixels, so zoom the camera to fill it 1:1.
+                Zoom = new Vector2(RenderScale, RenderScale),
                 // Bounds match the original's camera clip window: world x in [0, 672],
                 // world y in [16, 848] — external/swos-port/src/game/pitch/pitch.cpp:376-398
                 // (clipPitch clamps the view top to kSwosPatternSize=16 and the bottom to
@@ -621,8 +650,23 @@ public partial class Main : Node2D
             // a 7pt viewport font reads as ~21pt on screen. Pick sizes accordingly —
             // anything > 16 starts to feel huge.
             var ui = new CanvasLayer();
+            // MENU layer: the SWOS-styled front-end (MenuClient) + career tables
+            // paint here in 576×408 design space, scaled ×2 into the native
+            // 1152×816 viewport. ×2 (not ×3) is a deliberate user preference — the
+            // bitmap charset reads crisper and more compact at half again the size.
+            ui.Transform = Transform2D.Identity.Scaled(new Vector2(MenuScale, MenuScale));
             AddChild(ui);
             _uiLayer = ui;
+
+            // MATCH HUD layer: the score/timer/overlay labels, SWOS-charset result
+            // panel, bench panel and on-ball player-name banner are all authored in
+            // 384×272 (ViewportWidth/Height) design space and MUST keep their ×3
+            // on-screen size — so they live on their own CanvasLayer at RenderScale,
+            // NOT on the ×2 menu layer. Layer=1 keeps the HUD above the menu (the
+            // two are mutually exclusive by game state anyway).
+            var hud = new CanvasLayer { Layer = 1 };
+            hud.Transform = Transform2D.Identity.Scaled(new Vector2(RenderScale, RenderScale));
+            AddChild(hud);
 
             // SWOS charset bitmap font (CHARSET.RAW). Drives the result bar,
             // bench panel and on-ball player-name banner with the real 1:1
@@ -638,10 +682,12 @@ public partial class Main : Node2D
                 else GD.PrintErr($"CHARSET.RAW not found at {charsetPath} — HUD text disabled");
             }
 
-            // OpenSWOS SWOS-styled front-end. Built on the same UI CanvasLayer;
+            // OpenSWOS SWOS-styled front-end. Built on the ×2 menu CanvasLayer;
             // starts hidden, shown by UpdateUi when AppState==Menu. `this`
-            // implements IMenuHost (Main.MenuHost.cs).
-            _menuClient = new OpenSwos.Menu.MenuClient(ui, _font, this, ViewportWidth, ViewportHeight);
+            // implements IMenuHost (Main.MenuHost.cs). Career data tables now share
+            // this same 576×408 ×2 space (they used to sit on a separate ×2 layer);
+            // one space, one scale — MenuClient routes table sprites to its own root.
+            _menuClient = new OpenSwos.Menu.MenuClient(ui, _font, this, MenuViewportWidth, MenuViewportHeight);
             _menuClient.Active = false;
 
             _scoreLabel = new Label
@@ -651,7 +697,7 @@ public partial class Main : Node2D
                 Modulate = Colors.White,
             };
             _scoreLabel.AddThemeFontSizeOverride("font_size", 8);
-            ui.AddChild(_scoreLabel);
+            hud.AddChild(_scoreLabel);
 
             // Match clock — top-centre. Viewport is 384 wide so X≈170 centres a small label.
             _timerLabel = new Label
@@ -661,7 +707,7 @@ public partial class Main : Node2D
                 Modulate = Colors.White,
             };
             _timerLabel.AddThemeFontSizeOverride("font_size", 8);
-            ui.AddChild(_timerLabel);
+            hud.AddChild(_timerLabel);
 
             // Big-text overlay for GOAL! / HALF TIME / FULL TIME. Hidden when empty.
             _overlayLabel = new Label
@@ -669,11 +715,15 @@ public partial class Main : Node2D
                 Text = "",
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                AnchorRight = 1f, AnchorBottom = 1f,
+                // Size to the DESIGN viewport, not screen anchors: the ×RenderScale
+                // layer transform would otherwise resolve anchors against 1152×816
+                // and then scale again, overshooting.
+                Position = new Vector2(0, 0),
+                Size = new Vector2(ViewportWidth, ViewportHeight),
                 Modulate = new Color(1f, 1f, 0.4f, 1f),  // SWOS-yellow
             };
             _overlayLabel.AddThemeFontSizeOverride("font_size", 16);
-            ui.AddChild(_overlayLabel);
+            hud.AddChild(_overlayLabel);
 
             // SWOS result panel (port mode). Visibility + duration are driven by
             // the ported result.cpp timers (Result.ShouldDrawResult — resultTimer
@@ -698,15 +748,15 @@ public partial class Main : Node2D
                 Color = new Color(0f, 0f, 0f, 127f / 255f),  // darkRectangle.cpp:53 — SDL_SetRenderDrawColor(0,0,0,127)
                 Visible = false,
             };
-            ui.AddChild(_resultPanelBg);
-            _resultPanelTeam1 = MakeTextSprite(ui);   // drawTeamNames (result.cpp:238-246)
-            _resultPanelTeam2 = MakeTextSprite(ui);
-            _resultPanelScore = MakeTextSprite(ui);   // drawCurrentResult (result.cpp:248-264)
-            _resultPanelTag   = MakeTextSprite(ui);   // drawHalfAndFullTimeSprites (result.cpp:326-332)
+            hud.AddChild(_resultPanelBg);
+            _resultPanelTeam1 = MakeTextSprite(hud);   // drawTeamNames (result.cpp:238-246)
+            _resultPanelTeam2 = MakeTextSprite(hud);
+            _resultPanelScore = MakeTextSprite(hud);   // drawCurrentResult (result.cpp:248-264)
+            _resultPanelTag   = MakeTextSprite(hud);   // drawHalfAndFullTimeSprites (result.cpp:326-332)
             for (int si = 0; si < OpenSwos.Sim.Port.Result.kMaxScorersForDisplay; si++)
             {
-                _resultScorer1[si] = MakeTextSprite(ui);   // drawScorerList (result.cpp:301-324)
-                _resultScorer2[si] = MakeTextSprite(ui);
+                _resultScorer1[si] = MakeTextSprite(hud);   // drawScorerList (result.cpp:301-324)
+                _resultScorer2[si] = MakeTextSprite(hud);
             }
 
             // Controlled-player shirt numbers (port mode) — world-space labels
@@ -750,16 +800,16 @@ public partial class Main : Node2D
                 Position = new Vector2(0, 0),
                 Size = new Vector2(0, 0),
             };
-            ui.AddChild(_benchPanelBg);
+            hud.AddChild(_benchPanelBg);
             for (int i = 0; i < BenchMaxRows; i++)
             {
                 var hl = new ColorRect { Visible = false, Color = Colors.Transparent };
-                ui.AddChild(hl);
+                hud.AddChild(hl);
                 _benchHighlights[i] = hl;
             }
             for (int i = 0; i < BenchMaxRows; i++)
             {
-                _benchLineSprites[i] = MakeTextSprite(ui);
+                _benchLineSprites[i] = MakeTextSprite(hud);
             }
 
             // On-ball / controlled-player name banner (#169). drawPlayerName
@@ -767,16 +817,19 @@ public partial class Main : Node2D
             // (kPlayerNameX=12, kPlayerNameY=0) in game-screen space — the top
             // left corner. Mapped into our viewport with the same +gameOffsetX
             // the result bar uses.
-            _playerNameSprite = MakeTextSprite(ui);
+            _playerNameSprite = MakeTextSprite(hud);
 
-            // Translucent backdrop for the menu — make text readable over the pitch.
-            // Added before _menuLabel so the label paints on top of it.
+            // Legacy plain-text menu backdrop — superseded by MenuClient and now
+            // always hidden (UpdateUi keeps it invisible), but retained. Authored
+            // in 384×272 space, so it lives on the ×3 HUD layer alongside the other
+            // ViewportWidth/Height nodes rather than the ×2 menu layer.
             _menuBackground = new ColorRect
             {
                 Color = new Color(0f, 0f, 0f, 0.7f),
-                AnchorRight = 1f, AnchorBottom = 1f,
+                Position = new Vector2(0, 0),
+                Size = new Vector2(ViewportWidth, ViewportHeight),
             };
-            ui.AddChild(_menuBackground);
+            hud.AddChild(_menuBackground);
 
             // Menu screen uses its own multi-line label at a smaller size so the team
             // list fits without scrolling. Renders on the same CanvasLayer so it sits on
@@ -786,11 +839,13 @@ public partial class Main : Node2D
                 Text = "",
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                AnchorRight = 1f, AnchorBottom = 1f,
+                // Design-space size (see _overlayLabel note).
+                Position = new Vector2(0, 0),
+                Size = new Vector2(ViewportWidth, ViewportHeight),
                 Modulate = Colors.White,
             };
             _menuLabel.AddThemeFontSizeOverride("font_size", 7);
-            ui.AddChild(_menuLabel);
+            hud.AddChild(_menuLabel);
 
             // Start in the menu — kick-off positions are valid so the preview behind the
             // menu shows the chosen kits already coloured.
@@ -813,6 +868,11 @@ public partial class Main : Node2D
             }
 
             GD.Print($"Boot complete. {_allTeams.Count} teams. Home={_allTeams[_homeTeamIndex].Name}, Away={_allTeams[_awayTeamIndex].Name}. Menu: arrows + space.");
+
+            // Front-end music: create the node (host-side only) and start the
+            // resolved source immediately on HOME (AMIGA fades in by default).
+            EnsureMenuMusic();
+            UpdateMenuMusic();
 
             // Deterministic render-alignment self-check (regression guard for the
             // "players drawn 10-15 px below the pitch" bug). A player standing at the
@@ -890,10 +950,30 @@ public partial class Main : Node2D
                     RunCompetitionEngineTest();
                     break;
                 }
+                if (allArgs[i] == "--career-report")
+                {
+                    RunCareerReport();
+                    break;
+                }
                 if (allArgs[i] == "--headnum-test")
                 {
                     RunHeadNumberTest();
                     break;
+                }
+                if (allArgs[i] == "--music-render")
+                {
+                    string outPath = (i + 1 < allArgs.Count) ? allArgs[i + 1] : "menu_music_test.wav";
+                    double secs = 10.0;
+                    if (i + 2 < allArgs.Count && double.TryParse(allArgs[i + 2],
+                        System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double ps)) secs = ps;
+                    var mod = OpenSwos.Audio.Rjp1Module.Load("MENU");
+                    if (mod == null) GD.PrintErr("[music-render] MENU.SNG/INS not found");
+                    else {
+                        var st = OpenSwos.Audio.Rjp1Player.RenderSongToWav(mod, 0, secs, outPath);
+                        GD.Print($"[music-render] {secs}s -> {outPath}: frames={st.frames} rmsL={st.rmsL:F4} rmsR={st.rmsR:F4} peak={st.peak:F4} noteOns={st.noteOns}");
+                    }
+                    GetTree().Quit();
+                    return;
                 }
                 if (allArgs[i] == "--menu-shot")
                 {
@@ -1006,6 +1086,100 @@ public partial class Main : Node2D
             var car = OpenSwos.Competition.CompetitionEngine.CreateCareer(
                 "TEST CAREER", MakeTeams(8), MakeTeams(8), 0, 0, 1, 999);
             Check(car.Career is not null, "career state attached");
+
+            // --- STEP 02: materialize the FULL career world (all clubs/players).
+            var world = OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(car, _allTeams);
+            Check(car.Career!.World is not null, "career world materialized");
+            var distinctIds = new System.Collections.Generic.HashSet<ushort>();
+            foreach (var t in _allTeams) distinctIds.Add(t.GlobalId);
+            Check(world.Clubs.Count == distinctIds.Count,
+                $"world has one club per distinct team ({world.Clubs.Count}/{distinctIds.Count})");
+            int playerRoster = 0;
+            foreach (var t in _allTeams) if (t.GlobalId == car.Career!.ClubGlobalId) { playerRoster = t.Players.Count; break; }
+            bool pClubOk = car.Career!.World!.Clubs.TryGetValue(car.Career!.ClubGlobalId, out var pClub)
+                           && pClub.Squad.Count == playerRoster;
+            Check(pClubOk, $"player club squad = its roster ({(pClub?.Squad.Count ?? -1)}/{playerRoster})");
+            GD.Print($"  [world] {world.Clubs.Count} clubs, " +
+                $"{OpenSwos.Competition.Career.CareerWorldBuilder.CountPlayers(world)} players materialized");
+
+            // --- STEP A: verify age / stamina / potential distributions.
+            int ageMin = 99, ageMax = -1, staMin = 99, staMax = -1;
+            int youthCnt = 0, youthPotOk = 0, youthGems = 0, potBad = 0;
+            static double Overall(OpenSwos.Competition.Career.CareerPlayer q)
+                => (q.Passing + q.Shooting + q.Heading + q.Tackling + q.Control + q.Speed + q.Finishing) / 7.0;
+            foreach (var club in world.Clubs.Values)
+                foreach (var q in club.Squad)
+                {
+                    if (q.Age < ageMin) ageMin = q.Age;
+                    if (q.Age > ageMax) ageMax = q.Age;
+                    if (q.Stamina < staMin) staMin = q.Stamina;
+                    if (q.Stamina > staMax) staMax = q.Stamina;
+                    double ov = Overall(q);
+                    if (q.Potential < ov - 0.5 || q.Potential > 7.0001) potBad++;
+                    if (q.Age <= 21)
+                    {
+                        youthCnt++;
+                        if (q.Potential >= ov - 0.0001) youthPotOk++;
+                        if (q.Potential - ov >= 2.0) youthGems++;
+                    }
+                }
+            // Real 1996/97 ages from the offline table can legitimately exceed the
+            // old skill-derived [16,38] band (veteran keepers ~40, young debutants
+            // ~15), so the world-wide range is widened to KnownAges' clamp [15,45].
+            Check(ageMin >= 15 && ageMax <= 45, $"ages within [15,45] (got {ageMin}..{ageMax})");
+            Check(ageMin < 22 && ageMax > 30, $"age spread present (min {ageMin}, max {ageMax})");
+            Check(staMin >= 0 && staMax <= 7, $"stamina within [0,7] (got {staMin}..{staMax})");
+            Check(potBad == 0, $"potential within [overall,7] for all ({potBad} out of range)");
+            Check(youthCnt > 0 && youthPotOk == youthCnt, $"youth potential >= current ({youthPotOk}/{youthCnt})");
+            Check(youthGems * 100 < youthCnt * 30, $"gems rare (<30% of youth): {youthGems}/{youthCnt}");
+            GD.Print($"  [attrs] age {ageMin}..{ageMax}, stamina {staMin}..{staMax}, youth {youthCnt}, gems {youthGems}");
+
+            // --- STEP 18: ORIGINAL SWOS transfer offers (Career/TransferOffers.cs).
+            // List a player, run the deterministic offer Tick, then accept a bid.
+            {
+                var offClub = car.Career!.World!.Clubs[car.Career!.ClubGlobalId];
+                Check(car.Career!.TimeToNegotiate == 6, $"time-to-negotiate seeded 6 (got {car.Career!.TimeToNegotiate})");
+                int listedId = offClub.Squad.Count > 0 ? offClub.Squad[0].Id : -1;
+                Check(OpenSwos.Competition.Career.TransferOffers.ListPlayer(car, listedId), "player transfer-listed");
+                // Offers expire after 1-6 rounds, so Tick until one lands (deterministic).
+                var offers = car.Career!.PendingOffers;
+                int ticks = 0;
+                for (; ticks < 400 && offers.Count == 0; ticks++)
+                    OpenSwos.Competition.Career.TransferOffers.Tick(car);
+                Check(offers.Count >= 1, $"at least one offer arrived within {ticks} ticks (got {offers.Count})");
+                if (offers.Count >= 1)
+                {
+                    var off = offers[0];
+                    OpenSwos.Competition.Career.CareerPlayer? offPlayer = null;
+                    foreach (var q in offClub.Squad) if (q.Id == off.PlayerId) { offPlayer = q; break; }
+                    Check(offPlayer is not null, "offer targets a squad player");
+                    long ov = offPlayer is null ? 0 : OpenSwos.Competition.Career.Finance.PlayerValue(offPlayer);
+                    long pct = ov > 0 ? off.Amount * 100 / ov : 0;
+                    Check(offPlayer is not null && off.Amount >= ov * 85 / 100 && off.Amount <= ov * 119 / 100,
+                        $"offer amount 85-119% of value (amount {off.Amount}, value {ov}, {pct}%)");
+                    Check(off.ExpiryRounds >= 1 && off.ExpiryRounds <= 6, $"offer expiry in [1,6] (got {off.ExpiryRounds})");
+                    ushort bidder = off.BidderClubId;
+                    long sellerBudget0 = offClub.Budget;
+                    long amount = off.Amount;
+                    int soldId = off.PlayerId;
+                    bool accepted = OpenSwos.Competition.Career.TransferOffers.Accept(car, car.Career!.World!, off);
+                    Check(accepted, "offer accepted");
+                    var bidderClub = car.Career!.World!.Clubs[bidder];
+                    Check(bidderClub.Squad.Exists(q => q.Id == soldId) && !offClub.Squad.Exists(q => q.Id == soldId),
+                        "sold player moved to bidder club");
+                    Check(offClub.Budget == sellerBudget0 + amount,
+                        $"seller credited amount ({sellerBudget0}->{offClub.Budget}, +{amount})");
+                    Check(car.Career!.TimeToNegotiate == 5, $"time-to-negotiate spent to 5 (got {car.Career!.TimeToNegotiate})");
+                    GD.Print($"  [offers] listed {listedId}, offers {offers.Count + 1}, amount {amount} " +
+                        $"(value {ov}, {pct}%, exp {off.ExpiryRounds}), sold {soldId} -> club {bidder}");
+                }
+                // Reset the market so it does not perturb the season play-out below.
+                car.Career!.PendingOffers.Clear();
+                car.Career!.TransferListedPlayerIds.Clear();
+                car.Career!.TimeToNegotiate = 6;
+                car.Career!.SellsThisSeason = 0;
+            }
+
             PlayOut(car, 800);
             Check(OpenSwos.Competition.CompetitionEngine.PendingSeasonRollover(car), "season rollover pending after season");
             Check(car.Career!.History.Count >= 1, "career history line written");
@@ -1014,11 +1188,379 @@ public partial class Main : Node2D
             Check(!car.Finished && OpenSwos.Competition.CompetitionEngine.NextPlayerFixture(car) is not null,
                 "season 2 has fixtures to play");
 
+            // --- STEP 07: multi-season ageing + retirement (no regen yet, so the
+            // world only shrinks; refill lands in a later step).
+            int startSeason = car.Career!.Season;   // 2
+            var ageClub0 = car.Career!.World!.Clubs[car.Career!.ClubGlobalId];
+            int sampleId = ageClub0.Squad.Count > 0 ? ageClub0.Squad[0].Id : -1;
+            int sampleAge0 = ageClub0.Squad.Count > 0 ? ageClub0.Squad[0].Age : -1;
+            var origIds = new System.Collections.Generic.HashSet<int>();
+            foreach (var q in ageClub0.Squad) origIds.Add(q.Id);
+            // growth tracking: pick a young high-potential prospect from the world.
+            OpenSwos.Competition.Career.CareerPlayer? prospect = null;
+            foreach (var club in car.Career!.World!.Clubs.Values)
+            {
+                foreach (var q in club.Squad)
+                    if (q.Age <= 19 && q.Potential - Overall(q) >= 1.5) { prospect = q; break; }
+                if (prospect is not null) break;
+            }
+            int prospectId = prospect?.Id ?? -1;
+            double prospectOv0 = prospect is not null ? Overall(prospect) : 0;
+            double prospectPot = prospect?.Potential ?? 0;
+            for (int s2 = 0; s2 < 8; s2++)
+                OpenSwos.Competition.CompetitionEngine.AdvanceCareerSeason(car, MakeTeams(8), MakeTeams(8), 0);
+            int seasonsElapsed = car.Career!.Season - startSeason;
+            Check(car.Career!.World!.Season == car.Career!.Season,
+                $"world season synced to career ({car.Career!.World!.Season}/{car.Career!.Season})");
+            // ageing: sample player aged by seasons elapsed (or retired/left).
+            var pClubNow = car.Career!.World!.Clubs[car.Career!.ClubGlobalId];
+            OpenSwos.Competition.Career.CareerPlayer? sp = null;
+            foreach (var q in pClubNow.Squad) if (q.Id == sampleId) { sp = q; break; }
+            Check(sp is null || sp.Age == sampleAge0 + seasonsElapsed,
+                sp is null ? "sample player retired/left (ok)" : $"sample aged +{seasonsElapsed} ({sampleAge0}->{sp.Age})");
+            // retirement + regen churn: some originals gone, some fresh youths in.
+            int origSurvivors = 0, freshFaces = 0;
+            foreach (var q in pClubNow.Squad) { if (origIds.Contains(q.Id)) origSurvivors++; else freshFaces++; }
+            Check(origSurvivors < origIds.Count, $"some original players retired/left ({origSurvivors}/{origIds.Count} remain)");
+            Check(freshFaces > 0, $"regen brought in fresh players ({freshFaces})");
+            // STEP 10: world stays populated (no collapse), pool bounded, squads fieldable.
+            int minSquad = int.MaxValue, shortClubs = 0;
+            foreach (var club in car.Career!.World!.Clubs.Values)
+            { if (club.Squad.Count < minSquad) minSquad = club.Squad.Count; if (club.Squad.Count < 11) shortClubs++; }
+            int faPool = car.Career!.World!.FreeAgents.Count;
+            int worldNow = OpenSwos.Competition.Career.CareerWorldBuilder.CountPlayers(car.Career!.World!);
+            Check(shortClubs == 0, $"every club fields >=11 after regen ({shortClubs} short, min {minSquad})");
+            Check(worldNow > 27680 * 8 / 10, $"world stays populated after regen (got {worldNow})");
+            Check(faPool <= 300, $"free-agent pool bounded (<=300, got {faPool})");
+            GD.Print($"  [ageing/regen] {seasonsElapsed} seasons, sample {sampleAge0}->{(sp?.Age ?? -1)}, " +
+                $"club fresh {freshFaces}, min squad {minSquad}, free agents {faPool}, world {worldNow}");
+
+            // --- REGEN NAMES: after ~10 seasons of intake, every living GENERATED
+            // player must carry a two-token "FIRST SURNAME" (no bare nicknames) and
+            // no two generated players may share a full name (surname uniqueness).
+            {
+                var genNames = new System.Collections.Generic.Dictionary<string, int>();
+                int genCount = 0, singleToken = 0, dupNames = 0;
+                string sampleDup = "", sampleSingle = "";
+                void Inspect(OpenSwos.Competition.Career.CareerPlayer q)
+                {
+                    if (q is null || !q.Generated || q.Retired) return;
+                    genCount++;
+                    string nm = (q.Name ?? "").Trim();
+                    if (nm.IndexOf(' ') < 0) { singleToken++; if (sampleSingle.Length == 0) sampleSingle = nm; }
+                    genNames.TryGetValue(nm, out int seen);
+                    genNames[nm] = seen + 1;
+                    if (seen == 1) { dupNames++; if (sampleDup.Length == 0) sampleDup = nm; }
+                }
+                foreach (var club in car.Career!.World!.Clubs.Values)
+                    foreach (var q in club.Squad) Inspect(q);
+                foreach (var q in car.Career!.World!.FreeAgents) Inspect(q);
+                Check(genCount > 0, $"generated players exist to check ({genCount})");
+                Check(singleToken == 0, $"no single-token generated name ({singleToken} found, e.g. '{sampleSingle}')");
+                Check(dupNames == 0, $"no duplicate full name among generated players ({dupNames} dup names, e.g. '{sampleDup}')");
+                GD.Print($"  [regen-names] {genCount} living generated players, " +
+                    $"{genNames.Count} distinct names, {singleToken} single-token, {dupNames} duplicated");
+            }
+
+            // --- STEP 09: growth — a young prospect trends UP toward potential.
+            OpenSwos.Competition.Career.CareerPlayer? grown = null;
+            if (prospectId >= 0)
+                foreach (var club in car.Career!.World!.Clubs.Values)
+                {
+                    foreach (var q in club.Squad) if (q.Id == prospectId) { grown = q; break; }
+                    if (grown is not null) break;
+                }
+            Check(grown is null || Overall(grown) > prospectOv0 + 0.001,
+                grown is null ? "prospect left the world (ok)"
+                              : $"young prospect grew ({prospectOv0:0.00}->{Overall(grown):0.00}, pot {prospectPot:0.00})");
+            // controlled decline: an isolated 34-year-old loses skill under growth.
+            var tw = new OpenSwos.Competition.Career.CareerWorld();
+            var vet = new OpenSwos.Competition.Career.CareerPlayer
+            {
+                Id = 1, Age = 34, Passing = 5, Shooting = 5, Heading = 5, Tackling = 5,
+                Control = 5, Speed = 5, Finishing = 5, Potential = 5,
+            };
+            var twClub = new OpenSwos.Competition.Career.CareerClub { GlobalId = 1 };
+            twClub.Squad.Add(vet);
+            tw.Clubs[1] = twClub;
+            double vetBefore = Overall(vet);
+            for (int k = 0; k < 8; k++) { tw.Season = k + 1; OpenSwos.Competition.Career.GrowthModel.ApplySeasonGrowth(tw); }
+            Check(Overall(vet) < vetBefore, $"veteran (34) declines under growth ({vetBefore:0.00}->{Overall(vet):0.00})");
+            // keeper development: ability lives in ValueCode, not the 7 skills —
+            // a young high-potential keeper must gain EFF over seasons.
+            var gkw = new OpenSwos.Competition.Career.CareerWorld();
+            var youngGk = new OpenSwos.Competition.Career.CareerPlayer
+            { Id = 1, Age = 18, Position = "G", ValueCode = 10, Potential = 6.5 };
+            var gkClub = new OpenSwos.Competition.Career.CareerClub { GlobalId = 1 };
+            gkClub.Squad.Add(youngGk);
+            gkw.Clubs[1] = gkClub;
+            int gkEff0 = youngGk.EffectiveOverall();
+            for (int k = 0; k < 6; k++) { gkw.Season = k + 1; OpenSwos.Competition.Career.GrowthModel.ApplySeasonGrowth(gkw); }
+            Check(youngGk.EffectiveOverall() > gkEff0,
+                $"young keeper develops via ValueCode (EFF {gkEff0}->{youngGk.EffectiveOverall()})");
+            GD.Print($"  [growth] prospect {prospectOv0:0.00}->{(grown is null ? -1 : Overall(grown)):0.00} " +
+                $"(pot {prospectPot:0.00}), vet {vetBefore:0.00}->{Overall(vet):0.00}");
+
+            // --- POST-MATCH INJURIES (persistence + recovery + availability).
+            {
+                // (a) A severity-4 injury recovers stepwise over fixtures and
+                // eventually heals fully. Recovery is deterministic per fixture
+                // (CareerRng keyed by the round injury seed + player id).
+                var injured = new OpenSwos.Competition.Career.CareerPlayer { Id = 4242, InjurySeverity = 4 };
+                int prev = injured.InjurySeverity, roseCount = 0, healedAt = -1;
+                for (int round = 0; round < 40; round++)
+                {
+                    OpenSwos.Competition.Career.MatchEffects.RecoverInjury(
+                        injured, OpenSwos.Competition.Career.MatchEffects.InjurySeedForRound(round));
+                    if (injured.InjurySeverity > prev) roseCount++;
+                    if (injured.InjurySeverity == 0 && healedAt < 0) healedAt = round;
+                    prev = injured.InjurySeverity;
+                }
+                Check(roseCount == 0, $"severity-4 injury never worsens during recovery ({roseCount} rises)");
+                Check(healedAt >= 0, $"severity-4 injury heals fully within 40 fixtures (healed at {healedAt})");
+
+                // (c) A severity-7 injury NEVER heals (career-ending).
+                var perma = new OpenSwos.Competition.Career.CareerPlayer { Id = 4343, InjurySeverity = 7 };
+                for (int t = 0; t < 50; t++)
+                    OpenSwos.Competition.Career.MatchEffects.RecoverInjury(
+                        perma, OpenSwos.Competition.Career.MatchEffects.InjurySeedForRound(t));
+                Check(perma.InjurySeverity == 7, $"severity-7 injury never recovers over 50 ticks (got {perma.InjurySeverity})");
+
+                // (b) A severity>=2 player is excluded from the BuildOrder XI and
+                // demoted out of a PreferredLineup (which degrades gracefully).
+                var injClub = new OpenSwos.Competition.Career.CareerClub { GlobalId = 9001 };
+                for (int pi = 1; pi <= 16; pi++)
+                    injClub.Squad.Add(new OpenSwos.Competition.Career.CareerPlayer
+                    {
+                        Id = pi, Position = pi == 1 ? "G" : "M", ShirtNumber = (byte)pi,
+                        Passing = 4, Shooting = 4, Heading = 4, Tackling = 4, Control = 4, Speed = 4, Finishing = 4,
+                    });
+                // Prefer ids 1..11 as the XI; injure the id-5 starter (severity 3).
+                injClub.PreferredLineup = new System.Collections.Generic.List<int> { 1,2,3,4,5,6,7,8,9,10,11 };
+                injClub.Squad.Find(q => q.Id == 5)!.InjurySeverity = 3;
+                var order = OpenSwos.Competition.Career.CareerMatchTeam.BuildOrder(injClub, null);
+                bool keeperFirst = order.Count > 0 && OpenSwos.Competition.Career.CareerMatchTeam.IsKeeper(order[0]);
+                bool injuredOutOfXI = true;
+                for (int sl = 0; sl < 11 && sl < order.Count; sl++)
+                    if (order[sl].Id == 5) injuredOutOfXI = false;
+                Check(keeperFirst, "injured-squad BuildOrder keeps a keeper in slot 0");
+                Check(order.Count >= 11, $"injured-squad BuildOrder still fields >=11 ({order.Count})");
+                Check(injuredOutOfXI, "severity-3 preferred starter demoted out of the XI (compacts, no hard fail)");
+
+                // Guard: if too few are fit, the least-injured are re-admitted so we
+                // never field fewer than 11 when bodies exist.
+                var thinClub = new OpenSwos.Competition.Career.CareerClub { GlobalId = 9002 };
+                for (int pi = 1; pi <= 12; pi++)
+                    thinClub.Squad.Add(new OpenSwos.Competition.Career.CareerPlayer
+                    { Id = pi, Position = pi == 1 ? "G" : "M", ShirtNumber = (byte)pi,
+                      InjurySeverity = pi >= 6 ? 4 : 0 });   // 5 fit + 7 injured
+                var thinOrder = OpenSwos.Competition.Career.CareerMatchTeam.BuildOrder(thinClub, null);
+                Check(thinOrder.Count >= 11, $"fit-pool guard re-admits least-injured to reach 11 ({thinOrder.Count})");
+
+                GD.Print($"  [injuries] sev4 healed@{healedAt}, sev7 stayed {perma.InjurySeverity}, " +
+                    $"XI={order.Count} (injured id5 out={injuredOutOfXI}), thin XI={thinOrder.Count}");
+            }
+
+            // --- STEP 13: finances — budgets bounded, non-degenerate, value-linked.
+            long budMin = long.MaxValue, budMax = long.MinValue;
+            long richBudget = long.MinValue, richVal = long.MinValue;
+            long poorBudget = 0, poorVal = long.MaxValue;
+            bool budgetsSane = true;
+            foreach (var club in car.Career!.World!.Clubs.Values)
+            {
+                long b = club.Budget;
+                if (b < budMin) budMin = b;
+                if (b > budMax) budMax = b;
+                if (System.Math.Abs(b) > 1_000_000_000_000_000L) budgetsSane = false;   // no overflow/runaway
+                long v = OpenSwos.Competition.Career.Finance.ClubValue(club);
+                if (v > richVal) { richVal = v; richBudget = b; }
+                if (v < poorVal) { poorVal = v; poorBudget = b; }
+            }
+            Check(budgetsSane, $"budgets bounded / no overflow (min {budMin}, max {budMax})");
+            Check(budMax != budMin, "budgets vary across clubs");
+            GD.Print($"  [finance] budget {budMin}..{budMax}; top-value club budget {richBudget} (val {richVal}), " +
+                $"low-value club budget {poorBudget} (val {poorVal})");
+
+            // --- STEP 14: coaches — a focused youth under a good YOUTH coach develops
+            // faster than the same youth with no staff. Compare a fine metric
+            // (skill + fractional GrowthCarry) so sub-integer progress counts.
+            static double Fine(OpenSwos.Competition.Career.CareerPlayer q)
+            {
+                double[] s = { q.Passing, q.Shooting, q.Heading, q.Tackling, q.Control, q.Speed, q.Finishing };
+                double sum = 0;
+                for (int i = 0; i < 7; i++) sum += s[i] + (q.GrowthCarry.Length > i ? q.GrowthCarry[i] : 0);
+                return sum / 7.0;
+            }
+            static OpenSwos.Competition.Career.CareerWorld MakeYouthWorld(bool withCoach)
+            {
+                var w = new OpenSwos.Competition.Career.CareerWorld();
+                var youth = new OpenSwos.Competition.Career.CareerPlayer
+                {
+                    Id = 1, Age = 17, Position = "M",
+                    Passing = 2, Shooting = 2, Heading = 2, Tackling = 2, Control = 2, Speed = 2, Finishing = 2,
+                    Potential = 7,
+                };
+                var cl = new OpenSwos.Competition.Career.CareerClub { GlobalId = 1 };
+                cl.Squad.Add(youth);
+                if (withCoach)
+                {
+                    cl.Coaches.Add(new OpenSwos.Competition.Career.Coach { Id = 100, Quality = 7, Specialty = "YOUTH", Wage = 0 });
+                    cl.TrainingFocusIds.Add(1);
+                }
+                w.Clubs[1] = cl;
+                return w;
+            }
+            var wNo = MakeYouthWorld(false);
+            var wCoach = MakeYouthWorld(true);
+            for (int k = 0; k < 3; k++)
+            {
+                wNo.Season = k + 1; OpenSwos.Competition.Career.GrowthModel.ApplySeasonGrowth(wNo);
+                wCoach.Season = k + 1; OpenSwos.Competition.Career.GrowthModel.ApplySeasonGrowth(wCoach);
+            }
+            double fineNo = Fine(wNo.Clubs[1].Squad[0]);
+            double fineCoach = Fine(wCoach.Clubs[1].Squad[0]);
+            Check(fineCoach > fineNo, $"coached+focused youth develops faster ({fineNo:0.000} vs {fineCoach:0.000})");
+            GD.Print($"  [coaches] youth dev after 3 seasons: no-coach {fineNo:0.000}, coached {fineCoach:0.000}");
+
+            // --- STEP 11-12: scouting — fuzzy estimate; better scout & repeats tighten
+            // the range; width is always > 0 (never 100% certain).
+            static OpenSwos.Competition.Career.CareerPlayer MakeScoutee(int id)
+                => new()
+                {
+                    Id = id, Age = 18, Potential = 6.0,
+                    Passing = 3, Shooting = 3, Heading = 3, Tackling = 3, Control = 3, Speed = 3, Finishing = 3,
+                };
+            var lowScout = MakeScoutee(1);
+            var hiScout = MakeScoutee(2);
+            OpenSwos.Competition.Career.Scouting.RevealEstimate(lowScout, 1, 0xC0FFEEu);
+            OpenSwos.Competition.Career.Scouting.RevealEstimate(hiScout, 7, 0xC0FFEEu);
+            double wLow = lowScout.EstHigh - lowScout.EstLow;
+            double wHi = hiScout.EstHigh - hiScout.EstLow;
+            Check(lowScout.Scouted && hiScout.Scouted, "scouting marks players scouted");
+            Check(wLow > 0 && wHi > 0, $"estimate ranges have positive width (q1 {wLow:0.00}, q7 {wHi:0.00})");
+            Check(wHi < wLow, $"better scout gives a tighter range (q7 {wHi:0.00} < q1 {wLow:0.00})");
+            var rep = MakeScoutee(3);
+            OpenSwos.Competition.Career.Scouting.RevealEstimate(rep, 4, 0xBEEFu);
+            double wFirst = rep.EstHigh - rep.EstLow;
+            for (int k = 0; k < 4; k++) OpenSwos.Competition.Career.Scouting.RevealEstimate(rep, 4, 0xBEEFu);
+            double wMany = rep.EstHigh - rep.EstLow;
+            Check(wMany < wFirst && wMany > 0, $"repeat scouting tightens the range ({wFirst:0.00}->{wMany:0.00})");
+            GD.Print($"  [scouting] range width q1 {wLow:0.00}, q7 {wHi:0.00}; repeat {wFirst:0.00}->{wMany:0.00}");
+
+            // --- STEP 17: form — win streak lifts form (+1 skill), loss streak drops
+            // it (-1), sitting out decays back to neutral.
+            var winner = new OpenSwos.Competition.Career.CareerPlayer { Id = 1, Form = 0 };
+            for (int k = 0; k < 6; k++) OpenSwos.Competition.Career.FormModel.UpdateFormAfterMatch(winner, +1, 90, 0x11u);
+            Check(winner.Form == 3 && OpenSwos.Competition.Career.FormModel.FormSkillDelta(winner) == 1,
+                $"win streak -> form +3, +1 skill (form {winner.Form})");
+            var loser = new OpenSwos.Competition.Career.CareerPlayer { Id = 2, Form = 0 };
+            for (int k = 0; k < 6; k++) OpenSwos.Competition.Career.FormModel.UpdateFormAfterMatch(loser, -1, 90, 0x22u);
+            Check(loser.Form == -3 && OpenSwos.Competition.Career.FormModel.FormSkillDelta(loser) == -1,
+                $"loss streak -> form -3, -1 skill (form {loser.Form})");
+            int hotForm = winner.Form;
+            for (int k = 0; k < 6; k++) OpenSwos.Competition.Career.FormModel.UpdateFormAfterMatch(winner, 0, 0, 0x11u);
+            Check(winner.Form == 0, $"idle form decays to neutral (was {hotForm}, now {winner.Form})");
+            GD.Print($"  [form] win-streak {3}, loss-streak {-3}, decayed-to {winner.Form}");
+
+            // --- STEP 15-16: fatigue — low stamina tires more; in-match penalty
+            // monotone & bounded; young + high-stamina recover faster between matches.
+            int gainLowSta = OpenSwos.Competition.Career.FatigueModel.MatchFatigueGain(1000, 1);
+            int gainHiSta = OpenSwos.Competition.Career.FatigueModel.MatchFatigueGain(1000, 7);
+            Check(gainLowSta > gainHiSta, $"low-stamina tires more ({gainLowSta} vs {gainHiSta} at equal distance)");
+            int pen0 = OpenSwos.Competition.Career.FatigueModel.SkillPenalty(0);
+            int pen60 = OpenSwos.Competition.Career.FatigueModel.SkillPenalty(60);
+            int pen90 = OpenSwos.Competition.Career.FatigueModel.SkillPenalty(90);
+            Check(pen0 == 0 && pen60 <= pen0 && pen90 <= pen60 && pen90 >= -2,
+                $"in-match skill penalty monotone & bounded ({pen0},{pen60},{pen90})");
+            var youngFit = new OpenSwos.Competition.Career.CareerPlayer { Id = 1, Age = 19, Stamina = 7, FatigueCarry = 80 };
+            var oldTired = new OpenSwos.Competition.Career.CareerPlayer { Id = 2, Age = 34, Stamina = 1, FatigueCarry = 80 };
+            OpenSwos.Competition.Career.FatigueModel.RecoverBetweenMatches(youngFit, 7);
+            OpenSwos.Competition.Career.FatigueModel.RecoverBetweenMatches(oldTired, 7);
+            Check(youngFit.FatigueCarry < oldTired.FatigueCarry,
+                $"young+fit recovers more (young {youngFit.FatigueCarry} < old {oldTired.FatigueCarry})");
+            Check(youngFit.FatigueCarry >= 0 && oldTired.FatigueCarry <= 100, "fatigue stays within [0,100]");
+            GD.Print($"  [fatigue] gain sta1 {gainLowSta} vs sta7 {gainHiSta}; penalty 0/60/90 = {pen0}/{pen60}/{pen90}; " +
+                $"recover young->{youngFit.FatigueCarry} old->{oldTired.FatigueCarry}");
+
+            // --- 4a. Default lineup: an untouched club (no PreferredLineup) must
+            // follow its ORIGINAL TeamRecord lineup, not a position/ability resort.
+            // Uses a FRESH world so no earlier transfer/season test has mutated the
+            // squad — the projection is then a straight slot->roster mapping.
+            {
+                var freshCar = OpenSwos.Competition.CompetitionEngine.CreateCareer(
+                    "LINEUP CHECK", MakeTeams(8), MakeTeams(8), 0, 0, 1, 998);
+                OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(freshCar, _allTeams);
+                TeamRecord? fBase = null;
+                foreach (var t in _allTeams) if (t.GlobalId == freshCar.Career!.ClubGlobalId) { fBase = t; break; }
+                freshCar.Career!.World!.Clubs.TryGetValue(freshCar.Career!.ClubGlobalId, out var fClub);
+                if (fClub is not null && fBase is not null && fBase.LineupOrder is { Length: 16 })
+                {
+                    // Independently project base LineupOrder -> expected CareerPlayer ids
+                    // (same ShirtNumber+Name match + skip-missing rule as BuildFromBaseLineup).
+                    var expected = new System.Collections.Generic.List<int>();
+                    var usedE = new System.Collections.Generic.HashSet<int>();
+                    foreach (byte ri in fBase.LineupOrder)
+                    {
+                        if (ri >= fBase.Players.Count) continue;
+                        var pr = fBase.Players[ri];
+                        foreach (var cp in fClub.Squad)
+                        {
+                            if (usedE.Contains(cp.Id)) continue;
+                            if (cp.ShirtNumber == pr.ShirtNumber
+                                && string.Equals((cp.Name ?? "").Trim(), (pr.Name ?? "").Trim(), System.StringComparison.OrdinalIgnoreCase))
+                            { expected.Add(cp.Id); usedE.Add(cp.Id); break; }
+                        }
+                        if (expected.Count >= 11) break;
+                    }
+                    var def = OpenSwos.Competition.Career.CareerMatchTeam.BuildOrder(fClub, fBase);
+                    bool baseDefaultOk = def.Count >= 11 && expected.Count >= 11;
+                    for (int slot = 0; slot < 11 && baseDefaultOk; slot++)
+                        if (def[slot].Id != expected[slot]) baseDefaultOk = false;
+                    Check(baseDefaultOk, "untouched club default lineup follows base TeamRecord order");
+                }
+            }
+
+            // Base team record for the player's club (used by the preferred-lineup test).
+            TeamRecord? pBase = null;
+            foreach (var t in _allTeams) if (t.GlobalId == car.Career!.ClubGlobalId) { pBase = t; break; }
+
+            // --- 4b. Preferred lineup: set a custom order, verify it survives.
+            var preferredIds = new System.Collections.Generic.List<int>();
+            if (pClub is not null)
+            {
+                var order = OpenSwos.Competition.Career.CareerMatchTeam.BuildOrder(pClub, pBase);
+                foreach (var p in order) preferredIds.Add(p.Id);
+                // Swap two outfield slots (3 and 4) so it differs from auto.
+                if (preferredIds.Count > 4) (preferredIds[3], preferredIds[4]) = (preferredIds[4], preferredIds[3]);
+                pClub.PreferredLineup = new System.Collections.Generic.List<int>(preferredIds);
+                // BuildOrder must honor it: slot 0 keeper preserved, slot 3/4 swapped.
+                var rebuilt = OpenSwos.Competition.Career.CareerMatchTeam.BuildOrder(pClub);
+                bool honored = rebuilt.Count >= 5 && rebuilt[0].Id == preferredIds[0]
+                    && rebuilt[3].Id == preferredIds[3] && rebuilt[4].Id == preferredIds[4];
+                Check(honored, "preferred lineup honored by BuildOrder");
+            }
+
             // --- 5. Store round-trip
             OpenSwos.Competition.CompetitionStore.Save(car);
             var loaded = OpenSwos.Competition.CompetitionStore.Load();
-            Check(loaded is not null && loaded.Career?.Season == 2 && loaded.Fixtures.Count == car.Fixtures.Count,
+            Check(loaded is not null && loaded.Career?.Season == car.Career?.Season && loaded.Fixtures.Count == car.Fixtures.Count,
                 "store save/load round-trip");
+            // STEP 02: the CareerWorld must survive JSON save/load intact.
+            bool worldRoundTrip = loaded?.Career?.World is not null
+                && loaded.Career.World.Clubs.Count == world.Clubs.Count
+                && loaded.Career.World.Clubs.TryGetValue(car.Career!.ClubGlobalId, out var lpc)
+                && pClub is not null && lpc.Squad.Count == pClub.Squad.Count
+                && (pClub.Squad.Count == 0 || lpc.Squad[0].Name == pClub.Squad[0].Name);
+            Check(worldRoundTrip, "career world survives save/load");
+            // Preferred lineup must survive JSON save/load intact.
+            bool lineupRoundTrip = loaded?.Career?.World is not null
+                && loaded.Career.World.Clubs.TryGetValue(car.Career!.ClubGlobalId, out var llc)
+                && llc.PreferredLineup.Count == preferredIds.Count;
+            if (lineupRoundTrip && loaded is not null
+                && loaded.Career!.World!.Clubs.TryGetValue(car.Career!.ClubGlobalId, out var llc2))
+                for (int i = 0; i < preferredIds.Count; i++)
+                    if (llc2.PreferredLineup[i] != preferredIds[i]) { lineupRoundTrip = false; break; }
+            Check(lineupRoundTrip, "preferred lineup survives save/load");
             OpenSwos.Competition.CompetitionStore.Delete();
             Check(!OpenSwos.Competition.CompetitionStore.Exists(), "store delete");
         }
@@ -1032,6 +1574,89 @@ public partial class Main : Node2D
             ? "COMPETITION ENGINE TEST PASSED"
             : $"COMPETITION ENGINE TEST FAILED ({failures} failures)");
         GetTree().Quit(failures == 0 ? 0 : 1);
+    }
+
+    // Headless human-readable career snapshot so a human can eyeball the result of
+    // the career systems (ages / scouted potential / form / fatigue / regen).
+    // Run: ... --headless --path game --career-report
+    private void RunCareerReport()
+    {
+        GD.Print("=== Career report ===");
+        System.Collections.Generic.List<OpenSwos.Competition.TeamRef> Teams(int start, int count)
+        {
+            var list = new System.Collections.Generic.List<OpenSwos.Competition.TeamRef>();
+            for (int i = start; i < start + count && i < _allTeams.Count; i++)
+            {
+                var t = _allTeams[i];
+                int n = t.Players.Count, sum = 0;
+                foreach (var p in t.Players)
+                    sum += p.Passing + p.Shooting + p.Heading + p.Tackling + p.Control + p.Speed + p.Finishing;
+                list.Add(new OpenSwos.Competition.TeamRef
+                {
+                    MasterIndex = i,
+                    GlobalId = t.GlobalId,
+                    Name = (t.Name ?? $"TEAM{i}").Trim().ToUpperInvariant(),
+                    Strength = (n > 0) ? System.Math.Clamp(sum / (n * 7), 1, 7) : 3,
+                });
+            }
+            return list;
+        }
+        static double Ov(OpenSwos.Competition.Career.CareerPlayer q)
+            => (q.Passing + q.Shooting + q.Heading + q.Tackling + q.Control + q.Speed + q.Finishing) / 7.0;
+
+        // Pick the 16 STRONGEST clubs so the snapshot is representative (team 0 is
+        // the weakest side in the game and makes everything look broken).
+        var allRefs = Teams(0, _allTeams.Count);
+        allRefs.Sort((a, b) => b.Strength.CompareTo(a.Strength));
+        if (allRefs.Count < 16) { GD.Print("Not enough teams loaded for a report."); GetTree().Quit(1); return; }
+        var league = allRefs.GetRange(0, 16);
+        var cup = new System.Collections.Generic.List<OpenSwos.Competition.TeamRef>(league);
+
+        var car = OpenSwos.Competition.CompetitionEngine.CreateCareer("REPORT CAREER", league, cup, 0, 0, 1, 12345);
+        var world = OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(car, _allTeams);
+        ushort clubId = car.Career!.ClubGlobalId;
+
+        void PrintSquad(string when)
+        {
+            var club = world.Clubs[clubId];
+            GD.Print($"\n--- {car.Career!.ClubName} squad ({when}) — budget {club.Budget}, coaches {club.Coaches.Count} ---");
+            GD.Print("   # NAME             POS  AGE  OVR  EFF  POT(scout) STA FORM FATG        VALUE");
+            foreach (var p in club.Squad)
+            {
+                string pot = p.Scouted ? $"{p.EstLow:0.0}-{p.EstHigh:0.0}" : "  ?  ";
+                GD.Print($"  {p.ShirtNumber,2} {p.Name,-16} {p.Position,-4} {p.Age,3}  {Ov(p),4:0.0} " +
+                    $"{p.EffectiveOverall(),4}  {pot,-9} {p.Stamina,2}  {p.Form,3}  {p.FatigueCarry,4} " +
+                    $"{OpenSwos.Competition.Career.Finance.PlayerValue(p),12}");
+            }
+        }
+
+        PrintSquad("season 1, before any development");
+        // Must re-use the SAME strong league each season — AdvanceCareerSeason
+        // locates the player's club inside the list it is given. 20 seasons =
+        // the balance soak (step 18): watch for runaway inflation / collapse.
+        for (int s = 0; s < 20; s++)
+            OpenSwos.Competition.CompetitionEngine.AdvanceCareerSeason(
+                car,
+                new System.Collections.Generic.List<OpenSwos.Competition.TeamRef>(league),
+                new System.Collections.Generic.List<OpenSwos.Competition.TeamRef>(cup), 0);
+        PrintSquad($"season {car.Career!.Season}, after 20 seasons");
+
+        var youths = new System.Collections.Generic.List<OpenSwos.Competition.Career.CareerPlayer>();
+        foreach (var club in world.Clubs.Values)
+            foreach (var p in club.Squad)
+                if (p.Age <= 20 && p.Scouted) youths.Add(p);
+        youths.Sort((a, b) => b.EstHigh.CompareTo(a.EstHigh));
+        GD.Print("\n--- brightest scouted youths across the whole world ---");
+        for (int i = 0; i < youths.Count && i < 12; i++)
+        {
+            var p = youths[i];
+            GD.Print($"  {p.Name,-16} age {p.Age}  ovr {Ov(p),4:0.0}  scouted potential {p.EstLow:0.0}-{p.EstHigh:0.0}");
+        }
+
+        GD.Print($"\nWorld: {world.Clubs.Count} clubs, " +
+            $"{OpenSwos.Competition.Career.CareerWorldBuilder.CountPlayers(world)} players, now season {car.Career!.Season}.");
+        GD.Print("=== end career report ===");
+        GetTree().Quit(0);
     }
 
     // === SWOS-port smoke test ================================================
@@ -1119,6 +1744,21 @@ public partial class Main : Node2D
             {
                 TickSwosPort();
                 completed = t + 1;
+
+                // OpenSWOS fatigue verification: the first tick runs
+                // InitSwosVmFromMatchSetup (seeds energy + sets EffectEnabled from
+                // the OPTIONS gate, which is off in headless). Force the effect ON
+                // so the smoke exercises the fatigue path deterministically.
+                if (t == 0) OpenSwos.Sim.Port.PlayerEnergy.EffectEnabled = true;
+
+                // Deterministic energy dump (INTEGER content only). t==300 may not
+                // be reached when ticks<=300, so the final tick is always dumped too.
+                if (t == 0 || t == 150 || t == 300 || t == ticks - 1)
+                    GD.Print($"[energy] t={t} slots 1/5/12/16 = "
+                        + OpenSwos.Sim.Port.PlayerEnergy.ReadEnergy(1) + "/"
+                        + OpenSwos.Sim.Port.PlayerEnergy.ReadEnergy(5) + "/"
+                        + OpenSwos.Sim.Port.PlayerEnergy.ReadEnergy(12) + "/"
+                        + OpenSwos.Sim.Port.PlayerEnergy.ReadEnergy(16));
 
                 // ---- TEMP DIAG (2026-06-02) — kickoff position dump at t=0 ---
                 // Confirms Kickoff.PrepareForInitialKick placed all 22 slots
@@ -1388,6 +2028,10 @@ public partial class Main : Node2D
         GD.Print($"[keeper-dive] diveHigh={diveH} diveLow={diveL} shouldDiveTrue={diveShould}");
 
         GD.Print($"RUNTIME TEST PASSED ({completed} ticks completed without exception)");
+        // The smoke drives every tick synchronously and quits before any idle
+        // _Process frame — block on the background audio preload so its
+        // "[audio] N samples loaded" summary always lands (verification harness).
+        OpenSwos.Audio.MatchAudio.EnsurePreloadComplete();
         GetTree().Quit(0);
     }
 
@@ -2700,12 +3344,15 @@ public partial class Main : Node2D
             case 11: if (f >= 6) { Shot("05_competitions_hub"); Adv(); } break;
             case 12: if (f >= 3) { c.DebugFireLabel("NEW LEAGUE"); Adv(); } break;
             case 13:
-                // Prove the nation picker: step COUNTRY +12 away from the
-                // default (England) so the created league is foreign. Steps at
-                // f==3, shot a few frames LATER — capturing in the same frame
-                // would grab the previous (pre-step) render.
-                if (f == 3) for (int k = 0; k < 12; k++) c.DebugFireLabel("COUNTRY");
-                if (f >= 10) { Shot("06_league_setup"); Adv(); }
+                // Prove the nation picker, now a SWOS-style pushed list picker:
+                // FIRE on COUNTRY opens the scrollable list, screenshot it, then
+                // scroll to a foreign country and FIRE to select. Shots are taken
+                // a few frames after each action so the render reflects it.
+                if (f == 3) c.DebugFireLabel("COUNTRY");
+                if (f == 6 && c.DebugListPickerActive) c.DebugListPickerSelect(c.DebugListPickerCount - 1);
+                if (f == 9 && c.DebugListPickerActive) Shot("06a_country_picker");
+                if (f == 12 && c.DebugListPickerActive) c.DebugListPickerConfirm();
+                if (f >= 16) { Shot("06_league_setup"); Adv(); }
                 break;
             case 14: if (f >= 3) { c.DebugFireLabel("CREATE LEAGUE"); Adv(); } break;
             case 15: if (f >= 8) { Shot("07_league_dashboard"); GD.Print($"[menu-shot] comp: {c.DebugCompSummary()}"); Adv(); } break;
@@ -2724,65 +3371,81 @@ public partial class Main : Node2D
                      // (wave M2) — shoot it, then confirm the default name.
                      if (f == 6) Shot("10b_manager_name");
                      if (f == 9 && c.DebugTextInputActive) c.DebugTextConfirm();
-                     if (f >= 16) { Shot("11_career_dashboard"); GD.Print($"[menu-shot] comp: {c.DebugCompSummary()}"); Adv(); }
+                     if (f == 16) { Shot("11_career_dashboard"); GD.Print($"[menu-shot] comp: {c.DebugCompSummary()}"); }
+                     // Career SQUAD screen: ages / scouted potential / form / fitness.
+                     // Inject injuries first so the red INJ / yellow-knock rows show.
+                     if (f == 18) c.DebugInjureSquadPlayers();
+                     if (f == 20) c.DebugFireLabel("SQUAD");
+                     if (f == 26) Shot("11b_career_squad");
+                     if (f == 30) c.DebugBack();
+                     if (f == 34) c.DebugFireLabel("TRANSFERS");
+                     if (f == 40) Shot("11c_career_transfers");
+                     // Inline table-select proof: FIRE on PLAYER drops into the
+                     // visible transfer table (no pushed picker); move a few rows
+                     // and the bound field turns accent-gold while the row
+                     // highlight follows — screenshot then cancel back out.
+                     if (f == 42) c.DebugTableSelectEnter();
+                     if (f == 45) c.DebugTableSelectMove(+3);
+                     if (f == 48 && c.DebugTableSelectActive) Shot("11c2_transfers_tableselect");
+                     if (f == 51) c.DebugTableSelectCancel();
+                     if (f == 54) c.DebugBack();
+                     if (f == 58) c.DebugFireLabel("STAFF");
+                     if (f == 64) Shot("11d_career_staff");
+                     if (f == 68) c.DebugBack();
+                     if (f == 72) c.DebugFireLabel("SCOUTING");
+                     if (f == 78) Shot("11e_career_scouting");
+                     if (f == 82) c.DebugBack();
+                     // Pre-match lineup editor: SWOS inline-table swap. It enters
+                     // directly in table mode over the 16 slot rows. Mark row 3,
+                     // move to row 5 (both highlights visible), FIRE to swap, then
+                     // restore via AUTO.
+                     if (f == 86) c.DebugFireLabel("LINEUP");        // push editor -> auto table mode
+                     if (f == 92) Shot("11f_career_lineup");        // table mode, row 0 lit
+                     if (f == 95) c.DebugTableSelectMove(+3);       // -> row 3
+                     if (f == 98) c.DebugTableSelectConfirm();      // mark row 3 (stays in table)
+                     if (f == 101) c.DebugTableSelectMove(+2);      // -> row 5
+                     if (f == 104) Shot("11g_career_lineup_marked");// mark@3 (gold) + nav@5 (blue)
+                     if (f == 107) c.DebugTableSelectConfirm();     // swap 3<->5, saves
+                     if (f == 110) Shot("11h_career_lineup_swapped");// swapped names
+                     if (f == 113) c.DebugTableSelectCancel();      // -> entry column (AUTO/BACK)
+                     if (f == 116) c.DebugFireLabel("AUTO");        // restore original lineup
+                     if (f == 119) Shot("11i_career_lineup_auto");
+                     if (f == 122) c.DebugBack();
+                     if (f >= 126) Adv();
                      break;
             case 27:
-                     // E2E proof: play the career's first fixture to FULL TIME
-                     // and verify the result lands back in the standings.
-                     // Both teams CPU (an input-less human team would
-                     // faithfully stall the kickoff — same as --swos-smoke)
-                     // and 1 min halves at 3x speed so it finishes quickly.
-                     // With PRE MATCH MENUS on, the launch goes PLAY NEXT MATCH
-                     // -> VERSUS -> PLAY -> STADIUM (lineups) -> KICK OFF, and we
-                     // screenshot both new pre-match screens on the way.
+                     // E2E proof: instead of PLAYING the career's first fixture,
+                     // use SWOS-style VIEW RESULT to simulate it instantly and
+                     // verify the result lands back in the standings. The full
+                     // visual-match path is covered by --swos-smoke; the menu
+                     // harness stays fast (no kickoff-to-fulltime wait).
+                     // With PRE MATCH MENUS on, the flow is PLAY NEXT MATCH ->
+                     // VERSUS -> VIEW RESULT -> FULL TIME notice -> CONTINUE.
                      if (f == 3)
                      {
-                         _forceBothTeamsCpu = true;
-                         _matchLengthSlot = 0;
-                         _gameSpeedScale = 3.0;
                          if (!c.DebugFireLabel("PLAY NEXT MATCH"))
                              GD.PrintErr("[menu-shot] PLAY NEXT MATCH not available!");
                      }
                      if (f == 10) Shot("11b_comp_versus");
-                     if (f == 13 && !c.DebugFireLabel("PLAY"))
-                         GD.PrintErr("[menu-shot] versus PLAY not available!");
-                     if (f == 20) Shot("11c_stadium_lineups");
-                     if (f == 23)
+                     if (f == 13)
                      {
-                         if (!c.DebugFireLabel("KICK OFF"))
-                             GD.PrintErr("[menu-shot] stadium KICK OFF not available!");
+                         if (!c.DebugFireLabel("VIEW RESULT"))
+                             GD.PrintErr("[menu-shot] versus VIEW RESULT not available!");
                          Adv();
                      }
+                     // Timeout guard: VIEW RESULT is instant, but never hang.
+                     if (_menuShotStepSeconds > 30)
+                     {
+                         GD.PrintErr("[menu-shot] TIMEOUT waiting for VIEW RESULT");
+                         GetTree().Quit(1);
+                     }
                      break;
-            case 28: if (f >= 80) { Shot("12_career_match"); Adv(); } break;
-            case 29:
-                // Wait for full time, then auto-dismiss exactly like the accept
-                // branch of _PhysicsProcess (deterministic — no input simulation).
-                if (_appState == AppState.Match && _match.Phase == MatchPhase.FullTime
-                    && _match.PhaseTick >= MatchTimings.FullTimeAcceptDelay)
-                {
-                    if (_competitionMatchPending)
-                    {
-                        _lastCompetitionResult = (_match.ScorePlayer, _match.ScoreOpponent);
-                        _competitionMatchPending = false;
-                    }
-                    GD.Print($"[menu-shot] match finished {_match.ScorePlayer}-{_match.ScoreOpponent}, returning to menu");
-                    _match = MatchState.NewMatch();
-                    EnterPreKickoff();
-                    _appState = AppState.Menu;
-                }
-                if (_appState == AppState.Menu) { Adv(); break; }
-                if (_menuShotStepSeconds > 300)   // fail-safe: 5 min WALL clock
-                {
-                    GD.PrintErr("[menu-shot] TIMEOUT waiting for full time");
-                    GetTree().Quit(1);
-                }
-                break;
-            case 30: if (_menuShotStepSeconds >= 1.5)   // WALL seconds — the result poll
-                     {                                   // + dashboard rebuild live in the
-                         Shot("13_career_after_match");  // 70 Hz physics tick, not _Process
+            case 28: if (f >= 6) { Shot("12_career_viewresult"); Adv(); } break;
+            case 29: if (f >= 3) { if (!c.DebugFireLabel("CONTINUE")) c.DebugBack(); Adv(); } break;
+            case 30: if (f >= 3)
+                     {
+                         Shot("13_career_after_match");
                          GD.Print($"[menu-shot] comp after match: {c.DebugCompSummary()}");
-                         _forceBothTeamsCpu = false;
                          Adv();
                      } break;
             case 31: if (f >= 3) { c.DebugBack(); Adv(); } break;                      // dashboard -> home
@@ -2800,6 +3463,10 @@ public partial class Main : Node2D
 
     public override void _PhysicsProcess(double delta)
     {
+        // Menu music follows the app state (start on menu, hard-stop on match,
+        // resume on return). No-op headless (node never created).
+        UpdateMenuMusic();
+
         bool acceptPressed = Input.IsActionJustPressed("ui_accept");
         bool cancelPressed = Input.IsActionJustPressed("ui_cancel");
         bool pausePressed  = Input.IsActionJustPressed("swos_pause");   // "P", original pause key
@@ -2816,6 +3483,7 @@ public partial class Main : Node2D
                 _match = MatchState.NewMatch();
                 EnterPreKickoff();
                 _appState = AppState.Menu;
+                DestroyMatchAudio();
             }
         }
         else if (_appState == AppState.Menu)
@@ -2922,6 +3590,46 @@ public partial class Main : Node2D
                             if (_competitionMatchPending)
                             {
                                 _lastCompetitionResult = (_match.ScorePlayer, _match.ScoreOpponent);
+                                // The human always sims on the top/home slots
+                                // (0..10). Average their consumed energy and map
+                                // to the 0..10 distance scale MatchEffects uses
+                                // (surrogate is a flat 5). Read while sim memory
+                                // is still live — before NewMatch zeroes it.
+                                int homeConsumed = 0;
+                                for (int slot = 0; slot <= 10; slot++)
+                                    homeConsumed += OpenSwos.Sim.Port.PlayerEnergy.Max
+                                        - OpenSwos.Sim.Port.PlayerEnergy.ReadEnergy(slot);
+                                homeConsumed /= 11;
+                                _lastMatchHomeDistance =
+                                    homeConsumed * 10 / OpenSwos.Sim.Port.PlayerEnergy.Max;
+
+                                // Post-match injuries (UpdatePlayerInjuries,
+                                // swos.asm:35651-35701). The human always plays the
+                                // home/top physical store (team1InGameTeamPlayers),
+                                // which never moves (half-time swaps only pointer
+                                // fields). Scan all 16 slots (a starter subbed off
+                                // keeps his record in the 11..15 range) and record
+                                // the severity of every slot that finished injured
+                                // and was NOT substituted off — the original skips
+                                // subbed-off and CPU players (only the human club
+                                // persists). Read while sim memory is still live.
+                                var injuries = new System.Collections.Generic.List<(int slot, int severity)>();
+                                int injBase = OpenSwos.SwosVm.Memory.Addr.team1InGameTeamPlayers;
+                                for (int islot = 0; islot < 16; islot++)
+                                {
+                                    int rec = injBase + islot * OpenSwos.Sim.Port.TeamDataLoader.PlayerInfoSize;
+                                    if (OpenSwos.SwosVm.Memory.ReadByte(rec + OpenSwos.Sim.Port.TeamDataLoader.OffSubstituted) != 0)
+                                        continue;
+                                    if (OpenSwos.SwosVm.Memory.ReadByte(rec + OpenSwos.Sim.Port.TeamDataLoader.OffIsInjured) == 0)
+                                        continue;
+                                    int severity = (OpenSwos.SwosVm.Memory.ReadByte(
+                                        rec + OpenSwos.Sim.Port.TeamDataLoader.OffInjuriesBits) >> 5) & 7;
+                                    if (severity <= 0) continue;
+                                    int index = OpenSwos.SwosVm.Memory.ReadByte(
+                                        rec + OpenSwos.Sim.Port.TeamDataLoader.OffIndex);
+                                    injuries.Add((index, severity));
+                                }
+                                _lastMatchInjuries = injuries.Count > 0 ? injuries : null;
                                 _competitionMatchPending = false;
                             }
                             else
@@ -2933,6 +3641,7 @@ public partial class Main : Node2D
                             _match = MatchState.NewMatch();
                             EnterPreKickoff();
                             _appState = AppState.Menu;
+                            DestroyMatchAudio();
                         }
                         break;
 
@@ -3031,6 +3740,8 @@ public partial class Main : Node2D
         // Injury cross markers (task #184) — small red cross over any player
         // who is down injured, mirroring the pitch's player pool.
         UpdateInjuryMarkers();
+        // Energy bars (OpenSWOS fatigue overlay) — small fill bar above the head.
+        UpdateEnergyBars();
         // Camera is a child of _playerSprite. The sprite is positioned at
         //   sprite.world = player + (8-sCx - ox, 8-sCy - oy)
         // so to put the camera back at player.world (foot), camera.local must equal
@@ -3871,15 +4582,19 @@ public partial class Main : Node2D
         // See game/scripts/Sim/Port/TeamDataLoader.cs for the layout.
         SeedTeamData();
 
+        // OpenSWOS fatigue: enable the speed penalty for career/competition
+        // matches, or when the master OPTIONS toggle is on. Set ONCE per match
+        // (deterministic — never flipped mid-match). Energy itself is always
+        // tracked (bar shows drain regardless).
+        OpenSwos.Sim.Port.PlayerEnergy.EffectEnabled = _fatigueSim || _competitionMatchPending;
+
         // 3a'. resetResult (result.cpp:104-118) — the original calls it at match
         // init; our Result scorer arrays are C# STATICS that survive Memory.Init,
         // so without this the previous match's scorer list bleeds into the next
         // one (user repro: career match 2 still showed match 1's 6-1 scorers).
         {
-            string home = (_homeTeamIndex >= 0 && _homeTeamIndex < _allTeams.Count)
-                ? _allTeams[_homeTeamIndex].Name : "";
-            string away = (_awayTeamIndex >= 0 && _awayTeamIndex < _allTeams.Count)
-                ? _allTeams[_awayTeamIndex].Name : "";
+            string home = EffectiveTeam(true)?.Name ?? "";
+            string away = EffectiveTeam(false)?.Name ?? "";
             OpenSwos.Sim.Port.Result.ResetResult(home, away);
         }
 
@@ -3985,6 +4700,72 @@ public partial class Main : Node2D
 
         _swosVmDirty = false;
         GD.Print("InitSwosVmFromMatchSetup: seeded SwosVm with kick-off layout.");
+
+        // In-match audio — create the MatchAudio node (skipped headless) and load
+        // samples now that team data (home kit colour for the intro chant) is
+        // seeded. OnMatchInit is idempotent, so the half-time re-seed keeps the
+        // crowd bed + chants running continuously. See game/scripts/Audio/.
+        EnsureMatchAudio();
+        // Belt-and-suspenders: hard-stop any front-end music the instant a match
+        // begins (the per-frame driver also does this, but do it immediately).
+        OpenSwos.Audio.MenuMusic.Instance?.Stop();
+        // Resolve the SOUND preference (PC/AMIGA) against availability and hand it
+        // to MatchAudio BEFORE OnMatchInit locks it in for the match.
+        OpenSwos.Audio.MatchAudio.Source = ResolveSoundSource();
+        OpenSwos.Audio.MatchAudio.Instance?.OnMatchInit();
+    }
+
+    // Create the MatchAudio scene node once per match (host-side only). Never in
+    // headless mode — the sim's per-frame MatchAudio.Tick() no-ops when Instance
+    // is null, so --competition-test / --menu-shot never touch the audio bus.
+    private void EnsureMatchAudio()
+    {
+        if (DisplayServer.GetName() == "headless") return;
+        if (OpenSwos.Audio.MatchAudio.Instance != null) return;
+        var node = new OpenSwos.Audio.MatchAudio { Name = "MatchAudio" };
+        AddChild(node);
+    }
+
+    // Tear down the MatchAudio node on the return to menu so the next match
+    // starts with a fresh crowd/chant/commentary state (and the home team's
+    // intro chant is re-picked from the new kit colour).
+    private void DestroyMatchAudio()
+    {
+        var node = OpenSwos.Audio.MatchAudio.Instance;
+        if (node != null) { node.QueueFree(); }
+    }
+
+    // Front-end music node — host-side only, never headless (mirrors EnsureMatchAudio).
+    private void EnsureMenuMusic()
+    {
+        if (DisplayServer.GetName() == "headless") return;
+        if (OpenSwos.Audio.MenuMusic.Instance != null) return;
+        AddChild(new OpenSwos.Audio.MenuMusic { Name = "MenuMusic" });
+    }
+
+    // Resolve the persisted preference against availability. OFF stays OFF; an
+    // unavailable choice degrades to the first available of AMIGA, PC, CUSTOM
+    // (CUSTOM is always available → music always plays unless the user picks OFF).
+    private OpenSwos.Audio.MenuMusic.MusicSource ResolveMenuMusic()
+    {
+        var pref = _menuMusic;
+        if (pref == OpenSwos.Audio.MenuMusic.MusicSource.Off) return pref;
+        if (MenuMusicSourceAvailable(pref)) return pref;
+        foreach (var s in new[] { OpenSwos.Audio.MenuMusic.MusicSource.Amiga,
+                                  OpenSwos.Audio.MenuMusic.MusicSource.Pc,
+                                  OpenSwos.Audio.MenuMusic.MusicSource.Custom })
+            if (MenuMusicSourceAvailable(s)) return s;
+        return OpenSwos.Audio.MenuMusic.MusicSource.Off;
+    }
+
+    // Per-frame: menu music follows the app state. Plays in the menu (idempotent),
+    // hard-stops the moment a match/pause begins. Resumes on return to menu.
+    private void UpdateMenuMusic()
+    {
+        var mm = OpenSwos.Audio.MenuMusic.Instance;
+        if (mm == null) return;
+        if (_appState == AppState.Menu) mm.Play(ResolveMenuMusic());
+        else mm.Stop();
     }
 
     // Populates per-team PlayerInfo records + name + shotChanceTable + tactics
@@ -3999,9 +4780,8 @@ public partial class Main : Node2D
     // by Bench's data swap) → TeamRecord.Players[roster].Face.
     private int FaceForSlot(int slot, bool topTeam)
     {
-        int teamIdx = topTeam ? _homeTeamIndex : _awayTeamIndex;
-        if (teamIdx < 0 || teamIdx >= _allTeams.Count) return 0;
-        var team = _allTeams[teamIdx];
+        var team = EffectiveTeam(topTeam);
+        if (team is null) return 0;
         int ord = slot - (topTeam ? 0 : OpenSwos.SwosVm.PlayerSprite.TeamSize);   // 0..10 = PlayerInfo slot
         if (ord < 0 || ord > 15) return 0;
         int playersBase = topTeam
@@ -4015,12 +4795,22 @@ public partial class Main : Node2D
         return (f >= 0 && f < OpenSwos.Assets.KitPalette.FaceCount) ? f : 0;
     }
 
+    // Resolves the TeamRecord the sim should actually use for a side: the
+    // per-match override when one is set (career fixtures seed the LIVE squad —
+    // see Main.MenuHost.cs _homeTeamOverride/_awayTeamOverride), otherwise the
+    // read-only master record from _allTeams. home == true is the top/human side.
+    private OpenSwos.Assets.TeamRecord? EffectiveTeam(bool home)
+    {
+        var over = home ? _homeTeamOverride : _awayTeamOverride;
+        if (over is not null) return over;
+        int idx = home ? _homeTeamIndex : _awayTeamIndex;
+        return (idx >= 0 && idx < _allTeams.Count) ? _allTeams[idx] : null;
+    }
+
     private void SeedTeamData()
     {
-        OpenSwos.Assets.TeamRecord? homeTeam =
-            (_homeTeamIndex >= 0 && _homeTeamIndex < _allTeams.Count) ? _allTeams[_homeTeamIndex] : null;
-        OpenSwos.Assets.TeamRecord? awayTeam =
-            (_awayTeamIndex >= 0 && _awayTeamIndex < _allTeams.Count) ? _allTeams[_awayTeamIndex] : null;
+        OpenSwos.Assets.TeamRecord? homeTeam = EffectiveTeam(true);
+        OpenSwos.Assets.TeamRecord? awayTeam = EffectiveTeam(false);
 
         // P1 is always the top-team controller (tests force AI-vs-AI). Needed
         // both for TeamData wiring below and for the ScaleSkill price feedback
@@ -4826,6 +5616,59 @@ public partial class Main : Node2D
         }
     }
 
+    // === Energy bars (OpenSWOS fatigue overlay) ==============================
+    // 8×2 px bar above each on-pitch player's head, reading PlayerEnergy from
+    // the sim (0..4096 → 0..8 filled columns). Colour by fill: green >= 5,
+    // yellow >= 2, else red. Cloned from UpdateInjuryMarkers so it scrolls +
+    // y-sorts with the player sprite. Visibility gated by the ENERGY BAR option.
+    private ImageTexture GetEnergyBarTexture(int fillPx)
+    {
+        fillPx = System.Math.Clamp(fillPx, 0, 8);
+        if (_energyBarTextures.TryGetValue(fillPx, out var cached))
+            return cached;
+        var tex = ImageTexture.CreateFromImage(BuildEnergyBarImage(fillPx));
+        _energyBarTextures[fillPx] = tex;
+        return tex;
+    }
+
+    private static Image BuildEnergyBarImage(int fillPx)
+    {
+        const int w = 8, h = 2;
+        var img = Image.CreateEmpty(w, h, false, Image.Format.Rgba8);
+        var bg = new Color(0f, 0f, 0f, 0.65f);
+        Color fill = fillPx >= 5 ? new Color(0.2f, 0.85f, 0.2f)   // green
+                   : fillPx >= 2 ? new Color(0.9f, 0.85f, 0.15f)  // yellow
+                                 : new Color(0.9f, 0.2f, 0.15f);   // red
+        for (int x = 0; x < w; x++)
+            for (int y = 0; y < h; y++)
+                img.SetPixel(x, y, x < fillPx ? fill : bg);
+        return img;
+    }
+
+    private void UpdateEnergyBars()
+    {
+        bool active = _useSwosPort && _appState == AppState.Match;
+        for (int slot = 0; slot < _energyBarSprites.Length; slot++)
+        {
+            var bar = _energyBarSprites[slot];
+            if (bar is null) continue;
+            var pl = _portPlayerSprites[slot];
+            if (!_energyBar || !active || pl is null || !pl.Visible)
+            {
+                bar.Visible = false;
+                continue;
+            }
+            int energy = OpenSwos.Sim.Port.PlayerEnergy.ReadEnergy(slot);
+            int fillPx = System.Math.Clamp(
+                (energy * 8 + OpenSwos.Sim.Port.PlayerEnergy.Max / 2)
+                    / OpenSwos.Sim.Port.PlayerEnergy.Max, 0, 8);
+            bar.Texture = GetEnergyBarTexture(fillPx);
+            bar.Position = new Vector2(pl.Position.X, pl.Position.Y - 13);
+            bar.ZIndex = pl.ZIndex + 3;
+            bar.Visible = true;
+        }
+    }
+
     // === Referee + card rendering (port mode, task #181) =====================
     // Reads the ported referee FSM (Sim/Port/Referee.cs) and draws the referee
     // sprite + card. The FSM already runs the run-in / wait / card / leave state
@@ -5346,8 +6189,20 @@ public partial class Main : Node2D
     //      (swos-port centres vertically — gameFieldMapping.cpp:51 — which
     //      would float the bar 36 px above the bottom of our taller viewport;
     //      the original look is bottom-flush, so we bottom-align instead.)
-    private const int ViewportWidth  = 384;  // project.godot window/size/viewport_width
-    private const int ViewportHeight = 272;  // project.godot window/size/viewport_height
+    // DESIGN space stays 384×272 — all match/menu layout math is authored at
+    // this resolution. The root viewport is now the NATIVE 1152×816 (=×3), so
+    // the match world (Camera2D.Zoom) and the UI CanvasLayer transform each
+    // scale design coords up by RenderScale to fill it 1:1.
+    private const int ViewportWidth  = 384;  // design width  (native = ×RenderScale) — MATCH HUD space
+    private const int ViewportHeight = 272;  // design height (native = ×RenderScale) — MATCH HUD space
+    private const int RenderScale    = 3;    // native viewport = 1152×816 = design ×3 (match world + HUD)
+    // The menu/tables front-end lives at ×2 instead of ×3 (user preference: the
+    // ×2 charset reads crisper + more compact than ×3). Same native 1152×816
+    // viewport, so the menu's design space is native/2 = 576×408. The match HUD
+    // stays at ×3 on its own `hud` CanvasLayer (see _Ready) so it never shrinks.
+    private const int MenuScale          = 2;
+    private const int MenuViewportWidth  = ViewportWidth  * RenderScale / MenuScale;  // 576
+    private const int MenuViewportHeight = ViewportHeight * RenderScale / MenuScale;  // 408
     private const int ResultVgaToViewportX = (ViewportWidth - 320) / 2;  // 32
     private const int ResultVgaToViewportY = ViewportHeight - 200;       // 72
 
@@ -6007,12 +6862,16 @@ public partial class Main : Node2D
     private void ShowFirstRunMessage()
     {
         var layer = new CanvasLayer { Layer = 100 };
+        // Full-screen help overlay in the ×2 menu design space (576×408 scaled to
+        // the native 1152×816 viewport) — matches the menu layer so the wrapped
+        // paragraph has the same width the menu client uses.
+        layer.Transform = Transform2D.Identity.Scaled(new Vector2(MenuScale, MenuScale));
         AddChild(layer);
 
         var bg = new ColorRect
         {
             Color = new Color(0.04f, 0.10f, 0.04f, 1f),
-            Size = new Vector2(ViewportWidth, ViewportHeight),
+            Size = new Vector2(MenuViewportWidth, MenuViewportHeight),
         };
         layer.AddChild(bg);
 
@@ -6038,7 +6897,7 @@ public partial class Main : Node2D
             VerticalAlignment = VerticalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             Position = new Vector2(0, 0),
-            Size = new Vector2(ViewportWidth, ViewportHeight),
+            Size = new Vector2(MenuViewportWidth, MenuViewportHeight),
             Modulate = Colors.White,
         };
         layer.AddChild(label);
@@ -6391,6 +7250,13 @@ public partial class Main : Node2D
                 "\"preMatchMenus\"\\s*:\\s*(true|false)");
             if (mp.Success)
                 _showPreMatchMenus = mp.Groups[1].Value == "true";
+            // Energy bar overlay (default ON) + master fatigue effect (default OFF).
+            var mEnergyBar = System.Text.RegularExpressions.Regex.Match(text,
+                "\"energyBar\"\\s*:\\s*(true|false)");
+            if (mEnergyBar.Success) _energyBar = mEnergyBar.Groups[1].Value == "true";
+            var mFatigueSim = System.Text.RegularExpressions.Regex.Match(text,
+                "\"fatigueSim\"\\s*:\\s*(true|false)");
+            if (mFatigueSim.Success) _fatigueSim = mFatigueSim.Groups[1].Value == "true";
             // Display mode: "windowed" / "fill" / "integer" (default windowed).
             // A persisted fullscreen mode also seeds _lastFullscreenMode so
             // Alt+Enter restores what the player last used.
@@ -6407,6 +7273,32 @@ public partial class Main : Node2D
                 if (_displayMode != DisplayMode.Windowed) _lastFullscreenMode = _displayMode;
                 GD.Print($"Settings loaded: displayMode = {DisplayModeToLabel(_displayMode)}");
             }
+            // Sound source: "pc" / "amiga" (default pc). Resolved against
+            // availability at match start, so a stale value degrades gracefully.
+            var mss = System.Text.RegularExpressions.Regex.Match(text,
+                "\"soundSource\"\\s*:\\s*\"(pc|amiga)\"");
+            if (mss.Success)
+            {
+                _soundSource = mss.Groups[1].Value == "amiga"
+                    ? OpenSwos.Audio.MatchAudio.SoundSource.Amiga
+                    : OpenSwos.Audio.MatchAudio.SoundSource.Pc;
+                GD.Print($"Settings loaded: soundSource = {_soundSource}");
+            }
+            // Front-end menu music: "amiga" / "pc" / "custom" / "off". When the
+            // key is ABSENT the field keeps its AMIGA default (fresh settings →
+            // AMIGA). Resolved against availability at play time.
+            var mmu = System.Text.RegularExpressions.Regex.Match(text,
+                "\"menuMusic\"\\s*:\\s*\"(amiga|pc|custom|off)\"");
+            if (mmu.Success)
+            {
+                _menuMusic = mmu.Groups[1].Value switch {
+                    "pc" => OpenSwos.Audio.MenuMusic.MusicSource.Pc,
+                    "custom" => OpenSwos.Audio.MenuMusic.MusicSource.Custom,
+                    "off" => OpenSwos.Audio.MenuMusic.MusicSource.Off,
+                    _ => OpenSwos.Audio.MenuMusic.MusicSource.Amiga,
+                };
+                GD.Print($"Settings loaded: menuMusic = {_menuMusic}");
+            }
         }
         catch (System.Exception ex)
         {
@@ -6416,6 +7308,10 @@ public partial class Main : Node2D
 
     private void SaveSettings()
     {
+        // Harness runs (--menu-shot etc.) tweak speed/toggles for their own pacing;
+        // those must never leak into the player's persisted settings (a leaked
+        // gameSpeedScale=3.00 once made every real match run 3x too fast).
+        if (_menuShotActive) return;
         try
         {
             using var f = Godot.FileAccess.Open(SettingsPath, Godot.FileAccess.ModeFlags.Write);
@@ -6428,12 +7324,25 @@ public partial class Main : Node2D
                 (OpenSwos.Sim.Port.SkillScaling.AllPlayerTeamsEqual ? "true" : "false") +
                 ",\"preMatchMenus\":" +
                 (_showPreMatchMenus ? "true" : "false") +
+                ",\"energyBar\":" +
+                (_energyBar ? "true" : "false") +
+                ",\"fatigueSim\":" +
+                (_fatigueSim ? "true" : "false") +
                 ",\"displayMode\":\"" +
                 (_displayMode switch
                 {
                     DisplayMode.FullscreenFill => "fill",
                     DisplayMode.FullscreenInteger => "integer",
                     _ => "windowed",
+                }) + "\"" +
+                ",\"soundSource\":\"" +
+                (_soundSource == OpenSwos.Audio.MatchAudio.SoundSource.Amiga ? "amiga" : "pc") + "\"" +
+                ",\"menuMusic\":\"" +
+                (_menuMusic switch {
+                    OpenSwos.Audio.MenuMusic.MusicSource.Pc => "pc",
+                    OpenSwos.Audio.MenuMusic.MusicSource.Custom => "custom",
+                    OpenSwos.Audio.MenuMusic.MusicSource.Off => "off",
+                    _ => "amiga",
                 }) + "\"" +
                 "}";
             f.StoreString(json);

@@ -14,6 +14,9 @@ public sealed class MenuEntry
     public EntryKind Kind = EntryKind.Button;
     public MenuTheme.Style Style = MenuTheme.Style.Tool;
     public bool Big = true;
+    // Gentle two-colour sheen animated on the button background each frame
+    // (used by the HOME screen CAREER shortcut).
+    public bool Shimmer;
 
     public System.Func<string> Label = () => "";
     public System.Func<string>? Value;        // Option only
@@ -23,6 +26,7 @@ public sealed class MenuEntry
 
     // Explicit geometry (screen fills these during layout).
     public int X, Y, W, H;
+    public int WidthOverride;   // 0 = default per-kind width
 
     public bool Selectable => Kind != EntryKind.Label;
 
@@ -71,10 +75,23 @@ public interface IMenuHost
 
     // --- competition support ---
     // Launches a sim match with the HUMAN always on the first (home) slot.
-    void StartCompetitionMatch(int playerMasterIndex, int opponentMasterIndex);
+    // Optional overrides supply match-ready TeamRecords (e.g. the live career
+    // squad) in place of the read-only master roster for the two sides.
+    void StartCompetitionMatch(int playerMasterIndex, int opponentMasterIndex,
+        OpenSwos.Assets.TeamRecord? homeOverride = null,
+        OpenSwos.Assets.TeamRecord? awayOverride = null);
     // Non-null exactly once after a competition match reaches full time:
     // (playerGoals, opponentGoals). Cleared by the call.
     (int player, int opponent)? TakeLastCompetitionResult();
+    // Companion to TakeLastCompetitionResult: the human (HOME) team's real
+    // in-match energy consumption as a 0..10 distance metric, or null when the
+    // last match produced none. Cleared by the call. See Main.cs FullTime.
+    int? TakeLastMatchHomeDistance();
+    // Companion to TakeLastCompetitionResult: the human (HOME) team's post-match
+    // injuries as (in-game slot, severity 1..7) for slots that finished injured
+    // and were NOT substituted off (UpdatePlayerInjuries, swos.asm:35651-35701).
+    // Null/empty when none. Cleared by the call. See Main.cs FullTime.
+    System.Collections.Generic.List<(int slot, int severity)>? TakeLastMatchInjuries();
     int TeamStrength(int idx);          // avg per-stat skill 1..7
     int TeamDivision(int idx);
     int TeamNation(int idx);
@@ -97,6 +114,23 @@ public interface IMenuHost
     void ToggleAllPlayerTeamsEqual();
     bool ShowPreMatchMenus { get; }
     void ToggleShowPreMatchMenus();
+    // In-match energy bar overlay (renderer only) + master fatigue-effect toggle
+    // for non-career matches. See Main.cs _energyBar / _fatigueSim.
+    bool EnergyBar { get; }
+    void ToggleEnergyBar();
+    bool FatigueSim { get; }
+    void ToggleFatigueSim();
+
+    // --- audio ---
+    // SOUND source (PC / AMIGA); unavailable sources render as "X (N/A)" and are
+    // skipped when cycling.
+    string SoundSourceLabel { get; }
+    void StepSoundSource(int delta);
+
+    // Front-end MUSIC source (AMIGA / PC / CUSTOM / OFF); unavailable sources
+    // render as "X (N/A)" and are skipped when cycling.
+    string MenuMusicLabel { get; }
+    void StepMenuMusic(int delta);
 
     // --- display / fullscreen ---
     // Mirrors the F11 cycle: Windowed / Fullscreen Fill / Fullscreen Integer.

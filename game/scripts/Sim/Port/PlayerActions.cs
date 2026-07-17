@@ -146,6 +146,13 @@ public static class PlayerActions
             }
         }
 
+        // OpenSWOS OPTIONAL fatigue penalty (NOT in the original — dead
+        // 'FITNESS*****' string swos.asm:186013 has no XREF). Reuse the same
+        // 46-per-skill-point step the speed table uses so the reduction stays
+        // in the engine's integer quantisation. Gated + set-once at match setup.
+        if (PlayerEnergy.EffectEnabled)
+            newSpeed -= 46 * PlayerEnergy.SpeedStep(a1PlayerAddr);
+
         // player.cpp:45-48 — controlled player carrying the ball runs at 87.5%.
         short playerHasBall = TeamData.PlayerHasBall(a6TeamBase == TeamData.TopBase);
         if (a1PlayerAddr == controlledPlayer && playerHasBall != 0)
@@ -2052,6 +2059,8 @@ public static class PlayerActions
     public static void StopGoodPassSample()
     {
         Memory.WriteWord(Memory.Addr.playingGoodPassTimer, -1);
+        // player.cpp:3764 stopGoodPassSample — cancel the pending good-pass comment.
+        OpenSwos.Audio.MatchAudio.CancelGoodPass();
     }
 
 
@@ -2076,6 +2085,9 @@ public static class PlayerActions
         if (timer != 5) return;
         Memory.WriteWord(Memory.Addr.goodPassTimer, 0);
         Memory.WriteWord(Memory.Addr.playingGoodPassTimer, 10);
+        // player.cpp:3788-3793 — every 5th good pass arms the 10-tick good-pass
+        // comment. The audio layer owns the countdown (CommentaryEngine).
+        OpenSwos.Audio.MatchAudio.EnqueueGoodPass();
     }
 
 
@@ -2090,21 +2102,12 @@ public static class PlayerActions
     // external/swos-port/src/util/random.cpp.
     private static int SwosRand() => Rng.NextByte();
 
-    // SWOS::PlayKickSample — audio cue. STUB.
-    private static void PlayKickSample()
-    {
-        // TODO: wire to audio bus.
-    }
+    // SWOS::PlayKickSample — kick / header / deflect SFX (sfx.cpp:129).
+    private static void PlayKickSample() => OpenSwos.Audio.MatchAudio.PlayKick();
 
-    // SWOS::PlayGoodTackleComment — audio cue. STUB.
-    private static void PlayGoodTackleComment()
-    {
-        // TODO: wire to audio bus.
-    }
+    // SWOS::PlayGoodTackleComment — small (yielding) comment (comments.cpp:408).
+    private static void PlayGoodTackleComment() => OpenSwos.Audio.MatchAudio.GoodTackleComment();
 
-    // playHeaderComment — audio cue. STUB.
-    private static void PlayHeaderComment(int a6TeamBase)
-    {
-        // TODO: wire to audio bus.
-    }
+    // playHeaderComment — small (yielding) comment (comments.cpp:228).
+    private static void PlayHeaderComment(int a6TeamBase) => OpenSwos.Audio.MatchAudio.HeaderComment();
 }

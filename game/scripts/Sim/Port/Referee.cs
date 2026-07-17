@@ -636,8 +636,8 @@ public static class Referee
     // External: comments.cpp enqueueRedCardSample / enqueueYellowCardSample.
     // Plays the referee whistle + voice sample.
     // TODO from external/swos-port/src/audio/comments.cpp
-    private static void StubEnqueueRedCardSample()    { /* TODO */ }
-    private static void StubEnqueueYellowCardSample() { /* TODO */ }
+    private static void StubEnqueueRedCardSample()    => OpenSwos.Audio.MatchAudio.EnqueueRedCard();
+    private static void StubEnqueueYellowCardSample() => OpenSwos.Audio.MatchAudio.EnqueueYellowCard();
 
     // Reads players[index].shirtNumber from a TeamGame (in-game team) struct.
     // PlayerInfo struct (swos.h:162) has shirtNumber at offset +3.

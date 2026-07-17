@@ -554,6 +554,12 @@ public static class UpdatePlayers
             byte isMoving = (byte)((dx == 0 && dy == 0) ? 0x00 : 0xFF);
             Memory.WriteByte(spriteAddr + PlayerSprite.OffIsMoving, isMoving);
 
+            // OpenSWOS energy drain (optional enhancement; original SWOS has no
+            // in-match fatigue). Runs every per-team-tick for every player so
+            // the energy bar reflects real movement; the speed penalty it feeds
+            // is gated separately by PlayerEnergy.EffectEnabled.
+            PlayerEnergy.DrainSlot(spriteAddr);
+
             // updatePlayers.cpp:429-455 — early-out branches for TACKLED + ROLLING_INJURED.
             byte state = Memory.ReadByte(spriteAddr + PlayerSprite.OffPlayerState);
             if (state == (byte)PortPlayerState.kTackled)
@@ -1861,7 +1867,9 @@ public static class UpdatePlayers
                 BallSprite.Speed = 0;                                         // :4078
                 Memory.WriteWord(teamBase + TeamData.OffGoalkeeperDivingRight, 1); // :4080
                 PlayerUpdate.GoalkeeperClaimedTheBall(spriteAddr, topTeam);   // :4083
-                // :4087-4088 — PlayGoalkeeperSavedComment / PlayMissGoalSample (audio stubs).
+                // updatePlayers.cpp:4087-4088 — PlayGoalkeeperSavedComment / PlayMissGoalSample.
+                OpenSwos.Audio.MatchAudio.KeeperSavedComment();
+                OpenSwos.Audio.MatchAudio.PlayMissGoal();
                 goto l_dive_done;                                             // :4090
             }
 
@@ -1937,7 +1945,9 @@ public static class UpdatePlayers
             Memory.WriteWord(oppBase + TeamData.OffPassingToPlayer, 0);
             if (TeamData.GoalkeeperSavedCommentTimer(topTeam) >= 0)
                 Memory.WriteDword(oppBase + TeamData.OffPassingKickingPlayer, 0);
-            // :4392-4394 — PlayGoalkeeperSavedComment / PlayMissGoalSample (audio stubs).
+            // updatePlayers.cpp:4392-4394 — PlayGoalkeeperSavedComment / PlayMissGoalSample.
+            OpenSwos.Audio.MatchAudio.KeeperSavedComment();
+            OpenSwos.Audio.MatchAudio.PlayMissGoal();
 
         l_dive_done:;
         l_dive_no_contact:;

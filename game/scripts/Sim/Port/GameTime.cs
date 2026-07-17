@@ -754,9 +754,8 @@ public static class GameTime
     // call site so it's worth keeping as a function (parity with C++ port).
     public static bool AmigaModeActive() => false;
 
-    // External: sfx.cpp playEndGameWhistleSample().
-    // TODO from external/swos-port/src/audio/sfx.cpp:playEndGameWhistleSample
-    private static void StubPlayEndGameWhistleSample() { /* TODO */ }
+    // sfx.cpp playEndGameWhistleSample() — whistle at each period end (half/full).
+    private static void StubPlayEndGameWhistleSample() => OpenSwos.Audio.MatchAudio.PlayEndGameWhistle();
 
     // GameState constants from swos.h:577-595 — also referenced by orchestrator
     // (Main.cs). NOTE: kFirstHalfEnded is 29 (swos.h:590) — an earlier port

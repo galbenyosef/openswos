@@ -27,19 +27,14 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     int OpenSwos.Menu.IMenuHost.HomeIndex => _homeTeamIndex;
     int OpenSwos.Menu.IMenuHost.AwayIndex => _awayTeamIndex;
     // Compact, ASCII-only team label for the value box (the SWOS charset has no
-    // '·'/'&', and the box is narrow): "NAME  AVGn". Full detail lives on the
-    // TEAM SETUP squad screen.
+    // '·'/'&', and the box is narrow). Just the club name — skill detail lives
+    // on the TEAM SETUP squad screen (the old "AVGn" suffix was noise).
     string OpenSwos.Menu.IMenuHost.TeamTag(int idx)
     {
         if (idx < 0 || idx >= _allTeams.Count) return "?";
-        var t = _allTeams[idx];
-        int n = t.Players.Count, sum = 0;
-        foreach (var p in t.Players)
-            sum += p.Passing + p.Shooting + p.Heading + p.Tackling + p.Control + p.Speed + p.Finishing;
-        int avg = (n > 0) ? sum / (n * 7) : 0;
-        string name = (t.Name ?? "").Trim();
-        if (name.Length > 18) name = name.Substring(0, 18);
-        return $"{name}  AVG{avg}";
+        string name = (_allTeams[idx].Name ?? "").Trim();
+        if (name.Length > 22) name = name.Substring(0, 22);
+        return name;
     }
 
     string OpenSwos.Menu.IMenuHost.TeamName(int idx)
@@ -139,6 +134,8 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     // ---- actions -------------------------------------------------------------
     void OpenSwos.Menu.IMenuHost.StartMatch()
     {
+        _homeTeamOverride = null;
+        _awayTeamOverride = null;
         _match = MatchState.NewMatch();
         EnterPreKickoff();
         _appState = AppState.Match;
@@ -155,17 +152,35 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     // TakeLastCompetitionResult.
     private bool _competitionMatchPending;
     private (int player, int opponent)? _lastCompetitionResult;
+    // The human (HOME, sim slots 0..10) team's real in-match energy consumption
+    // as a 0..10 distance metric, captured at FullTime alongside the score and
+    // handed to MatchEffects for the player's club. Null when none was computed.
+    private int? _lastMatchHomeDistance;
+    // The human (HOME) team's post-match injuries as (in-game slot, severity 1..7),
+    // captured at the same FullTime; handed to the career layer for persistence.
+    private System.Collections.Generic.List<(int slot, int severity)>? _lastMatchInjuries;
 
-    void OpenSwos.Menu.IMenuHost.StartCompetitionMatch(int playerMasterIndex, int opponentMasterIndex)
+    // Optional per-match TeamRecord overrides. When set (career fixtures), the
+    // sim seeds these LIVE squads instead of the read-only _allTeams master
+    // records. Home = the human's slot (see StartCompetitionMatch). Cleared by
+    // every non-competition launch. Consumed via EffectiveTeam() in Main.cs.
+    private OpenSwos.Assets.TeamRecord? _homeTeamOverride;
+    private OpenSwos.Assets.TeamRecord? _awayTeamOverride;
+
+    void OpenSwos.Menu.IMenuHost.StartCompetitionMatch(int playerMasterIndex, int opponentMasterIndex,
+        OpenSwos.Assets.TeamRecord? homeOverride, OpenSwos.Assets.TeamRecord? awayOverride)
     {
         int n = _allTeams.Count; if (n == 0) return;
         _homeTeamIndex = System.Math.Clamp(playerMasterIndex, 0, n - 1);
         _awayTeamIndex = System.Math.Clamp(opponentMasterIndex, 0, n - 1);
         if (_awayTeamIndex == _homeTeamIndex) _awayTeamIndex = (_awayTeamIndex + 1) % n;
+        _homeTeamOverride = homeOverride;
+        _awayTeamOverride = awayOverride;
         _opponentMode = OpponentMode.Ai;   // competition fixtures are vs CPU
         ApplyMatchSetup();
         _competitionMatchPending = true;
         _lastCompetitionResult = null;
+        _lastMatchInjuries = null;
         _match = MatchState.NewMatch();
         EnterPreKickoff();
         _appState = AppState.Match;
@@ -176,6 +191,21 @@ public partial class Main : OpenSwos.Menu.IMenuHost
         var r = _lastCompetitionResult;
         _lastCompetitionResult = null;
         return r;
+    }
+
+    int? OpenSwos.Menu.IMenuHost.TakeLastMatchHomeDistance()
+    {
+        var d = _lastMatchHomeDistance;
+        _lastMatchHomeDistance = null;
+        return d;
+    }
+
+    System.Collections.Generic.List<(int slot, int severity)>?
+        OpenSwos.Menu.IMenuHost.TakeLastMatchInjuries()
+    {
+        var inj = _lastMatchInjuries;
+        _lastMatchInjuries = null;
+        return inj;
     }
 
     int OpenSwos.Menu.IMenuHost.TeamStrength(int idx)
@@ -231,6 +261,8 @@ public partial class Main : OpenSwos.Menu.IMenuHost
 
     void OpenSwos.Menu.IMenuHost.StartLocalMultiplayerMatch()
     {
+        _homeTeamOverride = null;
+        _awayTeamOverride = null;
         _opponentMode = OpponentMode.Player2;
         ApplyMatchSetup();
         _match = MatchState.NewMatch();
@@ -273,6 +305,99 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     {
         _showPreMatchMenus = !_showPreMatchMenus;
         SaveSettings();
+    }
+
+    // ENERGY BAR — renderer-only overlay visibility (energy is always tracked in
+    // the sim; this just shows/hides the on-pitch bars). PLAYER FATIGUE — the
+    // master toggle that enables the speed penalty in NON-career matches
+    // (competition/career always enable it, see InitSwosVmFromMatchSetup).
+    bool OpenSwos.Menu.IMenuHost.EnergyBar => _energyBar;
+    void OpenSwos.Menu.IMenuHost.ToggleEnergyBar() { _energyBar = !_energyBar; SaveSettings(); }
+    bool OpenSwos.Menu.IMenuHost.FatigueSim => _fatigueSim;
+    void OpenSwos.Menu.IMenuHost.ToggleFatigueSim() { _fatigueSim = !_fatigueSim; SaveSettings(); }
+
+    // ---- audio (SOUND: PC / AMIGA) -------------------------------------------
+    // The player's PREFERENCE (persisted). What actually plays is resolved against
+    // availability at match start (ResolveSoundSource), so a persisted-but-missing
+    // source degrades gracefully. Availability probes are cheap+cached.
+    private OpenSwos.Audio.MatchAudio.SoundSource _soundSource =
+        OpenSwos.Audio.MatchAudio.SoundSource.Pc;
+
+    private static bool SoundSourceAvailable(OpenSwos.Audio.MatchAudio.SoundSource s) =>
+        s == OpenSwos.Audio.MatchAudio.SoundSource.Amiga
+            ? OpenSwos.Audio.MatchAudio.AmigaAvailable()
+            : OpenSwos.Audio.MatchAudio.PcAvailable();
+
+    string OpenSwos.Menu.IMenuHost.SoundSourceLabel
+    {
+        get
+        {
+            string name = _soundSource == OpenSwos.Audio.MatchAudio.SoundSource.Amiga ? "AMIGA" : "PC";
+            return SoundSourceAvailable(_soundSource) ? name : name + " (N/A)";
+        }
+    }
+
+    void OpenSwos.Menu.IMenuHost.StepSoundSource(int delta)
+    {
+        // Only two sources — cycling toggles to the OTHER one, but only if it is
+        // available (otherwise the unavailable option is skipped and we stay put).
+        var other = _soundSource == OpenSwos.Audio.MatchAudio.SoundSource.Pc
+            ? OpenSwos.Audio.MatchAudio.SoundSource.Amiga
+            : OpenSwos.Audio.MatchAudio.SoundSource.Pc;
+        if (SoundSourceAvailable(other)) _soundSource = other;
+        SaveSettings();
+    }
+
+    // Resolve the PREFERENCE against availability for the next match: prefer the
+    // player's choice if available, else the other if available, else PC (silent).
+    private OpenSwos.Audio.MatchAudio.SoundSource ResolveSoundSource()
+    {
+        if (SoundSourceAvailable(_soundSource)) return _soundSource;
+        var other = _soundSource == OpenSwos.Audio.MatchAudio.SoundSource.Pc
+            ? OpenSwos.Audio.MatchAudio.SoundSource.Amiga
+            : OpenSwos.Audio.MatchAudio.SoundSource.Pc;
+        if (SoundSourceAvailable(other)) return other;
+        return OpenSwos.Audio.MatchAudio.SoundSource.Pc;
+    }
+
+    // ---- menu music (MUSIC: AMIGA / PC / CUSTOM / OFF) -----------------------
+    // The player's front-end music PREFERENCE (persisted, field _menuMusic in
+    // Main.cs). What actually plays is resolved against availability by
+    // ResolveMenuMusic() and applied by UpdateMenuMusic(). Availability probes
+    // are cheap+cached. Mirrors the SOUND idiom above but for 4 states.
+    private static bool MenuMusicSourceAvailable(OpenSwos.Audio.MenuMusic.MusicSource s) => s switch
+    {
+        OpenSwos.Audio.MenuMusic.MusicSource.Amiga  => OpenSwos.Audio.MenuMusic.AmigaAvailable(),
+        OpenSwos.Audio.MenuMusic.MusicSource.Pc     => OpenSwos.Audio.MenuMusic.PcAvailable(),
+        OpenSwos.Audio.MenuMusic.MusicSource.Custom => OpenSwos.Audio.MenuMusic.CustomAvailable(),
+        _ => true,  // Off always "available"
+    };
+    private static string MenuMusicName(OpenSwos.Audio.MenuMusic.MusicSource s) => s switch
+    {
+        OpenSwos.Audio.MenuMusic.MusicSource.Amiga => "AMIGA",
+        OpenSwos.Audio.MenuMusic.MusicSource.Pc => "PC",
+        OpenSwos.Audio.MenuMusic.MusicSource.Custom => "CUSTOM",
+        _ => "OFF",
+    };
+    string OpenSwos.Menu.IMenuHost.MenuMusicLabel
+    {
+        get { string n = MenuMusicName(_menuMusic); return MenuMusicSourceAvailable(_menuMusic) ? n : n + " (N/A)"; }
+    }
+    void OpenSwos.Menu.IMenuHost.StepMenuMusic(int delta)
+    {
+        // cycle AMIGA->PC->CUSTOM->OFF (delta>0) skipping unavailable sources
+        var order = new[] { OpenSwos.Audio.MenuMusic.MusicSource.Amiga, OpenSwos.Audio.MenuMusic.MusicSource.Pc,
+                            OpenSwos.Audio.MenuMusic.MusicSource.Custom, OpenSwos.Audio.MenuMusic.MusicSource.Off };
+        int i = System.Array.IndexOf(order, _menuMusic); if (i < 0) i = 0;
+        int step = delta >= 0 ? 1 : -1;
+        for (int k = 0; k < order.Length; k++)
+        {
+            i = ((i + step) % order.Length + order.Length) % order.Length;
+            if (MenuMusicSourceAvailable(order[i])) { _menuMusic = order[i]; break; }
+        }
+        SaveSettings();
+        // Apply immediately so the user can audition (we are in the menu).
+        OpenSwos.Audio.MenuMusic.Instance?.Play(ResolveMenuMusic());
     }
 
     // True exactly once after a NON-competition match returns to the menu —

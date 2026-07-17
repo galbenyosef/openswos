@@ -69,6 +69,29 @@ public sealed class CareerState
     public bool Retired { get; set; }
     public System.Collections.Generic.List<string> Trophies { get; set; } = new();
     public System.Collections.Generic.List<string> History { get; set; } = new();  // one line per season
+    // Persistent evolving squads/finances/staff for the whole world (age,
+    // potential, growth, fatigue...). Null on legacy saves -> rebuilt lazily.
+    public OpenSwos.Competition.Career.CareerWorld? World { get; set; }
+
+    // ---- ORIGINAL SWOS career transfer market (see Career/TransferOffers.cs) --
+    // Reconstructed from swos.asm: rival clubs bid for your players (offers with
+    // up to two escalations), you list players / release them free, and you must
+    // negotiate purchases within a per-season time budget. All deterministic via
+    // CareerRng — no System.Random.
+    // Incoming bids for the player's squad (cap 5).
+    public System.Collections.Generic.List<OpenSwos.Competition.Career.TransferOffer> PendingOffers { get; set; } = new();
+    // Player ids the manager has transfer-listed (cap 5) — listed players attract
+    // far more offers (swos.asm:78060: chance 11/256 listed vs 1/256 normal).
+    public System.Collections.Generic.List<int> TransferListedPlayerIds { get; set; } = new();
+    // Purchase negotiation budget, reset to 6 each season (swos.asm:127226).
+    public int TimeToNegotiate { get; set; } = 6;
+    // Soft quotas: the AI stops generating offers after 6 sells and refuses to
+    // sanction further buys after 6 buys, per season.
+    public int SellsThisSeason { get; set; }
+    public int BuysThisSeason { get; set; }
+    // Monotonic salt so every Tick draws a distinct deterministic RNG stream
+    // (never advances the competition match/draw RNG).
+    public int TransferTicks { get; set; }
 }
 
 public sealed class CompetitionState

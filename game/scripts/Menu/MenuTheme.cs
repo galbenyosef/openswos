@@ -29,15 +29,16 @@ public static class MenuTheme
     // cleanly ("PlayPrimary", "Tool", "Header", ...).
     public enum Style
     {
-        PlayPrimary,   // headline "play" buttons — warm amber
+        PlayPrimary,   // headline "play" buttons — warm gold
         PlaySecondary, // secondary competition buttons — emerald green
-        Tool,          // left-column tools (tactics, options) — deep navy
-        Header,        // screen title bars — cool steel gray
-        Info,          // value fields / info — teal
-        Accent,        // special (multiplayer) — violet
-        Danger,        // exit / destructive — red
-        Value,         // option value changer body — slate blue
-        Plain,         // neutral list row — dark gray
+        Tool,          // left-column tools / navigation — deep royal blue
+        Header,        // screen title bars — vivid royal blue, white text, gold frame
+        Info,          // value fields / info / highlight rows — teal
+        Accent,        // special (multiplayer, player actions) — violet
+        Danger,        // destructive (retire / reject / remove) — red
+        Value,         // option value-changer body / field values — clear blue
+        Field,         // option label boxes — muted blue (pairs with Value)
+        Plain,         // BACK / EXIT — warm amber-rust exit block
     }
 
     // A style = two gradient endpoints (top-left dark → bottom-right light),
@@ -58,26 +59,37 @@ public static class MenuTheme
     private static Color C(int r, int g, int b) => new Color(r / 255f, g / 255f, b / 255f);
 
     // OpenSWOS palette — SWOS-derived but shifted (cooler, a touch richer).
+    //
+    // Reference colour language (SWOS 96/97 menus, from MobyGames/community
+    // screenshots): menus are built from SATURATED solid colour blocks, never
+    // grey-on-grey. Team-control states are colour-coded (RED = CPU, PURPLE =
+    // human plays, BLUE = human manages), title/function bars are solid vivid
+    // colour, and the selected entry flashes yellow/gold. We keep that "coloured
+    // functional block" grammar but with our own shifted hues (paraphrase rule):
+    //   play = gold, competitions = green, navigation/tools = blue, info = teal,
+    //   special = violet, destructive = red, fields = blue, exit/BACK = amber.
     private static readonly System.Collections.Generic.Dictionary<Style, StyleDef> kStyles = new()
     {
-        // amber play button: deep brown → gold, orange frame
+        // gold play button: deep brown → gold, orange frame
         [Style.PlayPrimary]   = new StyleDef(C(72, 30, 0),  C(244, 172, 40), C(252, 140, 0),  C(252, 252, 224), hasInner: true, inner: C(120, 60, 0)),
         // emerald: dark green → lime, green frame
         [Style.PlaySecondary] = new StyleDef(C(6, 40, 8),   C(120, 216, 48), C(48, 200, 40),  C(240, 255, 224), hasInner: true, inner: C(10, 70, 12)),
         // navy tool: near-black blue → royal, soft-blue frame
         [Style.Tool]          = new StyleDef(C(6, 10, 32),  C(48, 72, 200),  C(120, 140, 240), C(224, 232, 255), hasInner: true, inner: C(12, 20, 64)),
-        // steel header: charcoal → light steel, white frame
-        [Style.Header]        = new StyleDef(C(28, 32, 40), C(176, 188, 208), C(232, 240, 252), C(20, 24, 32),   hasInner: false),
+        // vivid header: royal blue → bright azure, WHITE text, gold frame (pops)
+        [Style.Header]        = new StyleDef(C(8, 24, 88),  C(96, 176, 255), C(255, 210, 60), C(255, 255, 255), hasMid: true, gmid: C(40, 104, 224), hasInner: true, inner: C(4, 14, 56)),
         // teal info: deep teal → aqua, aqua frame
         [Style.Info]          = new StyleDef(C(4, 28, 40),  C(72, 200, 208), C(96, 220, 224), C(232, 252, 252), hasInner: true, inner: C(8, 44, 60)),
         // violet accent: plum → lilac, lilac frame
         [Style.Accent]        = new StyleDef(C(40, 6, 56),  C(168, 120, 240), C(180, 150, 252), C(244, 236, 255), hasInner: true, inner: C(60, 14, 84)),
         // red danger: dark red → bright red, yellow frame
         [Style.Danger]        = new StyleDef(C(64, 0, 0),   C(232, 40, 40),  C(252, 200, 0),  C(255, 240, 224), hasInner: true, inner: C(96, 0, 0)),
-        // slate value body: slate → periwinkle, gray frame
-        [Style.Value]         = new StyleDef(C(18, 24, 44), C(96, 116, 176), C(150, 160, 190), C(240, 244, 252), hasInner: false),
-        // plain row: dark → mid gray, gray frame
-        [Style.Plain]         = new StyleDef(C(20, 22, 28), C(96, 100, 112), C(150, 156, 168), C(224, 228, 236), hasInner: false),
+        // clear blue value body: deep blue → bright azure, blue frame, white text
+        [Style.Value]         = new StyleDef(C(8, 22, 70),  C(110, 168, 245), C(128, 158, 216), C(240, 246, 255), hasMid: true, gmid: C(46, 100, 204), hasInner: true, inner: C(6, 16, 52)),
+        // muted-blue field label box: darker blue than Value so label+value read as one field
+        [Style.Field]         = new StyleDef(C(6, 16, 46),  C(70, 112, 190),  C(96, 128, 192), C(216, 228, 255), hasMid: true, gmid: C(30, 62, 132), hasInner: true, inner: C(4, 10, 34)),
+        // amber-rust exit block (BACK/EXIT): dark rust → warm orange, gold frame
+        [Style.Plain]         = new StyleDef(C(56, 18, 4),  C(236, 132, 40),  C(255, 196, 88), C(255, 244, 224), hasMid: true, gmid: C(168, 68, 20), hasInner: true, inner: C(80, 26, 6)),
     };
 
     public static Color TextColor(Style s) => kStyles[s].Text;
