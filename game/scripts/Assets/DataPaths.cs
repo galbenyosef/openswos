@@ -54,6 +54,29 @@ public static class DataPaths
         ".git", ".godot", ".import", "bin", "obj", "node_modules", ".vs", ".idea", ".backups",
     };
 
+    // ── Android public-storage roots ─────────────────────────────────────────
+    //
+    // On Android 13+ the app's user:// dir (Android/data/org.openswos.game/files)
+    // is UNREACHABLE by third-party file managers, so users cannot drop their SWOS
+    // files there. We therefore ALSO look in — and prefer — public external storage,
+    // where a file manager (and all-files access) CAN write. These bases are checked
+    // FIRST on Android and are completely inert on every other platform.
+    private static readonly string[] AndroidExternalBases =
+    {
+        "/storage/emulated/0/Download/OpenSWOS",
+        "/storage/emulated/0/OpenSWOS",
+    };
+
+    /// <summary>True when running on Android (feature flag OR OS name).</summary>
+    public static bool IsAndroid() => OS.HasFeature("android") || OS.GetName() == "Android";
+
+    /// <summary>Public external-storage bases (Android only; empty elsewhere).</summary>
+    public static IEnumerable<string> AndroidExternalBaseRoots()
+    {
+        if (!IsAndroid()) yield break;
+        foreach (string b in AndroidExternalBases) yield return b;
+    }
+
     /// <summary>Directory of the running executable (empty when it can't be determined).</summary>
     public static string ExeDir()
     {
@@ -66,6 +89,9 @@ public static class DataPaths
     /// <summary>Recursive-search roots for extracted / loose game files, in priority order.</summary>
     public static IEnumerable<string> OutputSearchRoots()
     {
+        // Android public storage first — the only place a file manager can reach.
+        foreach (string b in AndroidExternalBaseRoots())
+            yield return Path.Combine(b, OutputFolderName);
         string exeDir = ExeDir();
         if (exeDir.Length > 0)
             yield return Path.Combine(exeDir, OutputFolderName);
@@ -78,6 +104,8 @@ public static class DataPaths
     /// </summary>
     public static IEnumerable<string> PcSearchRoots()
     {
+        foreach (string b in AndroidExternalBaseRoots())
+            yield return Path.Combine(b, PcInputFolderName);
         string exeDir = ExeDir();
         if (exeDir.Length > 0)
             yield return Path.Combine(exeDir, PcInputFolderName);
@@ -87,6 +115,8 @@ public static class DataPaths
     /// <summary>Folders scanned for *.adf floppy images, in priority order.</summary>
     public static IEnumerable<string> InputSearchRoots()
     {
+        foreach (string b in AndroidExternalBaseRoots())
+            yield return Path.Combine(b, InputFolderName);
         string exeDir = ExeDir();
         if (exeDir.Length > 0)
             yield return Path.Combine(exeDir, InputFolderName);
@@ -106,6 +136,10 @@ public static class DataPaths
 
     private static string PreferredPath(string folder)
     {
+        // On Android the ONLY user-reachable location is public external storage,
+        // so the hint must point there (not at the unreachable user:// dir).
+        if (IsAndroid())
+            return Path.Combine(AndroidExternalBases[0], folder);
         string exeDir = ExeDir();
         return exeDir.Length > 0
             ? Path.Combine(exeDir, folder)
@@ -119,6 +153,14 @@ public static class DataPaths
     /// </summary>
     public static string FirstWritableRoot(string folder)
     {
+        // Android: prefer public external storage so extraction output lands where a
+        // file manager can see it. Only works once all-files access is granted; if not,
+        // CanWrite fails and we fall back to user:// (still functional, just hidden).
+        foreach (string b in AndroidExternalBaseRoots())
+        {
+            string ext = Path.Combine(b, folder);
+            if (CanWrite(ext)) return ext;
+        }
         string exeDir = ExeDir();
         if (exeDir.Length > 0)
         {
@@ -127,6 +169,46 @@ public static class DataPaths
         }
         string user = ProjectSettings.GlobalizePath("user://" + folder);
         return CanWrite(user) ? user : "";
+    }
+
+    // ── Android startup ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Android-only startup hook. Fires the runtime permission request (routes to the
+    /// all-files-access settings screen on 11+ when MANAGE_EXTERNAL_STORAGE is in the
+    /// manifest, or the classic dialog on ≤12), then best-effort creates the public
+    /// drop folders under <c>/storage/emulated/0/Download/OpenSWOS</c> so users can find
+    /// them in a file manager. Also (re)creates the <c>user://</c> fallback folders so
+    /// the app is never left with NO import folders. Every step is silent on failure and
+    /// this whole method is a no-op on non-Android platforms.
+    /// </summary>
+    public static void AndroidStartupInit()
+    {
+        if (!IsAndroid()) return;
+
+        // Ask for storage access. On Android 11+ with MANAGE_EXTERNAL_STORAGE declared,
+        // Godot routes this to the "All files access" settings screen; on ≤12 it shows
+        // the standard READ/WRITE_EXTERNAL_STORAGE runtime dialog.
+        try { OS.RequestPermissions(); } catch { /* not fatal */ }
+
+        string[] subs = { InputFolderName, OutputFolderName, PcInputFolderName };
+
+        // Public external-storage folders (need all-files access to succeed).
+        foreach (string b in AndroidExternalBases)
+            foreach (string sub in subs)
+                TryMakeDir(b + "/" + sub);
+
+        // user:// fallback folders — always created so import never has zero targets
+        // (fixes the report that NO import folders existed on Android).
+        foreach (string sub in subs)
+            TryMakeDir("user://" + sub);
+    }
+
+    // Best-effort recursive mkdir via Godot's DirAccess (handles both absolute OS paths
+    // and user:// scheme). Never throws.
+    private static void TryMakeDir(string path)
+    {
+        try { DirAccess.MakeDirRecursiveAbsolute(path); } catch { /* ignore */ }
     }
 
     private static bool CanWrite(string dir)

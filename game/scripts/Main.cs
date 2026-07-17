@@ -88,6 +88,10 @@ public partial class Main : Node2D
     private Label? _overlayLabel;
     private Label? _menuLabel;
     private ColorRect? _menuBackground;
+    // Menu backdrop image (res://data/openswos_bg.png, 16:9) shown behind the
+    // SWOS front-end, centre-cropped to the content rect. Own CanvasLayer below
+    // the menu (Layer -1). Visible only in AppState.Menu.
+    private Sprite2D? _menuBgSprite;
     // SWOS-styled front-end (game/scripts/Menu/). Replaces the old plain-text
     // menu label; driven while AppState==Menu. Reads/writes match setup through
     // the IMenuHost bridge implemented in Main.MenuHost.cs.
@@ -160,7 +164,7 @@ public partial class Main : Node2D
     private readonly Sprite2D?[] _energyBarSprites =
         new Sprite2D?[OpenSwos.SwosVm.PlayerSprite.TotalSlots];
     private readonly System.Collections.Generic.Dictionary<int, ImageTexture> _energyBarTextures = new();
-    private bool _energyBar = true;    // energy bar visibility (renderer only)
+    private bool _energyBar = false;   // energy bar visibility (renderer only); default OFF (LoadSettings leaves it OFF when the key is absent)
     private bool _fatigueSim = false;  // master toggle: fatigue speed effect in non-career matches
     // SWOS bench / substitutions panel (port mode). PORT-VISUAL: the original
     // draws the bench as sprite rows by the dugout (drawBench.cpp); we
@@ -207,7 +211,11 @@ public partial class Main : Node2D
     // Front-end MUSIC preference (persisted). Default AMIGA. Resolved against
     // availability by ResolveMenuMusic(); the MenuMusic node (host-side only)
     // plays it while _appState == Menu and hard-stops otherwise.
-    private OpenSwos.Audio.MenuMusic.MusicSource _menuMusic = OpenSwos.Audio.MenuMusic.MusicSource.Amiga;
+    // Default menu-music source is CUSTOM (the bundled Suno tracks) — always
+    // present in every build, so no availability edge case. On fresh settings (no
+    // "menuMusic" key) LoadSettings leaves this default untouched, so the game
+    // boots playing CUSTOM; the user can switch to AMIGA / PC / OFF in OPTIONS.
+    private OpenSwos.Audio.MenuMusic.MusicSource _menuMusic = OpenSwos.Audio.MenuMusic.MusicSource.Custom;
 
     // Match setup state, driven by the menu.
     private readonly System.Collections.Generic.List<TeamRecord> _allTeams = new();
@@ -255,6 +263,78 @@ public partial class Main : Node2D
     private DisplayMode _displayMode = DisplayMode.Windowed;
     // Small-screen / handheld (R36S 640x480) mode — detected once in _Ready.
     private bool _smallScreen;
+    // Android / touch on-screen UI — detected once in _Ready (real touchscreen or
+    // the --touch dev flag). Never true headless. When true, the menu client gets
+    // TouchEnabled and the match on-screen d-pad/fire/pause overlay is built.
+    private bool _touchUi;
+    // Per-second perf logging (allocations + frame time), gated by --perf-log.
+    private bool _perfLog;
+    private double _perfAccum;
+    private int _perfFrames;
+    private long _perfLastMem;
+    // Match on-screen touch overlay (built ONCE when _touchUi, screen-space).
+    private CanvasLayer? _touchOverlay;
+    private Sprite2D? _tStickBase, _tStickKnob, _tFire, _tPause, _tToggle;
+    private sbyte _touchDx, _touchDy;
+    private bool _touchFire;
+    private int _stickFinger = -1, _fireFinger = -1;
+    private Vector2 _stickAnchor;
+    private bool _touchPauseRequested;
+    // User toggle: hide the on-screen d-pad/fire/pause (e.g. when using a Bluetooth
+    // pad). The small toggle icon itself stays visible. Persisted as "touchOverlay"
+    // (default true on touchscreens). Instant, no restart.
+    private bool _touchOverlayOn = true;
+    // Screen-space centres/radii for the overlay hit-tests (match the drawn sprites).
+    private Vector2 _tStickCenter, _tFireCenter, _tPauseCenter, _tToggleCenter;
+    private float _tFireRadius, _tPauseHalf, _tToggleHalf;
+    // Touch capture zones. Defaults reproduce the pre-#231 behaviour exactly
+    // (left half = stick, fire = the drawn circle only); the Android expand path
+    // widens them to "whole bar + grace strip" in LayoutTouchOverlay.
+    private float _tStickZoneMaxX = ViewportWidth * RenderScale / 2f;   // 576
+    private float _tFireZoneMinX = float.MaxValue;
+    // Cached glyph textures for the top-right slot: PAUSE in match, BACK in menu.
+    private ImageTexture? _pauseTex, _backTex;
+    // === Android on-screen d-pad → MENU navigation (touch) =====================
+    // Kept in DEDICATED fields, never the match _touchDx/_touchDy: the sim reads
+    // _touchDx/_touchDy and only while AppState==Match, so driving menus this way
+    // is provably sim-neutral. Main computes edge pulses with its own auto-repeat
+    // and feeds them to MenuClient.InjectNav() (which OR-s them into the menu's
+    // keyboard reads) — Godot's global Input state is never touched.
+    private sbyte _menuStickDx, _menuStickDy;   // current 8-way of the menu d-pad
+    private int _menuStickFinger = -1;
+    private bool _menuConfirmPulse, _menuBackPulse;   // one-shot from CONFIRM/BACK taps
+    private double _navRepeatTimer;                    // seconds until the next repeat pulse
+    private bool _navHeld;                             // a direction is currently held
+    private sbyte _navHeldDx, _navHeldDy;              // the held cardinal (for edge detect)
+    private const double NavInitialDelay = 0.35, NavRepeatInterval = 0.12;
+    // === Android expand-viewport presentation (#231) ===========================
+    // ANDROID ONLY. Desktop/Linux/macOS/R36S keep aspect=Keep and are untouched.
+    //
+    // Problem: with aspect=Keep the side space on a 20:9 phone is OS window
+    // background — NOTHING can be drawn there, so the touch overlay gets clipped.
+    // With aspect=Expand that space becomes part of the root viewport and IS
+    // renderable, but the viewport gets WIDER (height stays 816, width grows to
+    // 816 * deviceAspect), which would show a wider slice of pitch — a fidelity
+    // break.
+    //
+    // Fix: keep Expand, then (a) widen the match Camera2D limits by exactly the
+    // extra half-width so the camera CENTRE lands on the same world point it would
+    // in Keep mode, (b) shift every screen-space CanvasLayer right by _barW so the
+    // 1152-wide content sits centred, and (c) mask the extra side space with two
+    // opaque black ColorRects. Net visible result: pixel-identical to the Keep-mode
+    // 4:3 image, with the extra space available for the touch overlay.
+    private bool _expandMode;               // Android (or --android-sim): root aspect=Expand
+    private bool _androidSim;               // desktop dev flag: --android-sim WxH
+    private Vector2I _androidSimSize = new Vector2I(2400, 1080);
+    private float _barW;                    // width of ONE side bar, in content units
+    private float _vpW = ViewportWidth * RenderScale;   // current root viewport width (content units)
+    private CanvasLayer? _barsLayer;        // Layer 3: black side bars (above HUD, below overlay)
+    private ColorRect? _barLeft, _barRight;
+    private CanvasLayer? _hudLayer;         // kept so the expand offset can be re-applied on resize
+    // Below this bar width the bars are too thin to hold a thumb stick (near-4:3
+    // tablet) — the overlay then falls back to its original on-content positions.
+    private const float BarMinWidth = 70f;
+    private bool _barsHostControls;
     // Which fullscreen mode Alt+Enter restores; seeded from a persisted fullscreen
     // mode if any, else Fill.
     private DisplayMode _lastFullscreenMode = DisplayMode.FullscreenFill;
@@ -314,6 +394,11 @@ public partial class Main : Node2D
             InputMap.ActionAddEvent("swos_pause", new InputEventKey { PhysicalKeycode = Key.P });
         }
 
+        // Belt-and-suspenders joypad bindings on the built-in ui_* actions so
+        // Bluetooth pads whose confirm/cancel/dpad don't reach the defaults can
+        // still drive the menu. Additive (never replaces the keyboard/stick defaults).
+        EnsureJoypadUiBindings();
+
         // Lock physics tick rate to 70 Hz (matches SWOS PC). project.godot already
         // sets common/physics_ticks_per_second=70, but we re-assert here so that
         // a stripped-down project (or future variant) still gets the right pace —
@@ -339,6 +424,72 @@ public partial class Main : Node2D
             _displayMode = smallByScreen ? DisplayMode.FullscreenFill : DisplayMode.Windowed;
         }
 
+        // --- Touch UI (Android) + perf-log detection ---
+        // A real touchscreen (DisplayServer.IsTouchscreenAvailable) OR the --touch
+        // dev flag turns on the on-screen d-pad/fire/pause overlay + menu touch.
+        // NEVER enabled headless (IsTouchscreenAvailable is false there, and no
+        // --touch on CI runs).
+        bool forceTouch = false;
+        // Accept the flags whether they arrive before `--` (GetCmdlineArgs) or
+        // after it (GetCmdlineUserArgs) — Godot splits the two. Also matches how
+        // the harness arg loop below reads args.
+        var _startupArgs = new System.Collections.Generic.List<string>(OS.GetCmdlineArgs());
+        _startupArgs.AddRange(OS.GetCmdlineUserArgs());
+        for (int i = 0; i < _startupArgs.Count; i++)
+        {
+            string a = _startupArgs[i];
+            if (a == "--touch") forceTouch = true;
+            else if (a == "--perf-log") _perfLog = true;
+            // --android-sim WxH : desktop dev flag. Forces the Android code path
+            // (aspect=Expand + bars + touch overlay) and sizes the window to WxH so
+            // the phone layout can be screenshotted without a device. Purely a test
+            // hook — a real Android build takes the same path via isMobile below.
+            else if (a == "--android-sim")
+            {
+                _androidSim = true;
+                if (i + 1 < _startupArgs.Count)
+                {
+                    var wh = _startupArgs[i + 1].Split('x');
+                    if (wh.Length == 2 && int.TryParse(wh[0], out int sw) && int.TryParse(wh[1], out int sh)
+                        && sw > 0 && sh > 0)
+                    {
+                        _androidSimSize = new Vector2I(sw, sh);
+                        i++;
+                    }
+                }
+            }
+        }
+        // Bulletproof gating: enable the touch/overlay UI on any mobile platform
+        // (OS name "Android"/"iOS" or the "mobile" feature tag), on a real
+        // touchscreen, or when forced with --touch. Realme-7-Pro report: some
+        // Android devices return IsTouchscreenAvailable()==false at boot, so the
+        // platform check is the primary signal there. NEVER enabled headless.
+        bool isHeadless = DisplayServer.GetName() == "headless";
+        bool isMobile = OS.GetName() == "Android" || OS.GetName() == "iOS" || OS.HasFeature("mobile");
+        bool touchscreen = !isHeadless && DisplayServer.IsTouchscreenAvailable();
+        _touchUi = !isHeadless && (forceTouch || isMobile || touchscreen || _androidSim);
+        // Expand-viewport presentation: ANDROID ONLY (plus the --android-sim dev
+        // flag). A touchscreen alone is NOT enough — a Windows touch laptop keeps
+        // the desktop Keep path. Must be decided BEFORE ApplyDisplayMode(), which
+        // reads _expandMode when it sets ContentScaleAspect.
+        _expandMode = !isHeadless && (_androidSim || OS.GetName() == "Android" || OS.HasFeature("mobile"));
+        // Always log (even when disabled) so future device reports are diagnosable.
+        GD.Print($"[touch] platform={OS.GetName()} touchscreen={touchscreen} overlay={_touchUi} expand={_expandMode}");
+
+        // Self-contained verification flag (only reads res://data/music, no SWOS
+        // team data). Handle it HERE, before the asset/first-run branch, so it also
+        // runs in a data-less exported build (proving res:// mp3 loading in a PCK).
+        foreach (var a in _startupArgs)
+        {
+            if (a == "--music-custom-test")
+            {
+                OpenSwos.Audio.MenuMusic.TestCustomLoad();
+                GetTree().Quit();
+                return;
+            }
+        }
+        if (_perfLog) _perfLastMem = System.GC.GetTotalMemory(false);
+
         // Apply the persisted display mode now that the Window exists (no-op &
         // safe under --headless; see ApplyDisplayMode's headless guard).
         ApplyDisplayMode();
@@ -346,6 +497,11 @@ public partial class Main : Node2D
         // Desktop --small-screen test path: give it an actual 640x480 window with fill scaling.
         if (_smallScreen && !smallByScreen && DisplayServer.GetName() != "headless")
             DisplayServer.WindowSetSize(new Vector2I(640, 480));
+
+        // Desktop --android-sim test path: a real window at the simulated device
+        // resolution so the phone layout renders/screenshots exactly as on device.
+        if (_androidSim && DisplayServer.GetName() != "headless")
+            DisplayServer.WindowSetSize(_androidSimSize);
 
         // Initialise SwosVm memory layer (Phase B port target) — populates ball
         // physics constants from swos.asm data section so ported updateBall() can
@@ -357,6 +513,11 @@ public partial class Main : Node2D
         // 'original_swos_files' folder (extracted OR loose WHDLoad files), then the
         // in-repo dev tree. If nothing is present yet, EnsureImported extracts any *.adf
         // dropped in 'original_swos_adf' (and scaffolds both folders on a fresh install).
+        // Android: request all-files access + create the public drop folders under
+        // /storage/emulated/0/Download/OpenSWOS (the only place a file manager can reach
+        // on Android 13+) plus the user:// fallbacks. No-op on every other platform.
+        DataPaths.AndroidStartupInit();
+
         AmigaImporter.EnsureImported();
         string grafsDir = DataPaths.AmigaGrafsDir();
 
@@ -690,6 +851,7 @@ public partial class Main : Node2D
             var hud = new CanvasLayer { Layer = 1 };
             hud.Transform = Transform2D.Identity.Scaled(new Vector2(RenderScale, RenderScale));
             AddChild(hud);
+            _hudLayer = hud;
 
             // SWOS charset bitmap font (CHARSET.RAW). Drives the result bar,
             // bench panel and on-ball player-name banner with the real 1:1
@@ -712,6 +874,25 @@ public partial class Main : Node2D
             // one space, one scale — MenuClient routes table sprites to its own root.
             _menuClient = new OpenSwos.Menu.MenuClient(ui, _font, this, MenuViewportWidth, MenuViewportHeight);
             _menuClient.Active = false;
+            _menuClient.TouchEnabled = _touchUi;
+
+            // Match on-screen touch overlay (Android). Built ONCE, screen-space
+            // (identity transform on its own CanvasLayer above the HUD). Only when
+            // a touchscreen/--touch is present — desktop is untouched.
+            if (_touchUi)
+            {
+                BuildTouchOverlay();
+                GD.Print("[touch] menu-overlay active — d-pad drives menu nav, FIRE=CONFIRM, top-right=BACK");
+            }
+
+            // Android expand presentation (#231): build the black side bars and
+            // apply the centring offset. No-op on every non-expand platform.
+            if (_expandMode)
+            {
+                BuildSideBars();
+                GetTree().Root.SizeChanged += ApplyExpandLayout;
+                ApplyExpandLayout();
+            }
 
             _scoreLabel = new Label
             {
@@ -770,6 +951,7 @@ public partial class Main : Node2D
             {
                 Color = new Color(0f, 0f, 0f, 127f / 255f),  // darkRectangle.cpp:53 — SDL_SetRenderDrawColor(0,0,0,127)
                 Visible = false,
+                MouseFilter = Control.MouseFilterEnum.Ignore,  // display-only; never eat touches
             };
             hud.AddChild(_resultPanelBg);
             _resultPanelTeam1 = MakeTextSprite(hud);   // drawTeamNames (result.cpp:238-246)
@@ -822,11 +1004,12 @@ public partial class Main : Node2D
                 Visible = false,
                 Position = new Vector2(0, 0),
                 Size = new Vector2(0, 0),
+                MouseFilter = Control.MouseFilterEnum.Ignore,  // display-only; never eat touches
             };
             hud.AddChild(_benchPanelBg);
             for (int i = 0; i < BenchMaxRows; i++)
             {
-                var hl = new ColorRect { Visible = false, Color = Colors.Transparent };
+                var hl = new ColorRect { Visible = false, Color = Colors.Transparent, MouseFilter = Control.MouseFilterEnum.Ignore };
                 hud.AddChild(hl);
                 _benchHighlights[i] = hl;
             }
@@ -851,8 +1034,43 @@ public partial class Main : Node2D
                 Color = new Color(0f, 0f, 0f, 0.7f),
                 Position = new Vector2(0, 0),
                 Size = new Vector2(ViewportWidth, ViewportHeight),
+                // Touch-transparent: a full-screen ColorRect defaults to
+                // MouseFilter=Stop and would eat touches meant for the menu /
+                // overlay. It is purely a dim backdrop, never interactive.
+                MouseFilter = Control.MouseFilterEnum.Ignore,
             };
             hud.AddChild(_menuBackground);
+
+            // Menu backdrop image behind the SWOS front-end. A Sprite2D on the
+            // MenuClient root (so it inherits the ×2 menu scale + Android expand
+            // centring) with a very negative ZIndex so it draws behind every menu
+            // widget. Scaled to COVER the 576×408 menu design space, centre-cropped
+            // (the 16:9 art overflows top/bottom, which is the intended 4:3 crop).
+            if (_menuClient is not null)
+            {
+                var bgTex = GD.Load<Texture2D>("res://data/openswos_bg.png");
+                if (bgTex is not null)
+                {
+                    float cover = System.Math.Max(576f / bgTex.GetWidth(), 408f / bgTex.GetHeight());
+                    var spr = new Sprite2D
+                    {
+                        Texture = bgTex,
+                        Centered = false,
+                        TextureFilter = TextureFilterEnum.Linear,
+                        Scale = new Vector2(cover, cover),
+                        Position = new Vector2((576f - bgTex.GetWidth() * cover) / 2f,
+                                               (408f - bgTex.GetHeight() * cover) / 2f),
+                        // ZIndex 1: above MenuClient's own navy backdrop (ZIndex 0),
+                        // below every widget (ZIndex >= 8). Dimmed a touch so the
+                        // vivid buttons stay readable over the busy art.
+                        ZIndex = 1,
+                        Modulate = new Color(0.62f, 0.62f, 0.62f),
+                        Visible = false,
+                    };
+                    _menuClient.Root.AddChild(spr);
+                    _menuBgSprite = spr;
+                }
+            }
 
             // Menu screen uses its own multi-line label at a smaller size so the team
             // list fits without scrolling. Renders on the same CanvasLayer so it sits on
@@ -893,7 +1111,7 @@ public partial class Main : Node2D
             GD.Print($"Boot complete. {_allTeams.Count} teams. Home={_allTeams[_homeTeamIndex].Name}, Away={_allTeams[_awayTeamIndex].Name}. Menu: arrows + space.");
 
             // Front-end music: create the node (host-side only) and start the
-            // resolved source immediately on HOME (AMIGA fades in by default).
+            // resolved source immediately on HOME (CUSTOM plays by default).
             EnsureMenuMusic();
             UpdateMenuMusic();
 
@@ -997,6 +1215,26 @@ public partial class Main : Node2D
                     }
                     GetTree().Quit();
                     return;
+                }
+                // --match-shot [dir] : screenshot verification hook for the Android
+                // expand layout (#231). Starts a match immediately (same entry the
+                // menu uses), then captures the touch overlay ON and OFF. Windowed
+                // only — needs a real framebuffer to read back.
+                if (allArgs[i] == "--match-shot")
+                {
+                    _matchShotActive = true;
+                    _menuShotDir = (i + 1 < allArgs.Count && !allArgs[i + 1].StartsWith("--"))
+                        ? allArgs[i + 1] : "menu_shots";
+                    try { System.IO.Directory.CreateDirectory(_menuShotDir); } catch { }
+                    _useSwosPort = true;
+                    _swosVmDirty = true;
+                    _match = MatchState.NewMatch();
+                    EnterPreKickoff();
+                    _match.EnterPhase(MatchPhase.Play);
+                    _appState = AppState.Match;
+                    if (_menuClient is not null) _menuClient.Active = false;
+                    GD.Print($"[match-shot] active, output dir = {_menuShotDir}");
+                    break;
                 }
                 if (allArgs[i] == "--menu-shot")
                 {
@@ -3317,11 +3555,65 @@ public partial class Main : Node2D
     public override void _Process(double delta)
     {
         if (_menuShotActive) { _menuShotStepSeconds += delta; MenuShotTick(); }
+        if (_matchShotActive) { _matchShotSeconds += delta; MatchShotTick(); }
+
+        if (_touchUi) UpdateTouchOverlayVisibility();
+
+        if (_perfLog)
+        {
+            _perfAccum += delta; _perfFrames++;
+            if (_perfAccum >= 1.0)
+            {
+                long mem = System.GC.GetTotalMemory(false);
+                long dMem = mem - _perfLastMem; _perfLastMem = mem;
+                double avgMs = _perfAccum / _perfFrames * 1000.0;
+                GD.Print($"[perf] state={_appState} fps~={_perfFrames / _perfAccum:0} avgFrame={avgMs:0.00}ms gcTotal={mem / 1024}KB dGC={dMem / 1024}KB");
+                _perfAccum = 0; _perfFrames = 0;
+            }
+        }
     }
 
     // Wall-clock seconds spent in the CURRENT menu-shot step (frame counts are
     // useless as timeouts — an uncapped _Process can run at hundreds of fps).
     private double _menuShotStepSeconds;
+
+    // --match-shot harness state (#231 verification).
+    private bool _matchShotActive;
+    private double _matchShotSeconds;
+    private int _matchShotStep;
+
+    // Lets the match settle (kickoff -> play, camera centred on the pitch, so the
+    // side space behind the bars is GREEN — the strongest possible bleed test),
+    // captures the overlay ON, toggles it OFF, captures again, then quits.
+    private void MatchShotTick()
+    {
+        void Shot(string name)
+        {
+            var img = GetViewport()?.GetTexture()?.GetImage();
+            if (img is null) { GD.PrintErr($"[match-shot] no image for {name} (headless?)"); return; }
+            string p = System.IO.Path.Combine(_menuShotDir, name + ".png");
+            img.SavePng(p);
+            GD.Print($"[match-shot] saved {p} ({img.GetWidth()}x{img.GetHeight()}) overlayOn={_touchOverlayOn}");
+        }
+        switch (_matchShotStep)
+        {
+            case 0:
+                if (_matchShotSeconds < 2.5) return;
+                Shot("android_match_overlay_on");
+                _touchOverlayOn = false;
+                UpdateTouchOverlayVisibility();
+                _matchShotStep++; _matchShotSeconds = 0;
+                return;
+            case 1:
+                if (_matchShotSeconds < 0.5) return;
+                Shot("android_match_overlay_off");
+                _matchShotStep++;
+                return;
+            default:
+                GetTree().Quit();
+                return;
+        }
+    }
 
     // Deterministically navigates the SWOS-styled menu and captures a PNG of
     // each screen to _menuShotDir, then quits. Lets an agent visually verify the
@@ -3490,9 +3782,10 @@ public partial class Main : Node2D
         // resume on return). No-op headless (node never created).
         UpdateMenuMusic();
 
-        bool acceptPressed = Input.IsActionJustPressed("ui_accept");
-        bool cancelPressed = Input.IsActionJustPressed("ui_cancel");
-        bool pausePressed  = Input.IsActionJustPressed("swos_pause");   // "P", original pause key
+        bool acceptPressed = Input.IsActionJustPressed(A_UiAccept);
+        bool cancelPressed = Input.IsActionJustPressed(A_UiCancel);
+        bool pausePressed  = Input.IsActionJustPressed(A_SwosPause) || _touchPauseRequested; // "P" / touch pause icon
+        _touchPauseRequested = false;
 
         if (_appState == AppState.Paused)
         {
@@ -3513,7 +3806,15 @@ public partial class Main : Node2D
         {
             // SWOS-styled front-end owns menu input + rendering now. Fall back to
             // the legacy plain-text menu only if the client failed to build.
-            if (_menuClient is not null) { _menuClient.Active = true; _menuClient.Tick(); }
+            if (_menuClient is not null)
+            {
+                _menuClient.Active = true;
+                // Android/touch: translate the on-screen d-pad into menu nav
+                // pulses (with auto-repeat) BEFORE Tick reads them. No-op on
+                // desktop (_touchUi false).
+                if (_touchUi) UpdateMenuTouchNav(delta);
+                _menuClient.Tick();
+            }
             else TickMenu(acceptPressed);
         }
         else
@@ -4890,19 +5191,21 @@ public partial class Main : Node2D
         //    fireDown) pair into the GameControlEvents bitmask the rest of the
         //    port consumes.
         sbyte p1dx = 0, p1dy = 0;
-        if (Input.IsActionPressed("ui_left")) p1dx--;
-        if (Input.IsActionPressed("ui_right")) p1dx++;
-        if (Input.IsActionPressed("ui_up")) p1dy--;
-        if (Input.IsActionPressed("ui_down")) p1dy++;
+        if (Input.IsActionPressed(A_UiLeft)) p1dx--;
+        if (Input.IsActionPressed(A_UiRight)) p1dx++;
+        if (Input.IsActionPressed(A_UiUp)) p1dy--;
+        if (Input.IsActionPressed(A_UiDown)) p1dy++;
         // Gamepad (device 0) — additive; harmless when no pad present. Handhelds (R36S) map here.
         const float kJoyDeadzone = 0.4f;
         if (Input.GetJoyAxis(0, JoyAxis.LeftX) < -kJoyDeadzone || Input.IsJoyButtonPressed(0, JoyButton.DpadLeft))  p1dx = -1;
         if (Input.GetJoyAxis(0, JoyAxis.LeftX) >  kJoyDeadzone || Input.IsJoyButtonPressed(0, JoyButton.DpadRight)) p1dx =  1;
         if (Input.GetJoyAxis(0, JoyAxis.LeftY) < -kJoyDeadzone || Input.IsJoyButtonPressed(0, JoyButton.DpadUp))    p1dy = -1;
         if (Input.GetJoyAxis(0, JoyAxis.LeftY) >  kJoyDeadzone || Input.IsJoyButtonPressed(0, JoyButton.DpadDown))  p1dy =  1;
+        // Touch d-pad (Android on-screen stick) — additive override, same as the gamepad.
+        if (_touchUi && (_touchDx != 0 || _touchDy != 0)) { p1dx = _touchDx; p1dy = _touchDy; }
         bool p1PadFire = Input.IsJoyButtonPressed(0, JoyButton.A);
-        bool p1Fire = Input.IsActionPressed("ui_accept") || p1PadFire;
-        bool p1FireTriggered = Input.IsActionJustPressed("ui_accept");
+        bool p1Fire = Input.IsActionPressed(A_UiAccept) || p1PadFire || (_touchUi && _touchFire);
+        bool p1FireTriggered = Input.IsActionJustPressed(A_UiAccept);
         int p1Dir = AxisToSwosDirection(p1dx, p1dy);
         OpenSwos.Sim.Port.InputControls.SetJoystickState(
             OpenSwos.Sim.Port.InputControls.kPlayer1, p1Dir, p1Fire, p1FireTriggered);
@@ -5125,6 +5428,579 @@ public partial class Main : Node2D
             (-1, -1) => OpenSwos.Sim.Port.InputControls.kFacingTopLeft,
             _ => OpenSwos.Sim.Port.InputControls.kNoDirection,
         };
+    }
+
+    // Additively bind common joypad buttons onto the built-in ui_* actions so
+    // pads whose confirm/cancel/dpad don't reach Godot's defaults still navigate
+    // the menu. Idempotent: skips a button already present (safe on re-entry).
+    private static void EnsureJoypadUiBindings()
+    {
+        void AddBtn(string action, JoyButton b)
+        {
+            if (!InputMap.HasAction(action)) return;
+            foreach (var e in InputMap.ActionGetEvents(action))
+                if (e is InputEventJoypadButton jb && jb.ButtonIndex == b) return;
+            InputMap.ActionAddEvent(action, new InputEventJoypadButton { ButtonIndex = b });
+        }
+        AddBtn("ui_accept", JoyButton.A);
+        AddBtn("ui_accept", JoyButton.Start);
+        AddBtn("ui_cancel", JoyButton.B);
+        AddBtn("ui_up", JoyButton.DpadUp);
+        AddBtn("ui_down", JoyButton.DpadDown);
+        AddBtn("ui_left", JoyButton.DpadLeft);
+        AddBtn("ui_right", JoyButton.DpadRight);
+    }
+
+    // === Android expand presentation: black side bars + centring (#231) =======
+    // See the field block near the top for the why. This is the ONLY place the
+    // expand geometry is computed; everything else reads _barW / _vpW.
+
+    // Two opaque black ColorRects on their own CanvasLayer at Layer 3 — above the
+    // world (0) / HUD (1) / menu fine-print (2), below the touch overlay (4). They
+    // mask the extra side space that Expand exposes, so the pitch/void bleeding
+    // past the 1152-wide content region is never visible.
+    private void BuildSideBars()
+    {
+        if (DisplayServer.GetName() == "headless") return;
+        var bars = new CanvasLayer { Layer = 3 };   // identity transform: screen space
+        AddChild(bars);
+        _barsLayer = bars;
+        // MouseFilter=Ignore is CRITICAL: a ColorRect defaults to Stop, and with
+        // emulate_mouse_from_touch the bars would EAT every touch that lands on
+        // them — and the d-pad, FIRE/CONFIRM and the toggle icon all sit ON the
+        // bars. With Stop the overlay was dead on device (the "+" toggle did
+        // nothing). Ignore lets the touch reach Main._UnhandledInput.
+        _barLeft = new ColorRect { Color = Colors.Black, Position = Vector2.Zero, Size = Vector2.Zero, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _barRight = new ColorRect { Color = Colors.Black, Position = Vector2.Zero, Size = Vector2.Zero, MouseFilter = Control.MouseFilterEnum.Ignore };
+        bars.AddChild(_barLeft);
+        bars.AddChild(_barRight);
+    }
+
+    // Recomputes the bar width and re-applies the centring offset. Called once at
+    // boot and on every root-viewport resize (orientation change / window resize).
+    private void ApplyExpandLayout()
+    {
+        if (!_expandMode) return;
+        var root = GetTree()?.Root;
+        if (root is null) return;
+        var vis = root.GetVisibleRect().Size;
+        if (vis.X <= 0f || vis.Y <= 0f) return;
+
+        const float contentW = ViewportWidth * RenderScale;   // 1152
+        _vpW = vis.X;
+        float extra = _vpW - contentW;
+        // Quantise the bar to a whole multiple of RenderScale. This is what makes
+        // the centre region PIXEL-IDENTICAL to Keep mode: the camera-limit widening
+        // below is then _barW / RenderScale EXACTLY (no rounding), so the camera
+        // clamps at precisely the same world coordinate it does in Keep mode. Any
+        // 1-2 px remainder is absorbed by the right bar's width, which is computed
+        // from the remainder rather than mirrored from the left.
+        _barW = extra > 0f ? Mathf.Floor(extra / 2f / RenderScale) * RenderScale : 0f;
+        _barsHostControls = _barW >= BarMinWidth;
+
+        // (a) MATCH WORLD — camera limits only. The camera is DragCenter, so its
+        // view is already centred on the (now wider) viewport; the 1152-wide centre
+        // slice therefore shows the same world point Keep mode would, EXCEPT where
+        // the limits clamp near a pitch edge. Widening each limit by exactly the
+        // extra half-width restores Keep-mode clamping, so the centre slice matches
+        // everywhere. Nothing else is touched: the sim never reads the camera, and
+        // the ported camera-focus math (_cameraAnchor.Position, swos-port
+        // pitch.cpp clipPitch) writes POSITION, not limits — the two are
+        // independent, so this cannot perturb the port. The extra pitch that
+        // becomes visible past the old limits is exactly what the bars mask.
+        if (_camera is not null)
+        {
+            int worldExtra = (int)(_barW / RenderScale);   // exact: _barW is a multiple of RenderScale
+            _camera.LimitLeft  = PitchOffsetX - worldExtra;
+            _camera.LimitRight = PitchOffsetX + PitchWidth + worldExtra;
+        }
+
+        // (b) SCREEN-SPACE LAYERS — shift right by _barW so the 1152-wide content
+        // sits centred instead of anchored top-left. Scale is re-stated (not
+        // multiplied in) so repeated resizes can't accumulate.
+        if (_uiLayer is not null)
+            _uiLayer.Transform = new Transform2D(0f, new Vector2(MenuScale, MenuScale), 0f, new Vector2(_barW, 0f));
+        if (_hudLayer is not null)
+            _hudLayer.Transform = new Transform2D(0f, new Vector2(RenderScale, RenderScale), 0f, new Vector2(_barW, 0f));
+        _menuClient?.SetPresentationOffsetX(_barW);
+        // _menuBgImage lives on the ui layer, so it inherits the _barW centring
+        // via _uiLayer.Transform above — no separate offset needed.
+
+        // (c) BARS — left [0.._barW], right [_barW+contentW.._vpW]. Full viewport
+        // height. Right width comes from the remainder so odd extra is still
+        // covered (no 1 px seam of pitch at the screen edge).
+        if (_barLeft is not null)
+        {
+            _barLeft.Position = Vector2.Zero;
+            _barLeft.Size = new Vector2(_barW, vis.Y);
+            _barLeft.Visible = _barW > 0f;
+        }
+        if (_barRight is not null)
+        {
+            float rightX = _barW + contentW;
+            _barRight.Position = new Vector2(rightX, 0f);
+            _barRight.Size = new Vector2(Mathf.Max(0f, _vpW - rightX), vis.Y);
+            _barRight.Visible = _vpW - rightX > 0f;
+        }
+
+        if (_touchUi) LayoutTouchOverlay();
+        GD.Print($"[expand] vp={_vpW}x{vis.Y} barW={_barW} barsHostControls={_barsHostControls}");
+    }
+
+    // Places the overlay for the current bar geometry. Two cases:
+    //   bars wide enough  -> stick centred in the LEFT bar, FIRE centred in the
+    //                        RIGHT bar at ~2/3 height, pause top-right bar, toggle
+    //                        top-left bar. Controls sit entirely off the game image.
+    //   bars too thin     -> original on-content positions, shifted by _barW so they
+    //                        stay on the (now centred) content.
+    // Touch capture zones are the whole respective bar PLUS a ~1/6-of-content grace
+    // strip of the adjacent game area, so a thumb landing just inside the image
+    // still registers.
+    private void LayoutTouchOverlay()
+    {
+        if (_touchOverlay is null) return;
+        const float contentW = ViewportWidth * RenderScale;    // 1152
+        const float contentH = ViewportHeight * RenderScale;   // 816
+        float grace = contentW / 6f;                           // 192
+        float rightBarX = _barW + contentW;
+        float rightBarW = Mathf.Max(0f, _vpW - rightBarX);
+
+        if (_barsHostControls)
+        {
+            _tStickCenter  = new Vector2(_barW / 2f, contentH / 2f);
+            _tFireCenter   = new Vector2(rightBarX + rightBarW / 2f, contentH * 2f / 3f);
+            _tPauseCenter  = new Vector2(rightBarX + rightBarW / 2f, 40f);
+            _tToggleCenter = new Vector2(_barW / 2f, 40f);
+            // Generous zones: whole bar + grace strip into the game area.
+            _tStickZoneMaxX = _barW + grace;
+            _tFireZoneMinX  = rightBarX - grace;
+            _tPauseHalf = 34f;
+            _tToggleHalf = 34f;
+        }
+        else
+        {
+            // Fallback: the original 1152×816 layout, shifted onto the centred content.
+            _tStickCenter  = new Vector2(190f, 626f) + new Vector2(_barW, 0f);
+            _tFireCenter   = new Vector2(1042f, 706f) + new Vector2(_barW, 0f);
+            _tPauseCenter  = new Vector2(1102f, 40f) + new Vector2(_barW, 0f);
+            _tToggleCenter = new Vector2(50f, 40f) + new Vector2(_barW, 0f);
+            _tStickZoneMaxX = _barW + contentW / 2f;
+            _tFireZoneMinX  = float.MaxValue;    // circle-only hit test, as on desktop
+            _tPauseHalf = 24f;
+            _tToggleHalf = 24f;
+        }
+
+        _stickAnchor = _tStickCenter;
+        if (_tStickBase is not null) _tStickBase.Position = _tStickCenter;
+        if (_tStickKnob is not null) _tStickKnob.Position = _tStickCenter;
+        if (_tFire is not null) _tFire.Position = _tFireCenter;
+        if (_tPause is not null) _tPause.Position = _tPauseCenter;
+        if (_tToggle is not null) _tToggle.Position = _tToggleCenter;
+    }
+
+    // === Android on-screen touch overlay ======================================
+    // A single screen-space CanvasLayer (identity transform → hit-tests are in the
+    // 1152×816 root viewport space) holding a translucent left-thumb d-pad, a
+    // bottom-right fire circle and a top-right pause icon. Built ONCE from cached
+    // circle textures; visibility is toggled per-frame (only during Match).
+
+    // Renders a filled translucent circle with a ring into an ImageTexture ONCE.
+    private static ImageTexture MakeCircleTex(int radius, Color fill, Color ring)
+    {
+        int d = radius * 2;
+        var img = Image.CreateEmpty(d, d, false, Image.Format.Rgba8);
+        img.Fill(new Color(0, 0, 0, 0));
+        float cx = radius - 0.5f, cy = radius - 0.5f;
+        float rOuter = radius;
+        float rInner = radius - Mathf.Max(3f, radius * 0.12f);   // ring thickness
+        for (int y = 0; y < d; y++)
+        for (int x = 0; x < d; x++)
+        {
+            float dx = x - cx, dy = y - cy;
+            float dist = Mathf.Sqrt(dx * dx + dy * dy);
+            if (dist > rOuter) continue;
+            img.SetPixel(x, y, dist >= rInner ? ring : fill);
+        }
+        return ImageTexture.CreateFromImage(img);
+    }
+
+    private Sprite2D AddOverlaySprite(Texture2D tex, Vector2 center, float alpha)
+    {
+        var s = new Sprite2D
+        {
+            Texture = tex,
+            Position = center,
+            Modulate = new Color(1, 1, 1, alpha),
+            TextureFilter = TextureFilterEnum.Nearest,
+            Visible = false,
+        };
+        _touchOverlay!.AddChild(s);
+        return s;
+    }
+
+    private void BuildTouchOverlay()
+    {
+        if (DisplayServer.GetName() == "headless") return;
+        // Layer 4: above the world (0), HUD (1), menu fine-print (2) and the
+        // Android black side bars (3) — the controls must draw ON the bars.
+        var ov = new CanvasLayer { Layer = 4 };   // identity transform: screen space
+        AddChild(ov);
+        _touchOverlay = ov;
+
+        // Left thumb d-pad: 150px-diameter ring bottom-left, 64px knob on top.
+        _tStickCenter = new Vector2(190, 626);
+        _stickAnchor = _tStickCenter;
+        var baseTex = MakeCircleTex(75, new Color(1, 1, 1, 0.12f), new Color(1, 1, 1, 0.9f));
+        var knobTex = MakeCircleTex(32, new Color(1, 1, 1, 0.9f), new Color(1, 1, 1, 0.9f));
+        _tStickBase = AddOverlaySprite(baseTex, _tStickCenter, 0.4f);
+        _tStickKnob = AddOverlaySprite(knobTex, _tStickCenter, 0.5f);
+
+        // Fire circle bottom-right (radius 64).
+        _tFireCenter = new Vector2(1042, 706);
+        _tFireRadius = 64f;
+        var fireTex = MakeCircleTex(64, new Color(1f, 0.55f, 0.25f, 0.35f), new Color(1f, 0.75f, 0.4f, 0.9f));
+        _tFire = AddOverlaySprite(fireTex, _tFireCenter, 0.5f);
+
+        // Top-right (~40px square): PAUSE glyph in a match, BACK '<' glyph in a
+        // menu. Texture is swapped per-state in UpdateTouchOverlayVisibility.
+        _tPauseCenter = new Vector2(1102, 40);
+        _tPauseHalf = 24f;
+        _pauseTex = MakePauseTex();
+        _backTex = MakeBackTex();
+        _tPause = AddOverlaySprite(_pauseTex, _tPauseCenter, 0.5f);
+
+        // Overlay ON/OFF toggle — small icon top-LEFT (clear of the pause icon at
+        // top-right and the d-pad at bottom-left). ALWAYS visible in match; tapping
+        // it hides/shows the d-pad + fire + pause so a Bluetooth-pad user can play
+        // with a clean screen. Persisted in settings.json ("touchOverlay").
+        _tToggleCenter = new Vector2(50, 40);
+        _tToggleHalf = 24f;
+        _tToggle = AddOverlaySprite(MakeToggleTex(), _tToggleCenter, 0.55f);
+    }
+
+    // Small d-pad glyph in a rounded translucent square — the overlay ON/OFF
+    // toggle icon, rendered ONCE.
+    private static ImageTexture MakeToggleTex()
+    {
+        int d = 48;
+        var img = Image.CreateEmpty(d, d, false, Image.Format.Rgba8);
+        img.Fill(new Color(1, 1, 1, 0.15f));
+        var arm = new Color(1, 1, 1, 0.95f);
+        // A plus/d-pad cross: vertical bar + horizontal bar.
+        for (int y = 12; y < d - 12; y++)
+            for (int x = 21; x < 27; x++) img.SetPixel(x, y, arm);
+        for (int x = 12; x < d - 12; x++)
+            for (int y = 21; y < 27; y++) img.SetPixel(x, y, arm);
+        return ImageTexture.CreateFromImage(img);
+    }
+
+    // '<' chevron glyph in a rounded translucent square — the BACK button shown
+    // in the top-right overlay slot while in a menu. Rendered ONCE.
+    private static ImageTexture MakeBackTex()
+    {
+        int d = 48;
+        var img = Image.CreateEmpty(d, d, false, Image.Format.Rgba8);
+        img.Fill(new Color(1, 1, 1, 0.15f));
+        var arm = new Color(1, 1, 1, 0.95f);
+        // Two diagonal arms meeting at the left → a '<' pointing back.
+        for (int i = 0; i <= 12; i++)
+        {
+            int x = 18 + i;              // 18..30
+            for (int t = 0; t < 4; t++)  // 4px thick
+            {
+                int yUp = 24 - i + t;
+                int yDn = 24 + i - t;
+                if (yUp >= 0 && yUp < d) img.SetPixel(x, yUp, arm);
+                if (yDn >= 0 && yDn < d) img.SetPixel(x, yDn, arm);
+            }
+        }
+        return ImageTexture.CreateFromImage(img);
+    }
+
+    // Two-bar pause glyph in a rounded translucent square, rendered ONCE.
+    private static ImageTexture MakePauseTex()
+    {
+        int d = 48;
+        var img = Image.CreateEmpty(d, d, false, Image.Format.Rgba8);
+        img.Fill(new Color(1, 1, 1, 0.15f));
+        var bar = new Color(1, 1, 1, 0.95f);
+        for (int y = 12; y < d - 12; y++)
+        {
+            for (int x = 14; x < 20; x++) img.SetPixel(x, y, bar);
+            for (int x = 28; x < 34; x++) img.SetPixel(x, y, bar);
+        }
+        return ImageTexture.CreateFromImage(img);
+    }
+
+    // Per-frame overlay visibility. The SAME d-pad + right-hand action button +
+    // top-right slot + toggle serve BOTH a match and a menu:
+    //   match — stick = move, FIRE circle = pass/shot, top-right = PAUSE.
+    //   menu  — stick = navigate, FIRE circle = CONFIRM (ui_accept), top-right =
+    //           BACK '<' (ui_cancel).
+    private void UpdateTouchOverlayVisibility()
+    {
+        if (_touchOverlay is null) return;
+        bool inMatch = _touchUi && _appState == AppState.Match;
+        bool inMenu  = _touchUi && _appState == AppState.Menu;
+        bool overlayCtx = inMatch || inMenu;
+        bool controls = overlayCtx && _touchOverlayOn;
+        if (_tStickBase is not null) _tStickBase.Visible = controls;
+        if (_tStickKnob is not null) _tStickKnob.Visible = controls;
+        if (_tFire is not null) _tFire.Visible = controls;
+        if (_tPause is not null)
+        {
+            _tPause.Visible = controls;
+            // BACK '<' in menus, PAUSE bars in a match.
+            var want = inMenu ? _backTex : _pauseTex;
+            if (want is not null && _tPause.Texture != want) _tPause.Texture = want;
+        }
+        // Toggle icon is always available whenever the overlay context is live;
+        // dim it when the controls are hidden so its state reads at a glance.
+        if (_tToggle is not null)
+        {
+            _tToggle.Visible = overlayCtx;
+            _tToggle.Modulate = new Color(1, 1, 1, _touchOverlayOn ? 0.55f : 0.30f);
+        }
+    }
+
+    // Multi-finger match touch handling. `pos` is raw screen space (1152×816);
+    // hit-tests compare against the overlay sprite centres directly.
+    private void HandleMatchTouch(Vector2 pos, bool pressed, int index)
+    {
+        if (pressed)
+        {
+            // Overlay ON/OFF toggle (top-left) — always live, even when the rest of
+            // the controls are hidden. Flips instantly + persists the choice.
+            if (Mathf.Abs(pos.X - _tToggleCenter.X) <= _tToggleHalf &&
+                Mathf.Abs(pos.Y - _tToggleCenter.Y) <= _tToggleHalf)
+            {
+                _touchOverlayOn = !_touchOverlayOn;
+                if (!_touchOverlayOn)   // clear any in-flight touch input
+                {
+                    _touchDx = 0; _touchDy = 0; _touchFire = false;
+                    _stickFinger = -1; _fireFinger = -1;
+                }
+                UpdateTouchOverlayVisibility();
+                SaveSettings();
+                return;
+            }
+            // The remaining zones only exist while the controls are shown.
+            if (!_touchOverlayOn) return;
+            // Pause icon (top-right square).
+            if (Mathf.Abs(pos.X - _tPauseCenter.X) <= _tPauseHalf &&
+                Mathf.Abs(pos.Y - _tPauseCenter.Y) <= _tPauseHalf)
+            {
+                _touchPauseRequested = true;
+                return;
+            }
+            // Fire: the drawn circle, or (Android bars path) anywhere in the right
+            // bar + its grace strip. _tFireZoneMinX is float.MaxValue elsewhere, so
+            // desktop/--touch keeps the circle-only test.
+            if (pos.DistanceTo(_tFireCenter) <= _tFireRadius || pos.X >= _tFireZoneMinX)
+            {
+                _fireFinger = index;
+                _touchFire = true;
+                return;
+            }
+            // Stick zone (left half, or the left bar + grace strip) → thumb d-pad;
+            // anchor where the finger lands.
+            if (pos.X < _tStickZoneMaxX)
+            {
+                _stickFinger = index;
+                _stickAnchor = pos;
+                _touchDx = 0;
+                _touchDy = 0;
+                if (_tStickKnob is not null) _tStickKnob.Position = pos;
+            }
+        }
+        else
+        {
+            if (index == _fireFinger) { _fireFinger = -1; _touchFire = false; }
+            if (index == _stickFinger)
+            {
+                _stickFinger = -1;
+                _touchDx = 0;
+                _touchDy = 0;
+                if (_tStickKnob is not null) _tStickKnob.Position = _tStickCenter;
+            }
+        }
+    }
+
+    // Root-viewport touch position -> menu 576×408 design space. _barW is 0 on every
+    // non-expand platform, so this stays exactly `pos / MenuScale` there; on Android
+    // it undoes the centring shift applied to the menu CanvasLayer.
+    private Vector2 MenuTouchPos(Vector2 pos) => (pos - new Vector2(_barW, 0f)) / MenuScale;
+
+    private void HandleMatchDrag(Vector2 pos, int index)
+    {
+        if (index != _stickFinger) return;
+        Vector2 v = pos - _stickAnchor;
+        if (v.Length() < 28f)   // deadzone
+        {
+            _touchDx = 0;
+            _touchDy = 0;
+            if (_tStickKnob is not null) _tStickKnob.Position = _stickAnchor;
+            return;
+        }
+        (sbyte dx, sbyte dy) = EightWay(v);
+        _touchDx = dx;
+        _touchDy = dy;
+        // Visual: clamp the knob to the ring radius along the drag vector.
+        if (_tStickKnob is not null)
+        {
+            float len = v.Length();
+            Vector2 clamped = len > 75f ? _stickAnchor + v * (75f / len) : pos;
+            _tStickKnob.Position = clamped;
+        }
+    }
+
+    // Quantises a stick vector to an 8-way (dx,dy) in {-1,0,1}. SCREEN-space
+    // angle, y is DOWN. Shared by the match d-pad and the menu d-pad.
+    private static (sbyte dx, sbyte dy) EightWay(Vector2 v)
+    {
+        double a = Mathf.Atan2(v.Y, v.X);
+        int oct = ((int)Mathf.Round(a / (Mathf.Pi / 4)) + 8) & 7; // 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
+        return oct switch
+        {
+            0 => ((sbyte)1, (sbyte)0),
+            1 => ((sbyte)1, (sbyte)1),
+            2 => ((sbyte)0, (sbyte)1),
+            3 => ((sbyte)-1, (sbyte)1),
+            4 => ((sbyte)-1, (sbyte)0),
+            5 => ((sbyte)-1, (sbyte)-1),
+            6 => ((sbyte)0, (sbyte)-1),
+            _ => ((sbyte)1, (sbyte)-1),
+        };
+    }
+
+    // === MENU on-screen overlay touch =========================================
+    // The overlay lives on top of the SWOS front-end while AppState==Menu. This
+    // handles taps/drags on the overlay CONTROLS (toggle / BACK / CONFIRM /
+    // d-pad) in raw 1152×816 screen space. Returns true when a control consumed
+    // the touch; false lets the tap fall through to MenuClient's tap-to-select,
+    // so the two input styles coexist exactly as required.
+    private bool HandleMenuTouch(Vector2 pos, bool pressed, int index)
+    {
+        if (!pressed)
+        {
+            if (index == _menuStickFinger)
+            {
+                _menuStickFinger = -1;
+                _menuStickDx = 0; _menuStickDy = 0;
+                if (_tStickKnob is not null) _tStickKnob.Position = _tStickCenter;
+                return true;
+            }
+            return false;
+        }
+        // Overlay ON/OFF toggle (top-left) — always live, even when the rest of
+        // the controls are hidden. Flips instantly + persists the choice.
+        if (Mathf.Abs(pos.X - _tToggleCenter.X) <= _tToggleHalf &&
+            Mathf.Abs(pos.Y - _tToggleCenter.Y) <= _tToggleHalf)
+        {
+            _touchOverlayOn = !_touchOverlayOn;
+            if (!_touchOverlayOn)
+            {
+                _menuStickDx = 0; _menuStickDy = 0; _menuStickFinger = -1;
+                _navHeld = false; _navRepeatTimer = 0;
+            }
+            UpdateTouchOverlayVisibility();
+            SaveSettings();
+            return true;
+        }
+        // Remaining controls exist only while the overlay is shown; when hidden
+        // let taps through to the menu content (and the small '<' box returns).
+        if (!_touchOverlayOn) return false;
+        // BACK (top-right slot) → ui_cancel.
+        if (Mathf.Abs(pos.X - _tPauseCenter.X) <= _tPauseHalf &&
+            Mathf.Abs(pos.Y - _tPauseCenter.Y) <= _tPauseHalf)
+        {
+            _menuBackPulse = true;
+            return true;
+        }
+        // CONFIRM (the drawn circle, or the right bar + grace strip) → ui_accept.
+        if (pos.DistanceTo(_tFireCenter) <= _tFireRadius || pos.X >= _tFireZoneMinX)
+        {
+            _menuConfirmPulse = true;
+            return true;
+        }
+        // d-pad zone (left bar / left half) → anchor where the finger lands.
+        if (pos.X < _tStickZoneMaxX)
+        {
+            _menuStickFinger = index;
+            _stickAnchor = pos;
+            _menuStickDx = 0; _menuStickDy = 0;
+            if (_tStickKnob is not null) _tStickKnob.Position = pos;
+            return true;
+        }
+        return false;   // outside every control → a menu-content tap
+    }
+
+    // Drag on the menu d-pad → updates the 8-way _menuStick* state (NEVER the
+    // match _touchDx/_touchDy). Mirrors HandleMatchDrag's visuals.
+    private void HandleMenuDrag(Vector2 pos, int index)
+    {
+        if (index != _menuStickFinger) return;
+        Vector2 v = pos - _stickAnchor;
+        if (v.Length() < 28f)   // deadzone
+        {
+            _menuStickDx = 0; _menuStickDy = 0;
+            if (_tStickKnob is not null) _tStickKnob.Position = _stickAnchor;
+            return;
+        }
+        (sbyte dx, sbyte dy) = EightWay(v);
+        _menuStickDx = dx;
+        _menuStickDy = dy;
+        if (_tStickKnob is not null)
+        {
+            float len = v.Length();
+            Vector2 clamped = len > 75f ? _stickAnchor + v * (75f / len) : pos;
+            _tStickKnob.Position = clamped;
+        }
+    }
+
+    // Translates the menu d-pad's 8-way state into discrete ui_up/down/left/right
+    // "just pressed" pulses with auto-repeat (initial delay then steady repeat),
+    // plus one-shot CONFIRM/BACK from the buttons, and feeds them to MenuClient.
+    // Runs once per menu physics frame, immediately before MenuClient.Tick().
+    //
+    // DETERMINISM / SIM SAFETY: nothing here writes _touchDx/_touchDy or Godot's
+    // global Input state. The pulses are injected ONLY into MenuClient's own
+    // action reads via InjectNav(); the sim never observes them, and it runs
+    // only while AppState==Match (this runs only while AppState==Menu).
+    private void UpdateMenuTouchNav(double delta)
+    {
+        if (_menuClient is null) return;
+        // Small '<' box is the fallback back-control only when the big overlay
+        // BACK is hidden (overlay toggled off) — never both at once.
+        _menuClient.ShowBackBox = !_touchOverlayOn;
+
+        bool up = false, down = false, left = false, right = false;
+        sbyte dx = _touchOverlayOn ? _menuStickDx : (sbyte)0;
+        sbyte dy = _touchOverlayOn ? _menuStickDy : (sbyte)0;
+        bool active = dx != 0 || dy != 0;
+
+        void Emit()
+        {
+            if (dy < 0) up = true; else if (dy > 0) down = true;
+            if (dx < 0) left = true; else if (dx > 0) right = true;
+        }
+
+        if (!active) { _navHeld = false; _navRepeatTimer = 0; }
+        else if (!_navHeld || dx != _navHeldDx || dy != _navHeldDy)
+        {
+            _navHeld = true; _navHeldDx = dx; _navHeldDy = dy;
+            _navRepeatTimer = NavInitialDelay;
+            Emit();   // immediate move on the crossing into a new direction
+        }
+        else
+        {
+            _navRepeatTimer -= delta;
+            if (_navRepeatTimer <= 0) { _navRepeatTimer = NavRepeatInterval; Emit(); }
+        }
+
+        bool accept = _menuConfirmPulse; _menuConfirmPulse = false;
+        bool cancel = _menuBackPulse;    _menuBackPulse = false;
+        _menuClient.InjectNav(up, down, left, right, accept, cancel);
     }
 
     // Pulls X/Y/Z/Direction from a sprite slot into the C# PlayerState so the
@@ -5425,12 +6301,14 @@ public partial class Main : Node2D
             // and dim-backdrop hidden.
             if (_menuLabel is not null) _menuLabel.Visible = false;
             if (_menuBackground is not null) _menuBackground.Visible = false;
+            if (_menuBgSprite is not null) _menuBgSprite.Visible = true;
             if (_menuClient is not null) _menuClient.Active = true;
             return;
         }
 
         if (_menuLabel is not null) _menuLabel.Visible = false;
         if (_menuBackground is not null) _menuBackground.Visible = false;
+        if (_menuBgSprite is not null) _menuBgSprite.Visible = false;
         if (_menuClient is not null) _menuClient.Active = false;
         if (_scoreLabel is not null)
         {
@@ -5539,6 +6417,17 @@ public partial class Main : Node2D
             }
             var (nx, ny, nz, img) = OpenSwos.Sim.Port.GameSprites.GetCurPlayerNumSprite(ti);
             if (img < 0)
+            {
+                spr.Visible = false;
+                continue;
+            }
+            // Suppress the controlled-number sprite for the GOALKEEPER (players[0]
+            // → playerOrdinal 1): the keeper's per-tick dive/catch animation jitters
+            // its z, so the above-head number smeared (user report). Renderer-only
+            // gate; the sim is untouched.
+            int ctrlPtr = OpenSwos.SwosVm.TeamData.ControlledPlayer(ti == 0);
+            if (ctrlPtr != 0 &&
+                OpenSwos.SwosVm.Memory.ReadSignedWord(ctrlPtr + OpenSwos.SwosVm.PlayerSprite.OffPlayerOrdinal) == 1)
             {
                 spr.Visible = false;
                 continue;
@@ -5698,7 +6587,15 @@ public partial class Main : Node2D
                 (energy * 8 + OpenSwos.Sim.Port.PlayerEnergy.Max / 2)
                     / OpenSwos.Sim.Port.PlayerEnergy.Max, 0, 8);
             bar.Texture = GetEnergyBarTexture(fillPx);
-            bar.Position = new Vector2(pl.Position.X, pl.Position.Y - 13);
+            // Centre the bar on the player's BODY, not the sprite node's centre.
+            // The player Sprite2D is Centered but foot-anchored (StandingAnchor Cx
+            // is 1..4, not 8), so its node centre sits a few px RIGHT of the body.
+            // Use the port world-X (same source the head-number sprite centres on
+            // via nx + PitchOffsetX) so the 8px bar sits over the player.
+            float bodyX = OpenSwos.SwosVm.PlayerSprite.XPixels(slot) + PitchOffsetX;
+            // -9 (was -13): lowered ~4 render px so the bar clears the head-number
+            // sprite it used to overlap (user report).
+            bar.Position = new Vector2(bodyX, pl.Position.Y - 9);
             bar.ZIndex = pl.ZIndex + 3;
             bar.Visible = true;
         }
@@ -6228,6 +7125,13 @@ public partial class Main : Node2D
     // this resolution. The root viewport is now the NATIVE 1152×816 (=×3), so
     // the match world (Camera2D.Zoom) and the UI CanvasLayer transform each
     // scale design coords up by RenderScale to fill it 1:1.
+    // Cached StringName action ids for the HOT per-tick input paths (_PhysicsProcess
+    // + TickSwosPort run at 70 Hz). Passing string literals to Input.IsAction*
+    // implicitly allocates a StringName each call — cache them once instead.
+    private static readonly StringName A_UiUp = "ui_up", A_UiDown = "ui_down",
+        A_UiLeft = "ui_left", A_UiRight = "ui_right", A_UiAccept = "ui_accept",
+        A_UiCancel = "ui_cancel", A_SwosPause = "swos_pause";
+
     private const int ViewportWidth  = 384;  // design width  (native = ×RenderScale) — MATCH HUD space
     private const int ViewportHeight = 272;  // design height (native = ×RenderScale) — MATCH HUD space
     private const int RenderScale    = 3;    // native viewport = 1152×816 = design ×3 (match world + HUD)
@@ -7155,6 +8059,46 @@ public partial class Main : Node2D
     //   Alt+Enter  — toggle Windowed <-> last-used fullscreen mode.
     public override void _UnhandledInput(InputEvent e)
     {
+        // --- Touch routing (only when the touch UI is active) ---
+        // Handled BEFORE the key guard below. With stretch=viewport, the touch
+        // Position is already in the 1152×816 root viewport space: the menu wants
+        // 576×408 design space (divide by MenuScale), the match overlay is
+        // identity-scale screen space (raw pos, no divide).
+        if (_touchUi)
+        {
+            if (e is InputEventScreenTouch t)
+            {
+                if (_appState == AppState.Menu && _menuClient is not null)
+                {
+                    // Overlay controls (d-pad / CONFIRM / BACK / toggle) get first
+                    // crack in screen space; anything they don't consume falls
+                    // through to MenuClient's tap-to-select (both coexist).
+                    if (!HandleMenuTouch(t.Position, t.Pressed, t.Index))
+                        _menuClient.HandleTouch(MenuTouchPos(t.Position), t.Pressed);
+                }
+                else
+                    HandleMatchTouch(t.Position, t.Pressed, t.Index);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+            if (e is InputEventScreenDrag d)
+            {
+                if (_appState == AppState.Menu && _menuClient is not null)
+                {
+                    // A drag on the menu d-pad steers navigation; otherwise pass
+                    // it to the menu as a move (which it mostly ignores).
+                    if (d.Index == _menuStickFinger)
+                        HandleMenuDrag(d.Position, d.Index);
+                    else
+                        _menuClient.HandleTouch(MenuTouchPos(d.Position), true);
+                }
+                else
+                    HandleMatchDrag(d.Position, d.Index);
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+        }
+
         if (e is not InputEventKey k || !k.Pressed || k.Echo) return;
 
         // Mobile-only: forward physical key events into the active menu's text field
@@ -7212,7 +8156,14 @@ public partial class Main : Node2D
             if (win is null) return;
 
             win.ContentScaleMode = Window.ContentScaleModeEnum.Viewport;
-            win.ContentScaleAspect = Window.ContentScaleAspectEnum.Keep;
+            // Android (#231): Expand makes the side space part of the root viewport
+            // so the touch overlay can be drawn there; the extra width is then
+            // masked with black bars and the content is centred, so the visible
+            // image stays the 4:3 Keep-mode one. Every other platform keeps Keep.
+            win.ContentScaleAspect = _expandMode
+                ? Window.ContentScaleAspectEnum.Expand
+                : Window.ContentScaleAspectEnum.Keep;
+            win.ContentScaleSize = new Vector2I(ViewportWidth * RenderScale, ViewportHeight * RenderScale);
 
             switch (_displayMode)
             {
@@ -7299,6 +8250,11 @@ public partial class Main : Node2D
             var mFatigueSim = System.Text.RegularExpressions.Regex.Match(text,
                 "\"fatigueSim\"\\s*:\\s*(true|false)");
             if (mFatigueSim.Success) _fatigueSim = mFatigueSim.Groups[1].Value == "true";
+            // On-screen touch controls visible (default ON). Only meaningful on
+            // touchscreens; harmless to load on desktop.
+            var mTouchOv = System.Text.RegularExpressions.Regex.Match(text,
+                "\"touchOverlay\"\\s*:\\s*(true|false)");
+            if (mTouchOv.Success) _touchOverlayOn = mTouchOv.Groups[1].Value == "true";
             // Display mode: "windowed" / "fill" / "integer" (default windowed).
             // A persisted fullscreen mode also seeds _lastFullscreenMode so
             // Alt+Enter restores what the player last used.
@@ -7370,6 +8326,8 @@ public partial class Main : Node2D
                 (_energyBar ? "true" : "false") +
                 ",\"fatigueSim\":" +
                 (_fatigueSim ? "true" : "false") +
+                ",\"touchOverlay\":" +
+                (_touchOverlayOn ? "true" : "false") +
                 ",\"displayMode\":\"" +
                 (_displayMode switch
                 {

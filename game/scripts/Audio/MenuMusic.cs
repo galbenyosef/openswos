@@ -27,13 +27,88 @@ public partial class MenuMusic : Node
     // ── availability (cheap, cached by the underlying engines) ────────────────
     public static bool AmigaAvailable() => Rjp1Module.Available("MENU");
     public static bool PcAvailable() => OpenSwos.Assets.CdMusicImport.Available();
+
+    // Bundled CUSTOM tracks. These mp3s are Godot-IMPORTED (each has a .import),
+    // so inside an exported PCK/APK the raw path res://data/music/X.mp3 is
+    // REMAPPED to .godot/imported/*.mp3str — DirAccess.GetFiles() will NOT list
+    // them and FileAccess on the raw path is unreliable. The export-safe path is
+    // ResourceLoader.Exists / GD.Load, which follow the import remap. We resolve a
+    // hardcoded manifest that way, and (dev only) union in anything DirAccess finds.
+    private const string MusicDir = "res://data/music";
+    private static readonly string[] kBundledTracks =
+    {
+        "Sensible Menu 2.mp3",
+        "Sensible Menu 3b.mp3",
+    };
+
+    // Union of the hardcoded manifest and any *.mp3 DirAccess reports (dev/editor),
+    // de-duplicated, ordinal-sorted for a deterministic playlist order.
+    private static List<string> EnumerateTrackNames()
+    {
+        var names = new List<string>();
+        var seen = new HashSet<string>();
+        void Add(string n) { if (n.ToLowerInvariant().EndsWith(".mp3") && seen.Add(n)) names.Add(n); }
+
+        foreach (var n in kBundledTracks) Add(n);
+
+        using var dir = DirAccess.Open(MusicDir);   // null in an exported build → manifest only
+        if (dir != null)
+            foreach (var n in dir.GetFiles()) Add(n);
+
+        names.Sort(System.StringComparer.Ordinal);
+        return names;
+    }
+
+    // A track is present if the imported resource resolves (export + editor) OR the
+    // raw force-included file exists (a bare, un-imported mp3).
+    private static bool TrackExists(string name)
+    {
+        string path = MusicDir + "/" + name;
+        return ResourceLoader.Exists(path) || Godot.FileAccess.FileExists(path);
+    }
+
+    // Loads a track export-safely: prefer the Godot-imported AudioStreamMP3 (follows
+    // the PCK remap), fall back to raw force-included bytes for an un-imported mp3.
+    private static AudioStreamMP3? LoadTrack(string name)
+    {
+        string path = MusicDir + "/" + name;
+        if (ResourceLoader.Exists(path))
+        {
+            var res = GD.Load<AudioStreamMP3>(path);
+            if (res != null) return res;
+        }
+        var bytes = Godot.FileAccess.GetFileAsBytes(path);
+        if (bytes != null && bytes.Length > 0) return new AudioStreamMP3 { Data = bytes };
+        return null;
+    }
+
+    // Memoized: this is polled per-frame by the music resolver.
+    private static bool? s_customAvail;
     public static bool CustomAvailable()
     {
-        using var dir = DirAccess.Open("res://data/music");
-        if (dir == null) return false;
-        foreach (var name in dir.GetFiles())
-            if (name.ToLowerInvariant().EndsWith(".mp3")) return true;
-        return false;
+        if (s_customAvail.HasValue) return s_customAvail.Value;
+        bool avail = false;
+        foreach (var name in EnumerateTrackNames())
+            if (TrackExists(name)) { avail = true; break; }
+        s_customAvail = avail;
+        return avail;
+    }
+
+    // Verification probe (used by Main's --music-custom-test flag). Exercises the
+    // EXACT static availability + load path the live playlist uses (no Node/audio
+    // driver needed), so a green result here proves CUSTOM works for playback too —
+    // including inside an exported PCK/APK where res:// paths are import-remapped.
+    public static int TestCustomLoad()
+    {
+        int n = 0;
+        foreach (var name in EnumerateTrackNames())
+        {
+            var s = LoadTrack(name);
+            if (s != null) { n++; GD.Print($"[music] custom track: {name}"); }
+        }
+        GD.Print($"[music] custom available={CustomAvailable()}");
+        GD.Print($"[music] custom: {n} tracks");
+        return n;
     }
 
     // ── volume constants (documented; user tunes by ear later) ────────────────
@@ -49,6 +124,16 @@ public partial class MenuMusic : Node
     private AudioStreamPlayer _wav = null!;   // PC + CUSTOM (plain stream)
     private AudioStreamGeneratorPlayback? _genPb;
     private Rjp1Player? _rjp;
+
+    // AMIGA RJP1 mix runs on a dedicated background thread with reused buffers so
+    // it never allocates per-frame and never underruns behind a busy main thread
+    // (Android menu-stutter fix). The generator + player are created on the main
+    // thread; StopInternal joins this thread BEFORE nulling _rjp/_genPb so the
+    // thread never touches a torn-down object.
+    private const int kMixChunk = 1024;
+    private System.Threading.Thread? _mixThread;
+    private volatile bool _mixRun;
+
     private MusicSource _current = MusicSource.Off;
     private System.Random _rng = new();   // AUDIO rng only (menu shuffle)
 
@@ -71,6 +156,11 @@ public partial class MenuMusic : Node
 
     public override void _ExitTree()
     {
+        // Ensure the mix thread is stopped even if _ExitTree fires without a Stop().
+        _mixRun = false;
+        _mixThread?.Join(200);
+        _mixThread = null;
+
         if (Instance == this) Instance = null;
     }
 
@@ -97,10 +187,25 @@ public partial class MenuMusic : Node
                 _rjp = new Rjp1Player(m, 44100);
                 _rjp.PlaySong(0);
                 _rjp.StartFadeIn();
-                _gen.Stream = new AudioStreamGenerator { MixRate = 44100, BufferLength = 0.2f };
+                _gen.Stream = new AudioStreamGenerator { MixRate = 44100, BufferLength = 0.5f };
                 _gen.VolumeDb = 0;
                 _gen.Play();
                 _genPb = (AudioStreamGeneratorPlayback)_gen.GetStreamPlayback();
+
+                // One-time self-profile of the mix cost (main thread, negligible; the
+                // extra chunk advances RJP state inaudibly). Prints once per start.
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var probe = new float[kMixChunk * 2];
+                _rjp.GenerateStereo(probe, kMixChunk);
+                sw.Stop();
+                GD.Print($"[music] GenerateStereo x{kMixChunk} = {sw.Elapsed.TotalMilliseconds:0.00} ms");
+
+                // Hand the pull-mix off to the background thread (reused buffers).
+                _mixRun = true;
+                _mixThread = new System.Threading.Thread(MixLoop)
+                    { IsBackground = true, Name = "MenuMusicMix" };
+                _mixThread.Start();
+
                 _current = MusicSource.Amiga;
                 GD.Print("[music] amiga: menu music started (fade-in)");
                 break;
@@ -139,28 +244,52 @@ public partial class MenuMusic : Node
 
     private void StopInternal()
     {
+        // Join the mix thread BEFORE tearing down the objects it captured, so no
+        // background frame touches a nulled _rjp / _genPb.
+        _mixRun = false;
+        _mixThread?.Join(200);
+        _mixThread = null;
+
         _gen.Stop();
         _wav.Stop();
         _rjp = null;
         _genPb = null;
     }
 
+    // Background pull-mixer for the AMIGA RJP1 source. Generates AND pushes with
+    // buffers allocated ONCE here (zero per-frame allocation). Captures the current
+    // playback/player locals each pass; StopInternal's join-before-null guarantees
+    // they stay valid for the lifetime of a pass.
+    private void MixLoop()
+    {
+        var fbuf = new float[kMixChunk * 2];
+        var vbuf = new Godot.Vector2[kMixChunk];
+        while (_mixRun)
+        {
+            var pb = _genPb;
+            var rjp = _rjp;
+            if (pb == null || rjp == null) { System.Threading.Thread.Sleep(5); continue; }
+            try
+            {
+                int avail = pb.GetFramesAvailable();
+                while (avail >= kMixChunk && _mixRun)
+                {
+                    rjp.GenerateStereo(fbuf, kMixChunk);
+                    for (int i = 0; i < kMixChunk; i++)
+                        vbuf[i] = new Godot.Vector2(fbuf[2 * i], fbuf[2 * i + 1]);
+                    pb.PushBuffer(vbuf);
+                    avail -= kMixChunk;
+                }
+            }
+            catch { /* generator torn down mid-frame; loop guard handles it */ }
+            System.Threading.Thread.Sleep(3);
+        }
+    }
+
     public override void _Process(double delta)
     {
-        // AMIGA: pull-mixer — feed the generator as buffer space frees up.
-        if (_current == MusicSource.Amiga && _genPb != null && _rjp != null)
-        {
-            int frames = _genPb.GetFramesAvailable();
-            if (frames > 0)
-            {
-                var buf = new float[frames * 2];
-                _rjp.GenerateStereo(buf, frames);
-                var v = new Godot.Vector2[frames];
-                for (int i = 0; i < frames; i++)
-                    v[i] = new Godot.Vector2(buf[2 * i], buf[2 * i + 1]);
-                _genPb.PushBuffer(v);
-            }
-        }
+        // AMIGA: the pull-mix now runs on the dedicated background thread (MixLoop),
+        // off the main thread, so nothing to do here for that source.
 
         // CUSTOM: advance to the next track when the current one finishes (loops
         // the playlist forever).
@@ -177,26 +306,13 @@ public partial class MenuMusic : Node
         if (_playlistBuilt) return;
         _playlistBuilt = true;
 
-        using var dir = DirAccess.Open("res://data/music");
-        if (dir == null) return;
-
-        var names = new List<string>();
-        foreach (var name in dir.GetFiles())
+        foreach (var name in EnumerateTrackNames())
         {
-            string lower = name.ToLowerInvariant();
-            if (!lower.EndsWith(".mp3")) continue;   // skip .import/.remap entries
-            names.Add(name);
-        }
-        names.Sort(System.StringComparer.Ordinal);   // deterministic list order
-
-        foreach (var name in names)
-        {
-            // Raw-bytes decode path: works in dev AND exported pck without a Godot
-            // import (the mp3s are force-included via export_presets.cfg).
-            var bytes = Godot.FileAccess.GetFileAsBytes("res://data/music/" + name);
-            if (bytes.Length > 0)
+            // Export-safe load (imported resource first, raw bytes fallback).
+            var stream = LoadTrack(name);
+            if (stream != null)
             {
-                _playlist.Add(new AudioStreamMP3 { Data = bytes });
+                _playlist.Add(stream);
                 GD.Print($"[music] custom track: {name}");
             }
         }

@@ -54,6 +54,12 @@ public sealed class MenuTableSelect
     // Optional footer control hint shown while this table is active (else the
     // generic "UP/DOWN ROW  FIRE OK  ESC BACK").
     public string? Hint;
+    // Touch support: per-row hit rects (menu design space), indexed by row.
+    // The career body painters (MenuClient.Career.cs) do NOT fill this yet, so
+    // HandleTouch falls back to a row-height FORMULA when it is empty. Present
+    // for future-proofing — a painter can populate it for pixel-exact touch
+    // rows. See MenuClient.HandleTouch (TABLE SELECT mode).
+    public System.Collections.Generic.List<Godot.Rect2> RowRects = new();
 }
 
 // The OpenSWOS front-end: a SWOS-styled, stack-navigated menu client that lives
@@ -84,7 +90,19 @@ public sealed partial class MenuClient
 
     private Sprite2D? _backdrop;
     private Sprite2D? _cursor;
+    // Last framed cursor size — lets UpdateCursor skip the redundant Texture
+    // property write when the selection's box size hasn't changed.
+    private int _cursorW = -1, _cursorH = -1;
     private readonly System.Collections.Generic.Stack<MenuScreen> _stack = new();
+
+    // ---- touch support (Android) ---------------------------------------------
+    // Main sets this true on touchscreens; when true we draw an always-visible
+    // BACK affordance and HandleTouch acts on taps. Purely additive — the
+    // frame-polled Tick() keyboard/gamepad path is untouched.
+    public bool TouchEnabled { get; set; }
+    // A small '<' BACK box drawn at the top-left corner while TouchEnabled.
+    private Sprite2D? _backBox, _backGlyph;
+    private static readonly Rect2 kBackRect = new Rect2(4, 4, 24, 24);
 
     private int _cursorFrame;
     private int _heldTicks;
@@ -155,6 +173,17 @@ public sealed partial class MenuClient
         _root.AddChild(_cursor);
 
         Push(BuildHome());
+    }
+
+    // Android expand presentation (#231): Main centres the 1152-wide content inside
+    // the wider root viewport by shifting each screen-space CanvasLayer right. The
+    // menu's own ×2 layer is shifted by Main; the fine-print layer is ours, so Main
+    // calls this to keep it aligned. `px` is 0 on every non-expand platform, which
+    // reproduces the original identity transform exactly.
+    public void SetPresentationOffsetX(float px)
+    {
+        if (_finePrintLayer is not null)
+            _finePrintLayer.Transform = Transform2D.Identity.Translated(new Vector2(px, 0f));
     }
 
     public bool Active
@@ -585,6 +614,18 @@ public sealed partial class MenuClient
             }
             SetText(_footerSpr, hint, false, Align.Center, 0, _vh - 11, _vw, 10, new Color(0.55f, 0.6f, 0.72f));
         }
+
+        // Touch BACK affordance: only visible on touchscreens. A tap inside it
+        // (checked first in HandleTouch) maps to ui_cancel/ESC for the current
+        // mode (BackPressed). On HOME it draws but Pop() is a no-op.
+        if (_backBox is not null)
+        {
+            bool showBack = TouchEnabled && _showBackBox;
+            _backBox.Visible = showBack;
+            SetText(_backGlyph, showBack ? "<" : "", true, Align.Center,
+                (int)kBackRect.Position.X, (int)kBackRect.Position.Y,
+                (int)kBackRect.Size.X, (int)kBackRect.Size.Y, MenuTheme.TextColor(MenuTheme.Style.Plain));
+        }
     }
 
     private Sprite2D? _titleBar, _titleSpr, _footerSpr;
@@ -598,7 +639,54 @@ public sealed partial class MenuClient
             _titleSpr!.ZIndex = 21;
             _footerSpr = MakeText();
             _footerSpr!.ZIndex = 21;
+            // Persistent BACK affordance (shown/hidden by TouchEnabled in
+            // Refresh). Sits above the buttons/text but below the flash cursor.
+            _backBox = MakeSprite(MenuTheme.Button((int)kBackRect.Size.X, (int)kBackRect.Size.Y, MenuTheme.Style.Plain),
+                (int)kBackRect.Position.X, (int)kBackRect.Position.Y, 55);
+            _backBox.Visible = false;
+            _backGlyph = MakeText();
+            _backGlyph!.ZIndex = 56;
         }
+    }
+
+    // ---- injected on-screen d-pad nav (Android) ------------------------------
+    // Main computes edge pulses (with its OWN auto-repeat) from the touch d-pad
+    // and pushes them here once per frame, immediately before Tick(). They are
+    // OR-ed into the keyboard/gamepad "just pressed" reads via JP(), so the
+    // ENTIRE mode ladder — main screen, list picker, table select, text input,
+    // value stepping — is reused unchanged. This NEVER touches Godot's Input
+    // singleton, so it can't perturb the match sim (which reads its own _touch*
+    // fields, and only while AppState==Match).
+    private bool _injUp, _injDown, _injLeft, _injRight, _injAccept, _injCancel;
+    public void InjectNav(bool up, bool down, bool left, bool right, bool accept, bool cancel)
+    {
+        _injUp = up; _injDown = down; _injLeft = left; _injRight = right;
+        _injAccept = accept; _injCancel = cancel;
+    }
+    // "Just pressed" OR an injected touch pulse for this action name.
+    private bool JP(string a)
+    {
+        bool inj = a switch
+        {
+            "ui_up" => _injUp,
+            "ui_down" => _injDown,
+            "ui_left" => _injLeft,
+            "ui_right" => _injRight,
+            "ui_accept" => _injAccept,
+            "ui_cancel" => _injCancel,
+            _ => false,
+        };
+        return inj || Input.IsActionJustPressed(a);
+    }
+
+    // Main hides the small '<' BACK box (top-left) when the big on-screen touch
+    // BACK button is shown in the overlay bar, so there are never two backs. On
+    // change it re-renders immediately (Refresh re-runs the back-box block).
+    private bool _showBackBox = true;
+    public bool ShowBackBox
+    {
+        get => _showBackBox;
+        set { if (_showBackBox == value) return; _showBackBox = value; if (Active) Refresh(); }
     }
 
     // ---- input ---------------------------------------------------------------
@@ -631,14 +719,14 @@ public sealed partial class MenuClient
                     TickTextInput();
                     // DOWN (action = keyboard arrow OR gamepad dpad) leaves the
                     // field for the OK button — retro handhelds have no ENTER.
-                    if (_textInput is not null && Input.IsActionJustPressed("ui_down"))
+                    if (_textInput is not null && JP("ui_down"))
                     { ti.Typing = false; _dirty = true; }
                 }
                 else
                 {
-                    if (Input.IsActionJustPressed("ui_up")) { ti.Typing = true; _dirty = true; }
-                    else if (Input.IsActionJustPressed("ui_accept")) HandleTextKey(ti, Key.Enter);
-                    else if (Input.IsActionJustPressed("ui_cancel")) HandleTextKey(ti, Key.Escape);
+                    if (JP("ui_up")) { ti.Typing = true; _dirty = true; }
+                    else if (JP("ui_accept")) HandleTextKey(ti, Key.Enter);
+                    else if (JP("ui_cancel")) HandleTextKey(ti, Key.Escape);
                 }
                 _cursorFrame++;
                 UpdateCursor();
@@ -687,8 +775,8 @@ public sealed partial class MenuClient
             }
         }
 
-        bool up = Input.IsActionJustPressed("ui_up");
-        bool down = Input.IsActionJustPressed("ui_down");
+        bool up = JP("ui_up");
+        bool down = JP("ui_down");
         // Drop into the inline table by scrolling DOWN off the last menu entry
         // ("albo móc na nią sam zjechać") — only on screens that expose one.
         if (down && s.TableSelect is { } tsCfg && tsCfg.Count() > 0 && s.Selected == LastSelectable(s))
@@ -715,8 +803,8 @@ public sealed partial class MenuClient
         bool leftHeld = Input.IsActionPressed("ui_left");
         bool rightHeld = Input.IsActionPressed("ui_right");
         int step = 0;
-        if (Input.IsActionJustPressed("ui_left")) { step = -1; _heldTicks = 0; }
-        else if (Input.IsActionJustPressed("ui_right")) { step = 1; _heldTicks = 0; }
+        if (JP("ui_left")) { step = -1; _heldTicks = 0; }
+        else if (JP("ui_right")) { step = 1; _heldTicks = 0; }
         else if ((leftHeld || rightHeld) && sel is { Kind: EntryKind.Option, FastScroll: true } && !selIsPicker)
         {
             _heldTicks++;
@@ -733,7 +821,7 @@ public sealed partial class MenuClient
         }
 
         // FIRE — activate a Button, OPEN a picker option, or nudge a value Option.
-        if (Input.IsActionJustPressed("ui_accept"))
+        if (JP("ui_accept"))
         {
             if (sel is { Kind: EntryKind.Button }) sel.OnActivate?.Invoke();
             else if (selIsPicker) sel!.OnActivate?.Invoke();
@@ -741,7 +829,7 @@ public sealed partial class MenuClient
         }
 
         // BACK — pop a screen.
-        if (Input.IsActionJustPressed("ui_cancel")) Pop();
+        if (JP("ui_cancel")) Pop();
 
         // cursor flash cadence
         _cursorFrame++;
@@ -750,6 +838,181 @@ public sealed partial class MenuClient
 
         if (_dirty) { Refresh(); _dirty = false; }
     }
+
+    // ---- touch input (event-driven; Main calls this from _UnhandledInput) -----
+    // Tap-to-select for Android. `menuPos` is ALREADY in the 576×408 design
+    // space. Only the PRESS edge acts (simple press-to-activate). Dispatches on
+    // the SAME mode ladder as Tick() — text input, list picker, table select,
+    // then normal entries — so touch and keyboard/gamepad stay behaviourally
+    // identical. Purely additive: Tick()'s polled path is never touched here.
+    public void HandleTouch(Godot.Vector2 menuPos, bool pressed)
+    {
+        if (!Active) return;
+        if (!pressed) return;   // tap-to-select acts on press only
+        EnsureTitleNodes();
+        var s = Current;
+
+        // BACK affordance FIRST — maps to ui_cancel/ESC in the current mode.
+        if (TouchEnabled && kBackRect.HasPoint(menuPos)) { BackPressed(); return; }
+
+        // A. TEXT INPUT (mirror Tick's _textInput branch) --------------------
+        if (_textInput is not null)
+        {
+            if (!ReferenceEquals(_textInputScreen, s)) EndTextInput();   // screen changed under us
+            else
+            {
+                var ti = _textInput;
+                // The PushNameEntry OK button is a normal Button entry — a tap
+                // on it confirms (same as ui_accept on the OK button).
+                foreach (var e in s.Entries)
+                    if (e.Kind == EntryKind.Button && HitEntry(e, menuPos))
+                    { e.OnActivate?.Invoke(); return; }
+                // A tap on the live-text field (re)focuses typing; the OS soft
+                // keyboard was already shown by StartTextInput.
+                foreach (var e in s.Entries)
+                    if (e.Kind == EntryKind.Label && HitEntry(e, menuPos))
+                    { ti.Typing = true; _dirty = true; Refresh(); UpdateCursor(); return; }
+                return;   // taps elsewhere ignored while a field owns the keyboard
+            }
+        }
+
+        // B. LIST PICKER (mirror Tick's _listPicker branch) ------------------
+        if (_listPicker is not null)
+        {
+            if (!ReferenceEquals(_listPickerScreen, s)) EndListPicker();   // screen changed under us
+            else { HandleTouchListPicker(menuPos); return; }
+        }
+
+        // C. TABLE SELECT (mirror Tick's _tableSelect branch) ----------------
+        if (_tableSelect is not null)
+        {
+            if (!ReferenceEquals(_tableSelectScreen, s)) ExitTableSelect();   // screen changed under us
+            else { HandleTouchTableSelect(menuPos); return; }
+        }
+
+        // D. NORMAL ENTRIES (mirror DebugSelect/DebugFireLabel semantics) ----
+        for (int i = 0; i < s.Entries.Count; i++)
+        {
+            var e = s.Entries[i];
+            if (!e.Selectable) continue;              // skip Labels
+            if (!HitEntry(e, menuPos)) continue;      // live rect, never cached
+            s.Selected = i;                           // move the cursor there
+            if (e.Kind == EntryKind.Button) e.OnActivate?.Invoke();
+            else if (e.Kind == EntryKind.Option && e.OnActivate is not null) e.OnActivate.Invoke();  // picker → open list
+            else if (e.Kind == EntryKind.Option)      // stepper → step by tapped half
+            {
+                int valueX = e.X + OptLabelW + 4, valueW = e.W - OptLabelW - 4;
+                // Label half (left of the value box) steps forward; inside the
+                // value box the left half is ‹ (-1) and the right half is › (+1).
+                int dir = menuPos.X < valueX ? +1 : (menuPos.X < valueX + valueW / 2f ? -1 : +1);
+                e.OnStep?.Invoke(dir);
+            }
+            _dirty = true; Refresh(); UpdateCursor();
+            return;
+        }
+    }
+
+    // List-picker tap dispatch — geometry mirrors DrawListPickerBody, but hit-
+    // tests the per-cell rects it publishes into lp.CellRects (kept in sync).
+    private void HandleTouchListPicker(Godot.Vector2 menuPos)
+    {
+        var lp = _listPicker!;
+        var s = Current;
+        int panelX = 8, panelY = s.BodyTop, panelW = _vw - 16, panelH = _vh - panelY - 21;
+        var panel = new Rect2(panelX, panelY, panelW, panelH);
+
+        // Tap a specific cell: the selected cell confirms (like ui_accept in
+        // TickListPicker); any other visible cell just moves the selection.
+        foreach (var (rect, idx) in lp.CellRects)
+        {
+            if (!rect.HasPoint(menuPos)) continue;
+            if (idx == lp.Selected)
+            {
+                var pick = lp.OnPick;
+                EndListPicker(); Pop(); pick?.Invoke(idx);
+                _dirty = true; Refresh(); UpdateCursor();
+            }
+            else { lp.Selected = idx; LayoutAndBuild(Current); Refresh(); UpdateCursor(); }
+            return;
+        }
+
+        // Inside the panel but not on a cell → paging on the multi-column grid:
+        // bottom band = next page, top (header) band = prev page. Clamp to pages.
+        if (panel.HasPoint(menuPos) && lp.Columns > 1 && lp.ColRows > 0)
+        {
+            int n = lp.Rows.Count, capacity = lp.Columns * lp.ColRows;
+            if (n > capacity)
+            {
+                int page = lp.Selected / capacity;
+                if (menuPos.Y >= panelY + panelH - 12 && (page + 1) * capacity < n)
+                { lp.Selected = (page + 1) * capacity; LayoutAndBuild(Current); Refresh(); UpdateCursor(); return; }
+                if (menuPos.Y <= panelY + 14 && page > 0)
+                { lp.Selected = (page - 1) * capacity; LayoutAndBuild(Current); Refresh(); UpdateCursor(); return; }
+            }
+            return;   // tap on empty panel space — ignore
+        }
+
+        // Tap fully outside the panel → cancel (like ui_cancel in TickListPicker).
+        if (!panel.HasPoint(menuPos)) { EndListPicker(); Pop(); _dirty = true; Refresh(); UpdateCursor(); }
+    }
+
+    // Table-select tap dispatch — hit-tests painter-published RowRects when
+    // present, else the CareerSquadRowsPerPage row FORMULA. Mirrors the FIRE /
+    // move semantics of TickTableSelect.
+    private void HandleTouchTableSelect(Godot.Vector2 menuPos)
+    {
+        var ts = _tableSelect!;
+        int n = ts.Count();
+        if (n == 0) { ExitTableSelect(); LayoutAndBuild(Current); Refresh(); UpdateCursor(); return; }
+        int cur = System.Math.Clamp(ts.GetIndex(), 0, n - 1);
+
+        int row = -1;
+        // Prefer painter-published exact rects (future-proof; empty for now).
+        if (ts.RowRects.Count > 0)
+        {
+            for (int i = 0; i < ts.RowRects.Count && i < n; i++)
+                if (ts.RowRects[i].HasPoint(menuPos)) { row = i; break; }
+        }
+        if (row < 0)
+        {
+            // Formula fallback: same maths as CareerSquadRowsPerPage. Header sits
+            // at panelY+15, first data-row highlight box at panelY+24, 8px pitch.
+            int panelX = 8, panelY = Current.BodyTop, panelW = _vw - 16, panelH = _vh - panelY - 21;
+            int rows = System.Math.Max(1, (panelH - 29) / 8);
+            int first = (cur / rows) * rows;
+            int firstTop = panelY + 24;
+            for (int k = 0; k < rows && first + k < n; k++)
+                if (new Rect2(panelX, firstTop + k * 8, panelW, 8).HasPoint(menuPos)) { row = first + k; break; }
+        }
+        if (row < 0) return;   // tap missed the rows
+
+        if (row == cur)
+        {
+            // Confirm the already-current row (respect StayOnConfirm), like FIRE.
+            if (ts.StayOnConfirm) { ts.OnConfirm?.Invoke(); _dirty = true; }
+            else { var confirm = ts.OnConfirm; ExitTableSelect(); confirm?.Invoke(); }
+        }
+        else ts.SetIndex(row);
+        LayoutAndBuild(Current); Refresh(); UpdateCursor();
+    }
+
+    // A tap-inside-BACK maps to whatever ui_cancel/ESC does in the CURRENT mode
+    // (mirrors each mode's cancel branch). Reuses the existing cancel paths.
+    private void BackPressed()
+    {
+        var s = Current;
+        if (_textInput is not null && ReferenceEquals(_textInputScreen, s))
+        { HandleTextKey(_textInput, Key.Escape); _dirty = true; Refresh(); UpdateCursor(); return; }
+        if (_listPicker is not null && ReferenceEquals(_listPickerScreen, s))
+        { EndListPicker(); Pop(); _dirty = true; Refresh(); UpdateCursor(); return; }
+        if (_tableSelect is not null && ReferenceEquals(_tableSelectScreen, s))
+        { var onCancel = _tableSelect.OnCancel; ExitTableSelect(); onCancel?.Invoke(); LayoutAndBuild(Current); Refresh(); UpdateCursor(); return; }
+        Pop(); Refresh(); UpdateCursor();
+    }
+
+    // Live-rect hit test for a menu entry (never uses cached geometry).
+    private static bool HitEntry(MenuEntry e, Godot.Vector2 p)
+        => p.X >= e.X && p.Y >= e.Y && p.X < e.X + e.W && p.Y < e.Y + e.H;
 
     // Gentle two-colour sheen on Shimmer-flagged buttons (HOME "CAREER"): the
     // background texture is modulated between a neutral and a warm-bright tint
@@ -802,7 +1065,14 @@ public sealed partial class MenuClient
         if (!e.Selectable) { _cursor.Visible = false; return; }
         // frame the whole row (label+value for options)
         int x = e.X - 2, y = e.Y - 2, w = e.W + 4, h = e.H + 4;
-        _cursor.Texture = MenuTheme.CursorOutline(w, h);
+        // CursorOutline is already (w,h)-cached in MenuTheme, but skip even the
+        // redundant Texture property write while the framed size is unchanged
+        // (this runs every tick). Only the Modulate flash below must repaint.
+        if (w != _cursorW || h != _cursorH)
+        {
+            _cursor.Texture = MenuTheme.CursorOutline(w, h);
+            _cursorW = w; _cursorH = h;
+        }
         _cursor.Position = new Vector2(x, y);
         _cursor.Modulate = MenuTheme.CursorColor(_cursorFrame >> 2);   // ~17 Hz flash at 70 Hz tick
         _cursor.Visible = true;
@@ -1088,6 +1358,11 @@ public sealed partial class MenuClient
         // LEFT/RIGHT then jump a whole column (ColRows items).
         public int Columns = 1;
         public int ColRows = 1;
+        // Touch support: per-visible-cell hit rects (menu design space) paired
+        // with their row index, filled by DrawListPickerBody as it lays each
+        // cell out so HandleTouch hit-tests the REAL rects instead of
+        // re-deriving the grid formula (keeps the two in sync). (#touch)
+        public readonly System.Collections.Generic.List<(Godot.Rect2 rect, int index)> CellRects = new();
     }
 
     private ListPickerState? _listPicker;
@@ -1124,15 +1399,15 @@ public sealed partial class MenuClient
     private void TickListPicker()
     {
         var lp = _listPicker!;
-        if (Input.IsActionJustPressed("ui_cancel")) { EndListPicker(); Pop(); return; }
+        if (JP("ui_cancel")) { EndListPicker(); Pop(); return; }
         int n = lp.Rows.Count;
         if (n == 0) return;
 
         bool upHeld = Input.IsActionPressed("ui_up");
         bool downHeld = Input.IsActionPressed("ui_down");
         int move = 0;
-        if (Input.IsActionJustPressed("ui_up")) { move = -1; _heldTicks = 0; }
-        else if (Input.IsActionJustPressed("ui_down")) { move = 1; _heldTicks = 0; }
+        if (JP("ui_up")) { move = -1; _heldTicks = 0; }
+        else if (JP("ui_down")) { move = 1; _heldTicks = 0; }
         else if (upHeld || downHeld)
         {
             _heldTicks++;
@@ -1147,13 +1422,13 @@ public sealed partial class MenuClient
         // Multi-column grid (original-SWOS style): LEFT/RIGHT jump one column.
         if (lp.Columns > 1)
         {
-            if (Input.IsActionJustPressed("ui_left") && lp.Selected > 0)
+            if (JP("ui_left") && lp.Selected > 0)
             { lp.Selected = System.Math.Max(0, lp.Selected - lp.ColRows); _dirty = true; }
-            else if (Input.IsActionJustPressed("ui_right") && lp.Selected < n - 1)
+            else if (JP("ui_right") && lp.Selected < n - 1)
             { lp.Selected = System.Math.Min(n - 1, lp.Selected + lp.ColRows); _dirty = true; }
         }
 
-        if (Input.IsActionJustPressed("ui_accept"))
+        if (JP("ui_accept"))
         {
             int idx = lp.Selected;
             var pick = lp.OnPick;
@@ -1170,6 +1445,7 @@ public sealed partial class MenuClient
     {
         var lp = _listPicker;
         if (lp is null) return;
+        lp.CellRects.Clear();   // re-published every paint for HandleTouch
         int panelX = 8, panelY = s.BodyTop, panelW = _vw - 16, panelH = _vh - panelY - 21;
         if (panelH < 24) return;
         BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
@@ -1191,6 +1467,7 @@ public sealed partial class MenuClient
             for (int i = 0; i < n; i++)
             {
                 int y = y0 + i * 9;
+                lp.CellRects.Add((new Rect2(x0, y - 1, colW, 9), i));
                 if (i == lp.Selected) BodyBox(s, x0, y - 1, colW, 9, MenuTheme.Style.Info, 21);
                 BodyText(s, FitText(lp.Rows[i] ?? "", false, colW - 12), false, x0 + 6, y, normal);
             }
@@ -1216,6 +1493,7 @@ public sealed partial class MenuClient
             int k = i - start;
             int cx = panelX + 8 + (k / colRows) * cw;
             int cy = panelY + 15 + (k % colRows) * 9;
+            lp.CellRects.Add((new Rect2(cx - 2, cy - 1, cw - 4, 9), i));
             if (i == lp.Selected) BodyBox(s, cx - 2, cy - 1, cw - 4, 9, MenuTheme.Style.Info, 21);
             BodyText(s, FitText(lp.Rows[i] ?? "", false, cw - 16), false, cx + 4, cy, normal);
         }
@@ -1293,7 +1571,7 @@ public sealed partial class MenuClient
     private void TickTableSelect()
     {
         var ts = _tableSelect!;
-        if (Input.IsActionJustPressed("ui_cancel"))
+        if (JP("ui_cancel"))
         {
             // ESC: default returns to the entry column (keeping selection); an
             // OnCancel override (lineup editor) leaves the whole screen instead.
@@ -1309,8 +1587,8 @@ public sealed partial class MenuClient
         bool upHeld = Input.IsActionPressed("ui_up");
         bool downHeld = Input.IsActionPressed("ui_down");
         int move = 0;
-        if (Input.IsActionJustPressed("ui_up")) { move = -1; _heldTicks = 0; }
-        else if (Input.IsActionJustPressed("ui_down")) { move = 1; _heldTicks = 0; }
+        if (JP("ui_up")) { move = -1; _heldTicks = 0; }
+        else if (JP("ui_down")) { move = 1; _heldTicks = 0; }
         else if (upHeld || downHeld)
         {
             _heldTicks++;
@@ -1330,7 +1608,7 @@ public sealed partial class MenuClient
             if (next != cur) { ts.SetIndex(next); _dirty = true; }
         }
 
-        if (Input.IsActionJustPressed("ui_accept"))
+        if (JP("ui_accept"))
         {
             if (ts.StayOnConfirm) { ts.OnConfirm?.Invoke(); _dirty = true; }
             else { var confirm = ts.OnConfirm; ExitTableSelect(); confirm?.Invoke(); }

@@ -144,12 +144,30 @@ public sealed class Rjp1Module
         }
     }
 
-    /// <summary>True when both &lt;baseName&gt;.SNG and .INS are discoverable.</summary>
+    // Session-lifetime memo of Available() results (mirrors AmigaSfxBank.s_probed).
+    // Available() is polled ~70x/sec by the menu-music resolver; without this every
+    // call ran a full recursive directory walk on the main thread — the primary
+    // cause of the Android menu-input + RJP1 music stutter. Keyed by UPPER baseName.
+    // Calls are main-thread only, so a plain Dictionary needs no lock.
+    private static readonly Dictionary<string, bool> s_availCache =
+        new(System.StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when both &lt;baseName&gt;.SNG and .INS are discoverable. Result is memoized
+    /// for the session (a one-time cache like <see cref="AmigaSfxBank"/>); files dropped
+    /// in at runtime are picked up on next launch, which matches the SFX-bank behaviour.
+    /// </summary>
     public static bool Available(string baseName)
     {
+        string key = baseName.ToUpperInvariant();
+        if (s_availCache.TryGetValue(key, out bool cached))
+            return cached;
+
         var idx = IndexFiles(baseName);
-        return idx.ContainsKey((baseName + ".SNG").ToUpperInvariant())
-            && idx.ContainsKey((baseName + ".INS").ToUpperInvariant());
+        bool avail = idx.ContainsKey((baseName + ".SNG").ToUpperInvariant())
+                  && idx.ContainsKey((baseName + ".INS").ToUpperInvariant());
+        s_availCache[key] = avail;
+        return avail;
     }
 
     // ── parse ───────────────────────────────────────────────────────────────────
