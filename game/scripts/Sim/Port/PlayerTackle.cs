@@ -1015,7 +1015,12 @@ public static class PlayerTackle
     // l_not_injured:
         // 14513-14527 — roll Rand against A5[D1]. Carry-clear (Rand >= thr) → skip.
         D0 = (short)Rng.NextByte();
-        byte threshold = Memory.ReadByte(A5 + (ushort)D1);
+        int threshold = Memory.ReadByte(A5 + (ushort)D1);
+        // OpenSWOS fatigue: an exhausted (<20% energy) tackled player has DOUBLE
+        // the injury chance — double the probability threshold (gated on
+        // EffectEnabled inside InjuryRiskDoubled). No extra RNG draw, so the
+        // stream stays deterministic. User spec.
+        if (PlayerEnergy.InjuryRiskDoubled(A1)) threshold = System.Math.Min(255, threshold * 2);
         // cmp byte ptr D0, threshold ; jnb l_set_tackled_anim_table.
         // jnb = jump if not below, i.e. when Rand >= threshold. So injury only
         // fires when D0 < threshold.

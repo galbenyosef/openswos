@@ -30,12 +30,13 @@ public static class PlayerEnergy
     public static bool EffectEnabled;
 
     // Per-tick effort added to the drain accumulator while a player is moving.
-    // Calibrated so a busy outfielder in a full 90-game-minute match ends around
-    // 20-30% (some visibly gassed), while a fixture that barely moves stays high.
-    // History: 10 = far too fast (30-40% by min 15); 2 = far too gentle (>65% at
-    // min 82). 6 is the middle ground.
-    private const int kMoveEffort   = 6;   // outfield
-    private const int kKeeperEffort = 2;   // keeper: drains much slower
+    // The drain rate is (effort / divisor). The ORIGINAL fast rate was effort 10
+    // over divisor (8+stamina); the user asked for that ÷ 2.3. We keep integer
+    // math by scaling BOTH sides ×10 and folding 2.3 into the divisor (×23):
+    // effort 100, divisor (8+stamina)×23  →  rate = 100/((8+s)×23) = (10/(8+s))/2.3.
+    private const int kMoveEffort    = 100;  // outfield (was 10, ×10 for the /2.3 scale)
+    private const int kKeeperEffort  = 20;   // keeper drains ~5x slower (was 2, ×10)
+    private const int kDivisorScale  = 23;   // folds the ÷2.3 into the integer divisor
 
     // Reset before a new match's team load. Energy itself is (re)seeded per
     // player by SeedSlot during TeamDataLoader.WritePlayerInfos.
@@ -71,7 +72,7 @@ public static class PlayerEnergy
         int effort = keeper ? kKeeperEffort : kMoveEffort;
 
         int stamina = OpenSwos.SwosVm.Memory.ReadByte(spriteAddr + OpenSwos.SwosVm.PlayerSprite.OffStamina);
-        int divisor = 8 + System.Math.Clamp(stamina, 0, 7);   // 8..15: fitter drains slower
+        int divisor = (8 + System.Math.Clamp(stamina, 0, 7)) * kDivisorScale;   // ×23 folds the /2.3 scale
 
         int acc = OpenSwos.SwosVm.Memory.ReadWord(spriteAddr + OpenSwos.SwosVm.PlayerSprite.OffEnergyAcc) + effort;
         int energy = OpenSwos.SwosVm.Memory.ReadWord(spriteAddr + OpenSwos.SwosVm.PlayerSprite.OffEnergy);
@@ -82,24 +83,38 @@ public static class PlayerEnergy
     }
 
     // Speed-step reduction for a tired player, using the port's one-skill-point
-    // speed step (46, per the kPlayerSpeedsGameInProgress table stride in
-    // PlayerActions.cs). Caller multiplies by 46 and subtracts from newSpeed.
-    // Finer, harsher curve than the old 3-tier version so a near-empty player
-    // visibly labours (a speed-7 sprinter on an empty tank drops ~4 skill points
-    // to speed-3 pace):
-    //   >70%   -> 0   (fresh)
-    //   50-70% -> 1   (-46,  ~1 speed pt)
-    //   35-50% -> 2   (-92,  ~2 pts)
-    //   20-35% -> 3   (-138, ~3 pts)
-    //   <20%   -> 4   (-184, ~4 pts — labouring)
+    // speed step (46, per kPlayerSpeedsGameInProgress in PlayerActions.cs). Caller
+    // multiplies by 46 and subtracts from newSpeed. Capped at -3 points, and -3
+    // only kicks in below 10% (user spec):
+    //   >50%   -> 0
+    //   25-50% -> 1  (-46)
+    //   10-25% -> 2  (-92)
+    //   <10%   -> 3  (-138, hard cap)
     public static int SpeedStep(int spriteAddr)
     {
         int energy = OpenSwos.SwosVm.Memory.ReadWord(spriteAddr + OpenSwos.SwosVm.PlayerSprite.OffEnergy);
-        if (energy > Max * 70 / 100) return 0;
-        if (energy > Max * 50 / 100) return 1;
-        if (energy > Max * 35 / 100) return 2;
-        if (energy > Max * 20 / 100) return 3;
-        return 4;
+        if (energy > Max * 50 / 100) return 0;
+        if (energy > Max * 25 / 100) return 1;
+        if (energy > Max * 10 / 100) return 2;
+        return 3;
+    }
+
+    // Shot-power penalty (skill points) for an exhausted player: -1 below 10%,
+    // else 0. Gated on EffectEnabled. User spec.
+    public static int ShotPenalty(int spriteAddr)
+    {
+        if (!EffectEnabled) return 0;
+        int energy = OpenSwos.SwosVm.Memory.ReadWord(spriteAddr + OpenSwos.SwosVm.PlayerSprite.OffEnergy);
+        return energy <= Max * 10 / 100 ? 1 : 0;
+    }
+
+    // True when a player is exhausted enough (<20% energy) to double their injury
+    // risk on a tackle. Gated on EffectEnabled. User spec.
+    public static bool InjuryRiskDoubled(int spriteAddr)
+    {
+        if (!EffectEnabled) return false;
+        int energy = OpenSwos.SwosVm.Memory.ReadWord(spriteAddr + OpenSwos.SwosVm.PlayerSprite.OffEnergy);
+        return energy < Max * 20 / 100;
     }
 
     public static int ReadEnergy(int globalSlot)

@@ -1889,12 +1889,15 @@ public sealed partial class MenuClient
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => "PRE MATCH MENUS", Value = () => _host.ShowPreMatchMenus ? "ON" : "OFF",
             OnStep = _ => _host.ToggleShowPreMatchMenus() });
-        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
-            Label = () => "ENERGY BAR", Value = () => _host.EnergyBar ? "ON" : "OFF",
-            OnStep = _ => _host.ToggleEnergyBar() });
+        // ENERGY BAR is locked to N/A while PLAYER FATIGUE is off (the bar is
+        // meaningless without the fatigue sim; user spec). Ordered AFTER fatigue
+        // so the dependency reads top-to-bottom.
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => "PLAYER FATIGUE", Value = () => _host.FatigueSim ? "ON" : "OFF",
             OnStep = _ => _host.ToggleFatigueSim() });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => "ENERGY BAR", Value = () => !_host.FatigueSim ? "N/A" : (_host.EnergyBar ? "ON" : "OFF"),
+            OnStep = _ => _host.ToggleEnergyBar() });
     }
 
     private void AddOptionsPageAudioDisplay(MenuScreen s)

@@ -895,6 +895,8 @@ public static class PlayerActions
             int f = Memory.ReadByte(playerInfoFin + TeamDataLoader.OffFinishing);
             if (f >= 0 && f <= 7) finishingSkill = f;
         }
+        // OpenSWOS fatigue: exhausted (<10%) shooter loses 1 finishing point too.
+        finishingSkill = System.Math.Max(0, finishingSkill - PlayerEnergy.ShotPenalty(a1PlayerAddr));
         short finishBoost = Memory.ReadSignedWord(Memory.Addr.kBallSpeedFinishing + finishingSkill * 2);
         BallSprite.Speed = (short)(BallSprite.Speed + finishBoost);
         goto l_not_a_shot_on_goal;
@@ -910,6 +912,9 @@ public static class PlayerActions
             int sh = Memory.ReadByte(playerInfoShoot + TeamDataLoader.OffShooting);
             if (sh >= 0 && sh <= 7) shootingSkill = sh;
         }
+        // OpenSWOS fatigue: an exhausted (<10% energy) shooter loses 1 shot-power
+        // skill point (gated on EffectEnabled inside ShotPenalty). User spec.
+        shootingSkill = System.Math.Max(0, shootingSkill - PlayerEnergy.ShotPenalty(a1PlayerAddr));
         short shootBoost = Memory.ReadSignedWord(Memory.Addr.kBallSpeedKicking + shootingSkill * 2);
         BallSprite.Speed = (short)(BallSprite.Speed + shootBoost);
 

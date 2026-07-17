@@ -319,10 +319,23 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     // the sim; this just shows/hides the on-pitch bars). PLAYER FATIGUE — the
     // master toggle that enables the speed penalty in NON-career matches
     // (competition/career always enable it, see InitSwosVmFromMatchSetup).
-    bool OpenSwos.Menu.IMenuHost.EnergyBar => _energyBar;
-    void OpenSwos.Menu.IMenuHost.ToggleEnergyBar() { _energyBar = !_energyBar; SaveSettings(); }
+    // Energy bar is only meaningful when the fatigue simulation is on. When
+    // PLAYER FATIGUE is off the bar reads/forces OFF and the toggle is inert
+    // (user spec: "can't enable the bars when fatigue mode is off").
+    bool OpenSwos.Menu.IMenuHost.EnergyBar => _energyBar && _fatigueSim;
+    void OpenSwos.Menu.IMenuHost.ToggleEnergyBar()
+    {
+        if (!_fatigueSim) { _energyBar = false; return; }   // locked off while fatigue is off
+        _energyBar = !_energyBar;
+        SaveSettings();
+    }
     bool OpenSwos.Menu.IMenuHost.FatigueSim => _fatigueSim;
-    void OpenSwos.Menu.IMenuHost.ToggleFatigueSim() { _fatigueSim = !_fatigueSim; SaveSettings(); }
+    void OpenSwos.Menu.IMenuHost.ToggleFatigueSim()
+    {
+        _fatigueSim = !_fatigueSim;
+        if (!_fatigueSim) _energyBar = false;   // turning fatigue off also clears the bar
+        SaveSettings();
+    }
 
     // ---- audio (SOUND: PC / AMIGA) -------------------------------------------
     // The player's PREFERENCE (persisted). What actually plays is resolved against
