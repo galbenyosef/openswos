@@ -559,3 +559,285 @@ staff.spec_attack	ATAQUE
 staff.spec_defence	DEFENSA
 staff.spec_general	GENERAL
 staff.spec_youth	JUVENIL
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANZAS
+fin.title	FINANZAS
+fin.show_history	TEMPORADA A TEMPORADA
+fin.show_sheet	ESTA TEMPORADA
+fin.no_season	NINGUNA TEMPORADA COMPLETADA
+fin.drawn_up	LAS CUENTAS SE CIERRAN AL FINAL DE TEMPORADA
+fin.col_season	TEMPORADA
+fin.col_league	LIGA
+fin.col_cup	COPA
+fin.col_income	INGRESOS
+fin.col_wages	SALARIOS
+fin.col_balance	SALDO
+fin.season	TEMPORADA
+fin.league	LIGA
+fin.cup	COPA
+fin.home_games	PARTIDOS EN CASA
+fin.crowd	PUBLICO
+fin.row.opening	SALDO AL INICIO DE TEMPORADA:
+fin.row.gate	TAQUILLA:
+fin.row.bonuses	PREMIOS + DERECHOS TV:
+fin.row.sponsor	PATROCINIO DE SENSISOFT PLC:
+fin.row.invest	INVERSION ADICIONAL DEL PRESIDENTE:
+fin.row.invest_new	INVERSION DEL NUEVO PRESIDENTE:
+fin.row.wages	SALARIOS DE JUGADORES:
+fin.row.profit	BENEFICIO TOTAL:
+fin.row.loss	PERDIDA TOTAL:
+fin.row.closing	NUEVO SALDO:
+fin.row.sales	VENTAS DE JUGADORES:
+fin.row.purchases	COMPRAS DE JUGADORES:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PRESIDENTE
+dash.status_sacked	DESTITUIDO
+chair.title	PRESIDENTE
+chair.memo	NOTA
+chair.none	SIN NOTAS
+chair.memo_header	NOTA DEL PRESIDENTE DEL CLUB
+chair.memo_sign	SU PRESIDENTE
+chair.earlier	NOTAS ANTERIORES
+opt.board	DIRECTIVA
+opt.board_hint	CON QUE RAPIDEZ TE DESTITUYE EL PRESIDENTE
+opt.board_patient	PACIENTE
+opt.board_normal	NORMAL
+opt.board_ruthless	IMPLACABLE
+chair.verdict0.1	BIEN HECHO %a, HAS HECHO UN TRABAJO EXCELENTE
+chair.verdict0.2	ESTA TEMPORADA Y TODOS LO AGRADECEMOS
+chair.verdict1.1	BUENA TEMPORADA %a, ESTAMOS TODOS MUY
+chair.verdict1.2	CONTENTOS, SIGUE ASI
+chair.verdict2.1	TEMPORADA IRREGULAR %a, TODOS ESPERAMOS
+chair.verdict2.2	QUE MEJORE EN UN FUTURO PROXIMO
+chair.verdict3.1	TEMPORADA POCO BUENA %a, ESPERAMOS QUE
+chair.verdict3.2	MEJORES NUESTRO RENDIMIENTO LA PROXIMA
+chair.verdict4.1	TEMPORADA MUY DECEPCIONANTE %a, EXIGIMOS
+chair.verdict4.2	MUCHO MAS DE TI LA PROXIMA TEMPORADA
+chair.sacked_league.1	CON GRAN PESAR LA JUNTA Y YO HEMOS
+chair.sacked_league.2	DECIDIDO RELEVARTE DE TUS FUNCIONES
+chair.not_renewed.1	CON GRAN PESAR HEMOS DECIDIDO NO
+chair.not_renewed.2	RENOVAR TU CONTRATO - BUENA SUERTE
+chair.not_renewed.3	Y ESPERAMOS VERTE PRONTO
+chair.league_note.1	TOMA NOTA DE NUESTRA POSICION EN LA LIGA Y
+chair.league_note.2	ASEGURATE DE MEJORARLA CUANTO ANTES
+chair.league_warn.1	RECUERDA, SI NUESTRA POSICION NO MEJORA
+chair.league_warn.2	TENDREMOS QUE REPLANTEARNOS TU PUESTO
+chair.league_crisis.1	TRAS UNA CUESTION DE CONFIANZA, TIENES COMO MUCHO
+chair.league_crisis.2	3 PARTIDOS PARA ENDEREZAR EL CLUB O SERAS DESPEDIDO
+chair.money_note.1	TOMA NOTA DE NUESTRO SALDO BANCARIO Y
+chair.money_note.2	ASEGURATE DE CUBRIR EL DESCUBIERTO CUANTO ANTES
+chair.money_warn.1	SOLO UN RECORDATORIO SOBRE EL DESCUBIERTO
+chair.money_warn.2	O TENDREMOS QUE REPLANTEARNOS TU PUESTO
+chair.money_crisis.1	TRAS UNA REUNION DE CRISIS, EXIGIMOS QUE
+chair.money_crisis.2	CUBRAS EL DESCUBIERTO YA O ESTAS DESPEDIDO
+chair.new_season.1	UNAS LINEAS PARA DESEARTE MUCHO EXITO EN LA
+chair.new_season.2	NUEVA TEMPORADA
+chair.embargo_buy.1	LO SIENTO %a, EL CLUB NO ESTA DISPUESTO A
+chair.embargo_buy.2	COMPRAR MAS JUGADORES ESTA TEMPORADA
+chair.embargo_sell.1	TEN EN CUENTA %a QUE NO PERMITIREMOS
+chair.embargo_sell.2	MAS VENTAS DE JUGADORES ESTA TEMPORADA
+chair.sacked_money.1	CON GRAN PESAR LA JUNTA Y YO HEMOS
+chair.sacked_money.2	DECIDIDO RELEVARTE DE TUS FUNCIONES
+# JOB OFFERS (career depth plan feature #3)
+job.title	OFERTAS DE TRABAJO
+job.none	NO HAY OFERTAS
+job.offer	OFERTA
+job.accept	ACEPTAR
+job.decline	RECHAZAR
+job.declined	OFERTA RECHAZADA
+job.not_available	OFERTA NO DISPONIBLE
+job.signed_prefix	ACUERDO CON
+job.new_job	NUEVO EMPLEO
+job.reputation	REPUTACION
+job.rep_world	CLASE MUNDIAL
+job.rep_high	MUY VALORADO
+job.rep_good	BIEN CONSIDERADO
+job.rep_known	CONOCIDO
+job.rep_unproven	SIN CONTRASTAR
+job.rep_unwanted	NO DESEADO
+job.division	DIVISION
+job.squad	PLANTILLA
+job.letter_header	OFERTA DE TRABAJO DE %a
+job.letter.1	ESTIMADO SENOR/SENORA
+job.letter.2	EN %a QUEREMOS OFRECERLE EL
+job.letter.3	PUESTO DE ENTRENADOR PARA LA PROXIMA TEMPORADA
+job.letter.4	PODEMOS OFRECERLE UN SALARIO MUY COMPETITIVO Y
+job.letter.5	ESPERAMOS PONER FONDOS A SU DISPOSICION
+job.letter.6	DEL ORDEN DE %b PARA MEJORAR EL EQUIPO
+job.letter.7	ESPERAMOS SU RESPUESTA
+job.accepted_note	HA ACEPTADO - EL CAMBIO SERA LA PROXIMA TEMPORADA
+job.waiting_prefix	ESPERARAN OTROS
+job.waiting_suffix	PARTIDOS
+job.accepted.1	EN %a ESTAMOS ENCANTADOS DE QUE
+job.accepted.2	HAYA ACEPTADO EL PUESTO DE ENTRENADOR
+job.accepted.3	DESDE EL INICIO DE LA PROXIMA TEMPORADA
+job.farewell.1	GRACIAS POR TODO %a, TE DESEAMOS
+job.farewell.2	MUCHA SUERTE EN TU NUEVO EMPLEO
+job.welcome.1	BIENVENIDO %a, ESPERAMOS MUCHOS
+job.welcome.2	EXITOS DE NUESTRA NUEVA UNION
+job.withdrawn.1	OFERTA DE TRABAJO DE %a RETIRADA
+# board expectation line (feature #2 follow-up)
+chair.expected	LA JUNTA ESPERABA
+chair.of	DE
+chair.finished	TERMINO
+chair.expects	LA JUNTA ESPERA
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	SELECCION
+natjob.entry_offer	OFERTA DE TRABAJO INTERNACIONAL
+natjob.title	SELECCION
+natjob.title_offer	OFERTA DE TRABAJO INTERNACIONAL
+natjob.player	JUGADOR
+natjob.add	ANADIR JUGADOR
+natjob.remove	QUITAR JUGADOR
+natjob.auto	SELECCION AUTOMATICA
+natjob.resign	DIMITIR
+natjob.full	PLANTILLA COMPLETA
+natjob.appointed	SELECCIONADOR DE
+natjob.none	SIN CARGO INTERNACIONAL
+natjob.no_players	NO HAY JUGADORES
+natjob.squad_word	PLANTILLA
+natjob.rating	VALORACION
+natjob.home	LOCAL
+natjob.abroad	EXTRANJERO
+natjob.col_name	NOMBRE
+natjob.col_pos	POS
+natjob.col_ovr	VAL
+natjob.col_where	DONDE
+natjob.col_club	CLUB
+natjob.letter_header	OFERTA DE TRABAJO INTERNACIONAL DE %a
+natjob.offer.1	LOS MIEMBROS DEL COMITE DE FUTBOL
+natjob.offer.2	DE %a LE OFRECEN EL PUESTO
+natjob.offer.3	DE SELECCIONADOR NACIONAL
+natjob.offer.4	LE PROMETEMOS UN SALARIO EXCELENTE Y
+natjob.offer.5	UN CONTRATO REVISABLE CADA ANO
+natjob.offer.6	ESPERAMOS SU RESPUESTA
+natjob.accepted.1	LOS MIEMBROS DEL COMITE DE FUTBOL
+natjob.accepted.2	DE %a ESTAN ENCANTADOS DE QUE HAYA
+natjob.accepted.3	ACEPTADO EL PUESTO DE SELECCIONADOR
+natjob.ended.1	LOS MIEMBROS DEL COMITE DE FUTBOL
+natjob.ended.2	DE %a HAN DECIDIDO NO RENOVAR SU
+natjob.ended.3	CONTRATO REVISABLE CADA ANO
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	POR FAVOR ESPERE
+busy.new_career	CREANDO EL MUNDO
+busy.next_season	TRANSCURRE EL VERANO
+dash.scorers	MAXIMOS GOLEADORES
+scorer.title	MAXIMOS GOLEADORES
+scorer.view	LISTA
+scorer.page	PAGINA
+scorer.view_comp	COMPETICION
+scorer.view_club	MI CLUB
+scorer.view_history	TEMPORADA A TEMPORADA
+scorer.leading	MAXIMOS GOLEADORES DE LA COMPETICION
+scorer.goals	GOLES
+scorer.own_goals	GOLES EN PROPIA
+scorer.ex_player	GOLES DE EX JUGADORES
+scorer.career_total	TOTAL CARRERA
+scorer.season	TEMPORADA
+scorer.season_top	MAXIMO GOLEADOR DE LA TEMPORADA
+scorer.season_top_plural	MAXIMOS GOLEADORES DE LA TEMPORADA
+scorer.no_goals	AUN NO HAY GOLES ESTA TEMPORADA
+scorer.no_seasons	NINGUNA TEMPORADA COMPLETADA
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	PARTIDO
+dash.sec_team	EQUIPO
+dash.sec_club	CLUB
+dash.sec_game	PARTIDA
+nav.hint_cols	ARRIBA/ABAJO ELEGIR   IZQ/DER COLUMNA   FUEGO OK   ESC ATRAS
+# TRAINING / CLUB DIARY / YOUTH INTAKE / CLUB RECORDS (2026-08-26)
+dash.training	ENTRENAMIENTO
+dash.chronicle	DIARIO DEL CLUB
+dash.legends	RECORDS DEL CLUB
+busy.training	ENTRENAMIENTO
+train.title	ENTRENAMIENTO
+train.drill	EJERCICIO
+train.intensity	INTENSIDAD
+train.toggle	ANADIR / QUITAR
+train.auto	ELEGIR AUTO
+train.auto_done	GRUPO ELEGIDO POR POTENCIAL
+train.run	INICIAR SESION
+train.report	ULTIMO INFORME
+train.report_title	INFORME DE ENTRENAMIENTO
+train.ready	SESION LISTA
+train.closed	SIN ENTRENAMIENTO ENTRE TEMPORADAS
+train.done_week	YA ENTRENADO ESTA SEMANA - PROXIMA SESION TRAS EL PARTIDO
+train.coach	ENTRENADOR
+train.trains	ENTRENA
+train.trains_fitness	CONDICION
+train.trains_keeper	JUEGO DE PORTERO
+train.col_in	EN
+train.col_con	CON
+train.col_shp	FRM
+train.col_room	MARG
+train.col_grade	SESION
+train.col_gain	PROGRESO
+train.group_full	GRUPO LLENO - MAX
+train.no_report	AUN NO SE HA HECHO NINGUNA SESION
+train.injured	LESIONADO EN ENTRENAMIENTO
+train.potential_up	TECHO ELEVADO
+train.int_0	SUAVE
+train.int_1	NORMAL
+train.int_2	INTENSA
+train.grade_0	POBRE
+train.grade_1	OK
+train.grade_2	BUENA
+train.grade_3	EXCELENTE
+train.drill_shooting	TIRO A PUERTA
+train.drill_finishing	DEFINICION
+train.drill_passing	PASES Y CENTROS
+train.drill_control	CIRCUITO DE REGATE
+train.drill_pace	SPRINTS Y SERIES
+train.drill_heading	JUEGO AEREO
+train.drill_defending	DEFENSA Y ENTRADA
+train.drill_keeper	PORTEROS
+train.drill_recovery	RECUPERACION Y FISICO
+skill.passing	PASE
+skill.shooting	TIRO
+skill.heading	CABEZA
+skill.tackling	ENTRADA
+skill.control	CONTROL
+skill.speed	VELOCIDAD
+skill.finishing	DEFINICION
+chron.title	DIARIO DEL CLUB
+chron.season	TEMPORADA
+chron.all	TODO
+chron.empty	AUN NO HA PASADO NADA
+chron.apps	%a DISPUTA EL PARTIDO %0 CON EL CLUB
+chron.goals	%a MARCA EL GOL %0 CON EL CLUB
+chron.training	ENTRENAMIENTO: %a, INTENSIDAD %b
+chron.training_break	%0 JUGADOR(ES) SUPERARON SU TECHO
+chron.breakthrough	%a ENTRENA POR ENCIMA DE SU NIVEL
+chron.train_injury	%a SE LESIONO EN EL ENTRENAMIENTO
+chron.intake	LA CANTERA PRODUJO %0 JUGADOR(ES)
+chron.league_won	%a ES CAMPEON
+chron.league_pos	%a PUESTO EN LIGA
+chron.cup_won	%a GANA LA COPA
+chron.topscorer	MAXIMO GOLEADOR: %a CON %0
+chron.signed	FICHADO %a POR %b
+chron.sold	VENDIDO %a POR %b
+chron.released	%a LIBERADO
+chron.sacked	DESTITUIDO POR %a
+chron.verdict	LA JUNTA VALORO LA TEMPORADA: %a
+chron.big_win	VICTORIA ANTE %a %b
+chron.big_loss	DERROTA %b ANTE %a
+chron.win_run	%0 VICTORIAS SEGUIDAS
+chron.unbeaten	%0 PARTIDOS SIN PERDER
+chron.winless	%0 PARTIDOS SIN GANAR
+youth.entry	CANTERA
+youth.title	CANTERA
+youth.none	LA CANTERA NO PRODUJO A NADIE ESTE VERANO
+youth.header	INFORME DE LA CANTERA - LOS OJEADORES DAN UN RANGO
+youth.col_est	VEREDICTO OJEADOR
+youth.promote	ANADIR AL GRUPO
+youth.release	LIBERAR
+youth.released	LIBERADO
+youth.added	ANADIDO AL ENTRENAMIENTO
+youth.already	YA ESTA EN EL GRUPO
+youth.cannot_release	PLANTILLA DEMASIADO CORTA
+legend.title	RECORDS DEL CLUB
+legend.header	PARTIDOS HISTORICOS
+legend.empty	NINGUNA TEMPORADA COMPLETADA EN ESTE CLUB
+legend.col_apps	PJ
+legend.col_goals	GOL
+legend.col_last	ULT
+legend.still	AQUI

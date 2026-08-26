@@ -559,3 +559,188 @@ staff.spec_attack	ATAQUE
 staff.spec_defence	DEFESA
 staff.spec_general	GERAL
 staff.spec_youth	JUVENIL
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANCAS
+fin.title	FINANCAS
+fin.show_history	EPOCA A EPOCA
+fin.show_sheet	ESTA EPOCA
+fin.no_season	NENHUMA EPOCA CONCLUIDA
+fin.drawn_up	AS CONTAS SAO FEITAS NO FIM DA EPOCA
+fin.col_season	EPOCA
+fin.col_league	LIGA
+fin.col_cup	TACA
+fin.col_income	RECEITAS
+fin.col_wages	SALARIOS
+fin.col_balance	SALDO
+fin.season	EPOCA
+fin.league	LIGA
+fin.cup	TACA
+fin.home_games	JOGOS EM CASA
+fin.crowd	ESPECTADORES
+fin.row.opening	SALDO NO INICIO DA EPOCA:
+fin.row.gate	BILHETEIRA:
+fin.row.bonuses	PREMIOS + DIREITOS TV:
+fin.row.sponsor	PATROCINIO DA SENSISOFT PLC:
+fin.row.invest	INVESTIMENTO DO PRESIDENTE:
+fin.row.invest_new	INVESTIMENTO DO NOVO PRESIDENTE:
+fin.row.wages	SALARIOS DOS JOGADORES:
+fin.row.profit	LUCRO TOTAL:
+fin.row.loss	PREJUIZO TOTAL:
+fin.row.closing	NOVO SALDO:
+fin.row.sales	VENDAS DE JOGADORES:
+fin.row.purchases	COMPRAS DE JOGADORES:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PRESIDENTE
+dash.status_sacked	DESPEDIDO
+chair.title	PRESIDENTE
+chair.memo	NOTA
+chair.none	SEM NOTAS
+chair.memo_header	NOTA DO PRESIDENTE DO CLUBE
+chair.memo_sign	O SEU PRESIDENTE
+chair.earlier	NOTAS ANTERIORES
+opt.board	DIRECAO
+opt.board_hint	COM QUE RAPIDEZ O PRESIDENTE O DESPEDE
+opt.board_patient	PACIENTE
+opt.board_normal	NORMAL
+opt.board_ruthless	IMPIEDOSA
+chair.verdict0.1	PARABENS %a, FEZ UM EXCELENTE TRABALHO
+chair.verdict0.2	ESTA EPOCA E TODOS AGRADECEMOS
+chair.verdict1.1	BOA EPOCA %a, ESTAMOS TODOS MUITO
+chair.verdict1.2	SATISFEITOS, CONTINUE ASSIM
+chair.verdict2.1	EPOCA IRREGULAR %a, ESPERAMOS TODOS
+chair.verdict2.2	QUE MELHORE EM BREVE
+chair.verdict3.1	EPOCA POUCO BOA %a, ESPERAMOS QUE POSSA
+chair.verdict3.2	MELHORAR O NOSSO DESEMPENHO NA PROXIMA
+chair.verdict4.1	EPOCA MUITO DESILUDIDA %a, EXIGIMOS
+chair.verdict4.2	MUITO MELHOR DE SI NA PROXIMA EPOCA
+chair.sacked_league.1	E COM GRANDE PESAR QUE A DIRECAO E EU
+chair.sacked_league.2	DECIDIMOS DISPENSAR OS SEUS SERVICOS
+chair.not_renewed.1	E COM GRANDE PESAR QUE DECIDIMOS NAO
+chair.not_renewed.2	RENOVAR O SEU CONTRATO - BOA SORTE
+chair.not_renewed.3	E ESPERAMOS VE-LO EM BREVE
+chair.league_note.1	TOME NOTA DA NOSSA POSICAO NA LIGA E
+chair.league_note.2	TRATE DE A MELHORAR O MAIS DEPRESSA POSSIVEL
+chair.league_warn.1	LEMBRE-SE, SE A NOSSA POSICAO NAO MELHORAR
+chair.league_warn.2	TEREMOS DE REPENSAR O SEU LUGAR
+chair.league_crisis.1	APOS UMA MOCAO DE CONFIANCA, TEM NO MAXIMO
+chair.league_crisis.2	3 JOGOS PARA REERGUER O CLUBE OU SERA DESPEDIDO
+chair.money_note.1	TOME NOTA DO NOSSO SALDO BANCARIO E
+chair.money_note.2	TRATE DE COBRIR O DESCOBERTO QUANTO ANTES
+chair.money_warn.1	APENAS UM LEMBRETE SOBRE O DESCOBERTO
+chair.money_warn.2	OU TEREMOS DE REPENSAR O SEU LUGAR
+chair.money_crisis.1	APOS UMA REUNIAO DE CRISE, EXIGIMOS QUE
+chair.money_crisis.2	COBRA O DESCOBERTO JA OU ESTA DESPEDIDO
+chair.new_season.1	UMAS LINHAS A DESEJAR-LHE MUITO SUCESSO NA
+chair.new_season.2	NOVA EPOCA
+chair.embargo_buy.1	LAMENTO %a, MAS O CLUBE NAO ESTA DISPOSTO A
+chair.embargo_buy.2	COMPRAR MAIS JOGADORES ESTA EPOCA
+chair.embargo_sell.1	TENHA EM CONTA %a QUE NAO PERMITIREMOS
+chair.embargo_sell.2	MAIS VENDAS DE JOGADORES ESTA EPOCA
+chair.sacked_money.1	E COM GRANDE PESAR QUE A DIRECAO E EU
+chair.sacked_money.2	DECIDIMOS DISPENSAR OS SEUS SERVICOS
+# JOB OFFERS (career depth plan feature #3)
+job.title	PROPOSTAS DE TRABALHO
+job.none	SEM PROPOSTAS
+job.offer	PROPOSTA
+job.accept	ACEITAR
+job.decline	RECUSAR
+job.declined	PROPOSTA RECUSADA
+job.not_available	PROPOSTA INDISPONIVEL
+job.signed_prefix	ACORDO COM
+job.new_job	NOVO CARGO
+job.reputation	REPUTACAO
+job.rep_world	CLASSE MUNDIAL
+job.rep_high	MUITO CONCEITUADO
+job.rep_good	BEM CONSIDERADO
+job.rep_known	CONHECIDO
+job.rep_unproven	POR PROVAR
+job.rep_unwanted	INDESEJADO
+job.division	DIVISAO
+job.squad	PLANTEL
+job.letter_header	PROPOSTA DE TRABALHO DE %a
+job.letter.1	EXMO SENHOR/SENHORA
+job.letter.2	NOS AQUI NO %a QUEREMOS OFERECER-LHE
+job.letter.3	O CARGO DE TREINADOR PARA A PROXIMA EPOCA
+job.letter.4	PODEMOS OFERECER UM SALARIO MUITO COMPETITIVO E
+job.letter.5	ESPERAMOS DISPONIBILIZAR VERBAS
+job.letter.6	NA ORDEM DE %b PARA REFORCAR A EQUIPA
+job.letter.7	AGUARDAMOS A SUA RESPOSTA
+job.accepted_note	ACEITOU - A MUDANCA E NA PROXIMA EPOCA
+job.waiting_prefix	VAO ESPERAR MAIS
+job.waiting_suffix	JOGOS
+job.accepted.1	NOS AQUI NO %a ESTAMOS FELIZES POR
+job.accepted.2	TER ACEITE O CARGO DE TREINADOR NO NOSSO CLUBE
+job.accepted.3	A PARTIR DO INICIO DA PROXIMA EPOCA
+job.farewell.1	OBRIGADO POR TUDO %a, DESEJAMOS-LHE
+job.farewell.2	AS MAIORES FELICIDADES NO NOVO CARGO
+job.welcome.1	BEM-VINDO %a, ESPERAMOS MUITO
+job.welcome.2	SUCESSO DA NOSSA NOVA PARCERIA
+job.withdrawn.1	PROPOSTA DE TRABALHO DE %a RETIRADA
+# board expectation line (feature #2 follow-up)
+chair.expected	A DIRECAO ESPERAVA
+chair.of	DE
+chair.finished	TERMINOU
+chair.expects	A DIRECAO ESPERA
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	SELECAO
+natjob.entry_offer	PROPOSTA DE TRABALHO INTERNACIONAL
+natjob.title	SELECAO
+natjob.title_offer	PROPOSTA DE TRABALHO INTERNACIONAL
+natjob.player	JOGADOR
+natjob.add	ADICIONAR JOGADOR
+natjob.remove	RETIRAR JOGADOR
+natjob.auto	ESCOLHA AUTOMATICA
+natjob.resign	DEMITIR-SE
+natjob.full	PLANTEL COMPLETO
+natjob.appointed	SELECIONADOR DE
+natjob.none	SEM CARGO INTERNACIONAL
+natjob.no_players	SEM JOGADORES DISPONIVEIS
+natjob.squad_word	PLANTEL
+natjob.rating	AVALIACAO
+natjob.home	NO PAIS
+natjob.abroad	ESTRANGEIRO
+natjob.col_name	NOME
+natjob.col_pos	POS
+natjob.col_ovr	GER
+natjob.col_where	ONDE
+natjob.col_club	CLUBE
+natjob.letter_header	PROPOSTA DE TRABALHO INTERNACIONAL DE %a
+natjob.offer.1	OS MEMBROS DO COMITE DE FUTEBOL
+natjob.offer.2	DE %a GOSTARIAM DE LHE OFERECER
+natjob.offer.3	O CARGO DE SELECIONADOR NACIONAL
+natjob.offer.4	PROMETEMOS UM SALARIO EXCELENTE E
+natjob.offer.5	UM CONTRATO REVISTO TODOS OS ANOS
+natjob.offer.6	AGUARDAMOS A SUA RESPOSTA
+natjob.accepted.1	OS MEMBROS DO COMITE DE FUTEBOL
+natjob.accepted.2	DE %a ESTAO FELIZES POR TER
+natjob.accepted.3	ACEITE O CARGO DE SELECIONADOR NACIONAL
+natjob.ended.1	OS MEMBROS DO COMITE DE FUTEBOL
+natjob.ended.2	DE %a DECIDIRAM NAO RENOVAR O SEU
+natjob.ended.3	CONTRATO ANUAL
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	AGUARDE POR FAVOR
+busy.new_career	A CRIAR O MUNDO
+busy.next_season	DECORRE O VERAO
+dash.scorers	MELHORES MARCADORES
+scorer.title	MELHORES MARCADORES
+scorer.view	LISTA
+scorer.page	PAGINA
+scorer.view_comp	COMPETICAO
+scorer.view_club	O MEU CLUBE
+scorer.view_history	EPOCA A EPOCA
+scorer.leading	MELHORES MARCADORES DA COMPETICAO
+scorer.goals	GOLOS
+scorer.own_goals	AUTOGOLOS
+scorer.ex_player	GOLOS DE EX JOGADORES
+scorer.career_total	TOTAL DA CARREIRA
+scorer.season	EPOCA
+scorer.season_top	MELHOR MARCADOR DA EPOCA
+scorer.season_top_plural	MELHORES MARCADORES DA EPOCA
+scorer.no_goals	AINDA SEM GOLOS ESTA EPOCA
+scorer.no_seasons	NENHUMA EPOCA CONCLUIDA
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	JOGO
+dash.sec_team	EQUIPA
+dash.sec_club	CLUBE
+dash.sec_game	JOGO
+nav.hint_cols	CIMA/BAIXO ESCOLHER   ESQ/DIR COLUNA   FOGO OK   ESC VOLTAR

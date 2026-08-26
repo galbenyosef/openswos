@@ -52,6 +52,7 @@ public static class Scouting
         RevealEstimate(player, quality, rng.NextU());
         if (!watched.Contains(player.Id)) watched.Add(player.Id);
         club.Scouting = scouting;
+        club.SeasonStaffSpend += club.Budget - remainingBudget;   // season ledger
         club.Budget = remainingBudget;
         refusal = "";
         return true;
@@ -76,6 +77,7 @@ public static class Scouting
         ScoutingState scouting = existing ?? new ScoutingState();
         scouting.ScoutQuality = quality + 1;
         club.Scouting = scouting;
+        club.SeasonStaffSpend += club.Budget - remainingBudget;   // season ledger
         club.Budget = remainingBudget;
         refusal = "";
         return true;
@@ -152,6 +154,7 @@ public static class Scouting
 
             long cost = PlayerScoutingCost(scouting.ScoutQuality);
             club.Budget -= cost;
+            club.SeasonStaffSpend += cost;                        // season ledger
 
             List<CareerPlayer> candidates = PromisingYoungPlayers(club);
             int count = Math.Min(PlayersScoutedPerSeason, candidates.Count);

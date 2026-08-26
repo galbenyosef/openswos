@@ -332,10 +332,15 @@ public sealed partial class MenuClient
         int skl = panelX + 218;
         int age = panelX + 268;
         int eff = panelX + 306;
-        int pot = panelX + 356;
-        int sta = panelX + 388;
-        int formCol = panelX + 418;
-        int fit = panelX + 452;
+        int pot = panelX + 348;
+        int sta = panelX + 376;
+        // Career depth plan feature #8: APPearances and GoaLS for THIS club.
+        // Squeezed in by re-spacing the POT..FIT cluster rather than by dropping
+        // a column — every one of them answers a question at selection time.
+        int apps = panelX + 410;
+        int gls = panelX + 440;
+        int formCol = panelX + 464;
+        int fit = panelX + 492;
         int value = panelX + panelW - 6;
 
         CareerTableText(s, Loc.Tr("common.budget", "BUDGET") + " " +FormatMoney(club.Budget), panelX + 8, panelY + 4, head);
@@ -350,6 +355,8 @@ public sealed partial class MenuClient
         CareerTableText(s, Loc.Tr("col.skill", "SKILL"),eff, y, head, rightAlign: true);
         CareerTableText(s, Loc.Tr("col.pot", "POT"),pot, y, head, rightAlign: true);
         CareerTableText(s, Loc.Tr("col.sta", "STA"),sta, y, head, rightAlign: true);
+        CareerTableText(s, Loc.Tr("legend.col_apps", "APP"),apps, y, head, rightAlign: true);
+        CareerTableText(s, Loc.Tr("legend.col_goals", "GLS"),gls, y, head, rightAlign: true);
         CareerTableText(s, Loc.Tr("col.form", "F"),formCol, y, head, rightAlign: true);
         CareerTableText(s, Loc.Tr("col.fit", "FIT"),fit, y, head, rightAlign: true);
         CareerTableText(s, Loc.Tr("col.val", "VAL"),value, y, head, rightAlign: true);
@@ -390,6 +397,10 @@ public sealed partial class MenuClient
             CareerTableText(s, player.EffectiveSkillSum().ToString(), eff, y, normal, rightAlign: true);
             CareerTableText(s, potential, pot, y, normal, rightAlign: true);
             CareerTableText(s, stamina, sta, y, normal, rightAlign: true);
+            OpenSwos.Competition.Career.CareerRecords.EnsureClubStats(player);
+            CareerTableText(s, player.ClubAppearances.ToString(), apps, y, normal, rightAlign: true);
+            CareerTableText(s, player.ClubGoals.ToString(), gls, y,
+                player.ClubGoals > 0 ? new Color(1f, 0.85f, 0.25f) : normal, rightAlign: true);
             CareerTableText(s, formText, formCol, y, normal, rightAlign: true);
             CareerTableText(s, fitText, fit, y, fitColor, rightAlign: true);
             CareerTableText(s, FormatMoney(Finance.PlayerValue(player)), value, y, normal, rightAlign: true);
@@ -588,6 +599,1040 @@ public sealed partial class MenuClient
             CareerTableText(s, p.EffectiveSkillSum().ToString(), eff, y, rc, rightAlign: true);
             CareerTableText(s, fitText, fit, y, fitColor, rightAlign: true);
             CareerTableText(s, FormatMoney(Finance.PlayerValue(p)), val, y, rc, rightAlign: true);
+            y += 8;
+        }
+    }
+
+    // ================================================================
+    // FINANCES — career depth plan feature #1
+    // ================================================================
+    // Prints the season income and expenditure statement in the ORIGINAL
+    // game's line items. The rows AND their labels come from the engine
+    // (Competition/Career/SeasonFinances.StatementRows), which is the same
+    // source the browser client reads through /api/finances — so both
+    // front-ends always show the identical statement.
+
+    private int _financesPage;   // 0 = this season's sheet, 1 = season by season
+
+    private OpenSwos.Competition.Career.SeasonAccount? CurrentAccount()
+        => _comp?.Career?.LastAccount;
+
+    private MenuScreen BuildFinancesScreen()
+    {
+        _financesPage = 0;
+        var s = new MenuScreen { Title = Loc.Tr("fin.title", "FINANCES"), BodyReserve = 82 };
+        var career = _comp?.Career;
+        if (career is null)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+                Label = () => Loc.Tr("common.no_career_data", "NO CAREER DATA") });
+        }
+        else
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => _financesPage == 0
+                    ? Loc.Tr("fin.show_history", "SEASON BY SEASON")
+                    : Loc.Tr("fin.show_sheet", "THIS SEASON"),
+                OnActivate = () => { _financesPage = _financesPage == 0 ? 1 : 0; RebuildCurrent(); } });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => Loc.Tr("common.back", "BACK"), OnActivate = () => Pop() });
+        s.Body = client => client.InTableSpace(() => client.DrawFinancesBody(s));
+        return s;
+    }
+
+    private void DrawFinancesBody(MenuScreen s)
+    {
+        int panelX = 8, panelY = TablePanelY, panelW = TableVw - 16, panelH = TableVh - panelY - 21;
+        if (panelH < 32) return;
+        BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
+        var head = new Color(0.7f, 0.85f, 1f);
+        var normal = new Color(0.92f, 0.94f, 1f);
+        var income = new Color(0.47f, 0.85f, 0.19f);
+        var spend = new Color(0.91f, 0.47f, 0.47f);
+        var total = new Color(1f, 0.82f, 0.24f);
+
+        var career = _comp?.Career;
+        if (career is null)
+        {
+            CareerTableText(s, Loc.Tr("common.no_career_data", "NO CAREER DATA"), panelX + 8, panelY + 8, head);
+            return;
+        }
+
+        CareerClub? club = CurrentCareerClub();
+        CareerTableText(s, Loc.Tr("common.budget", "BUDGET") + " " + FormatMoney(club?.Budget ?? 0),
+            panelX + 8, panelY + 4, head);
+
+        var account = CurrentAccount();
+        if (account is null)
+        {
+            CareerTableText(s, Loc.Tr("fin.no_season", "NO COMPLETED SEASON YET"), panelX + 8, panelY + 18, normal);
+            CareerTableText(s, Loc.Tr("fin.drawn_up", "THE ACCOUNTS ARE DRAWN UP AT THE END OF THE SEASON"),
+                panelX + 8, panelY + 28, normal);
+            return;
+        }
+
+        int labelX = panelX + 8;
+        int amountX = panelX + panelW - 6;
+        int y = panelY + 15;
+
+        if (_financesPage == 1)
+        {
+            // ---- season by season ----------------------------------------
+            int seasonX = labelX, leagueX = panelX + 70, cupX = panelX + 150;
+            int incomeX = panelX + 330, wagesX = panelX + 420, balanceX = amountX;
+            CareerTableText(s, Loc.Tr("fin.col_season", "SEASON"), seasonX, y, head);
+            CareerTableText(s, Loc.Tr("fin.col_league", "LEAGUE"), leagueX, y, head);
+            CareerTableText(s, Loc.Tr("fin.col_cup", "CUP"), cupX, y, head);
+            CareerTableText(s, Loc.Tr("fin.col_income", "INCOME"), incomeX, y, head, rightAlign: true);
+            CareerTableText(s, Loc.Tr("fin.col_wages", "WAGES"), wagesX, y, head, rightAlign: true);
+            CareerTableText(s, Loc.Tr("fin.col_balance", "BALANCE"), balanceX, y, head, rightAlign: true);
+            y += 10;
+            var history = career.AccountHistory;
+            for (int i = history.Count - 1; i >= 0 && y < panelY + panelH - 8; i--)
+            {
+                var h = history[i];
+                CareerTableText(s, h.Season.ToString(), seasonX, y, normal);
+                CareerTableText(s, h.LeagueTeams > 0 ? h.LeaguePosition + "/" + h.LeagueTeams : "-",
+                    leagueX, y, normal);
+                CareerCell(s, string.IsNullOrEmpty(h.CupResult) ? "-" : h.CupResult,
+                    cupX, y, incomeX - cupX - 60, normal);
+                CareerTableText(s, FormatMoney(h.TotalIncome), incomeX, y, income, rightAlign: true);
+                CareerTableText(s, FormatMoney(h.WageBill), wagesX, y, spend, rightAlign: true);
+                CareerTableText(s, FormatMoney(h.ClosingBalance), balanceX, y, total, rightAlign: true);
+                y += 8;
+            }
+            return;
+        }
+
+        // ---- this season's statement -------------------------------------
+        string cup = string.IsNullOrEmpty(account.CupResult) ? "-" : account.CupResult;
+        string caption = Loc.Tr("fin.season", "SEASON") + " " + account.Season + "  "
+            + Loc.Tr("fin.league", "LEAGUE") + " " + account.LeaguePosition + "/" + account.LeagueTeams
+            + "  " + Loc.Tr("fin.cup", "CUP") + " " + cup;
+        CareerTableText(s, FitText(caption, false, panelW - 120), panelX + 120, panelY + 4, head);
+
+        CareerTableText(s, account.HomeGames + " " + Loc.Tr("fin.home_games", "HOME GAMES")
+            + "  " + Loc.Tr("fin.crowd", "CROWD") + " " + account.Attendance.ToString("N0"),
+            labelX, y, head);
+        y += 12;
+
+        foreach (var (key, label, amount, kind) in
+                 OpenSwos.Competition.Career.SeasonFinances.StatementRows(account))
+        {
+            if (y >= panelY + panelH - 8) break;
+            Color rowColour = kind == "out" ? spend : kind == "total" ? total : income;
+            // Totals get a rule above them, like the original ledger.
+            if (kind == "total" && y > panelY + 30)
+            {
+                // Breathe before the rule: at 9 px row pitch a rule at y-3 clips
+                // the descenders of the row above (seen on 13a_career_finances).
+                y += 4;
+                BodyBox(s, panelX + 4, y - 4, panelW - 8, 1, MenuTheme.Style.Header, 21);
+            }
+            CareerCell(s, Loc.Tr(key, label), labelX, y, amountX - labelX - 90, rowColour);
+            string money = (kind == "out" ? "-" : "") + FormatMoney(amount);
+            CareerTableText(s, money, amountX, y, rowColour, rightAlign: true);
+            y += 9;
+        }
+    }
+
+    // ================================================================
+    // THE CHAIRMAN — career depth plan feature #2
+    // ================================================================
+    // The memo inbox. Text and severity come from the ENGINE
+    // (Competition/Career/ChairmanModel.cs) so this screen and the browser's
+    // CHAIRMAN tab print the same words; the menu only translates them.
+
+    private int _chairmanIndex;
+
+    private System.Collections.Generic.List<OpenSwos.Competition.Career.ChairmanMemo> ChairmanMemos()
+    {
+        var memos = _comp?.Career?.Memos;
+        var list = new System.Collections.Generic.List<OpenSwos.Competition.Career.ChairmanMemo>();
+        if (memos is null) return list;
+        for (int i = memos.Count - 1; i >= 0; i--)      // newest first
+            if (memos[i] is not null) list.Add(memos[i]);
+        return list;
+    }
+
+    private string ChairmanEntryLabel()
+    {
+        var career = LoadedComp()?.Career;
+        int unread = career?.UnreadMemos ?? 0;
+        string prefix = unread > 0 ? Loc.Tr("dash.offers_unseen_mark", "!") + " " : "";
+        return prefix + Loc.Tr("dash.chairman", "CHAIRMAN");
+    }
+
+    private MenuScreen BuildChairmanScreen()
+    {
+        // Open on the memo that MATTERS. The newest entry after a rollover is
+        // the chairman's new-season pleasantry, which would otherwise bury the
+        // verdict the player actually needs to read.
+        _chairmanIndex = 0;
+        var opening = ChairmanMemos();
+        for (int i = 0; i < opening.Count; i++)
+            if (opening[i].Kind != "renewed") { _chairmanIndex = i; break; }
+        // Opening the inbox is what marks the memos read.
+        if (_comp?.Career is not null)
+        {
+            _comp.Career.UnreadMemos = 0;
+            CompetitionStore.Save(_comp);
+        }
+        var s = new MenuScreen { Title = Loc.Tr("chair.title", "CHAIRMAN"), BodyReserve = 82 };
+        var memos = ChairmanMemos();
+        if (memos.Count > 1)
+        {
+            var memoField = new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+                Label = () => Loc.Tr("chair.memo", "MEMO"), Value = ChairmanMemoLabel,
+                OnActivate = EnterTableSelectCurrent };
+            s.Entries.Add(memoField);
+            s.TableSelect = new MenuTableSelect
+            {
+                Field = memoField,
+                Count = () => ChairmanMemos().Count,
+                GetIndex = () => _chairmanIndex,
+                SetIndex = idx => { _chairmanIndex = idx; },
+            };
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => Loc.Tr("common.back", "BACK"), OnActivate = () => Pop() });
+        s.Body = client => client.InTableSpace(() => client.DrawChairmanBody(s));
+        return s;
+    }
+
+    private string ChairmanMemoLabel()
+    {
+        var memos = ChairmanMemos();
+        if (memos.Count == 0) return Loc.Tr("chair.none", "NO MEMOS");
+        _chairmanIndex = System.Math.Clamp(_chairmanIndex, 0, memos.Count - 1);
+        var m = memos[_chairmanIndex];
+        return Loc.Tr("fin.season", "SEASON") + " " + m.Season
+             + "  " + (_chairmanIndex + 1) + "/" + memos.Count;
+    }
+
+    /// <summary>1 -> 1ST, 2 -> 2ND ... for the board's expectation line.</summary>
+    private static string Ordinal(int n)
+    {
+        if (n <= 0) return "-";
+        int t = n % 100, u = n % 10;
+        string suffix = (t is >= 11 and <= 13) ? "TH"
+                      : u == 1 ? "ST" : u == 2 ? "ND" : u == 3 ? "RD" : "TH";
+        return n + suffix;
+    }
+
+    private void DrawChairmanBody(MenuScreen s)
+    {
+        int panelX = 8, panelY = TablePanelY, panelW = TableVw - 16, panelH = TableVh - panelY - 21;
+        if (panelH < 32) return;
+        BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
+        var head = new Color(0.7f, 0.85f, 1f);
+        var body = new Color(0.92f, 0.94f, 1f);
+        var alarm = new Color(0.95f, 0.55f, 0.35f);
+        var good = new Color(0.55f, 0.88f, 0.35f);
+
+        var career = _comp?.Career;
+        if (career is null)
+        {
+            CareerTableText(s, Loc.Tr("common.no_career_data", "NO CAREER DATA"), panelX + 8, panelY + 8, head);
+            return;
+        }
+
+        // Standing order from the board, if any.
+        string status = OpenSwos.Competition.Career.ChairmanModel.StatusLine(career);
+        if (status.Length > 0)
+            CareerTableText(s, FitText(status, false, panelW - 16), panelX + 8, panelY + 4,
+                career.Sacked ? alarm : head);
+
+        // What the board wants THIS season, and what it judged the last one
+        // against. Without these the grade reads as a black box, and a
+        // mis-ranked expectation stays invisible until someone plays a career.
+        int yTop = panelY + 18;
+        if (career.SeasonExpectedPosition > 0 && career.SeasonLeagueTeams > 0)
+        {
+            string want = Loc.Tr("chair.expects", "THE BOARD EXPECTS") + " "
+                + Ordinal(career.SeasonExpectedPosition) + " "
+                + Loc.Tr("chair.of", "OF") + " " + career.SeasonLeagueTeams;
+            CareerTableText(s, FitText(want, false, panelW - 16), panelX + 8, yTop, head);
+            yTop += 12;
+        }
+        if (career.LastExpectedPosition > 0 && career.LastLeagueTeams > 0)
+        {
+            string judged = Loc.Tr("chair.expected", "BOARD EXPECTED") + " "
+                + Ordinal(career.LastExpectedPosition) + " "
+                + Loc.Tr("chair.of", "OF") + " " + career.LastLeagueTeams + "   "
+                + Loc.Tr("chair.finished", "FINISHED") + " "
+                + Ordinal(career.LastLeaguePosition);
+            CareerTableText(s, FitText(judged, false, panelW - 16), panelX + 8, yTop,
+                career.LastLeaguePosition <= career.LastExpectedPosition ? good : body);
+            yTop += 12;
+        }
+
+        var memos = ChairmanMemos();
+        if (memos.Count == 0)
+        {
+            CareerTableText(s, Loc.Tr("chair.none", "NO MEMOS"), panelX + 8, yTop + 4, body);
+            return;
+        }
+        _chairmanIndex = System.Math.Clamp(_chairmanIndex, 0, memos.Count - 1);
+        var memo = memos[_chairmanIndex];
+
+        int y = yTop;
+        CareerTableText(s, Loc.Tr("chair.memo_header", OpenSwos.Competition.Career.ChairmanModel.MemoHeader),
+            panelX + 8, y, head);
+        y += 14;
+        Color line = memo.Severity >= 2 ? alarm : memo.Severity == 0 ? good : body;
+        // Memo lines are keyed per line (chair.verdict0.1, .2 ...) so a
+        // translation can re-break a sentence differently from the English.
+        for (int i = 0; i < memo.Lines.Count; i++)
+        {
+            if (y >= panelY + panelH - 24) break;
+            // The stored line already has its subject in it; a TRANSLATED line
+            // still carries the original %a placeholder, so substitute again.
+            // Memo.Subject says WHAT %a meant — the manager for the chairman's
+            // own letters, the club for a job-market one (feature #3).
+            string mgr = (career.ManagerName ?? "").Trim();
+            string subject = memo.Subject.Length > 0 ? memo.Subject
+                           : (mgr.Length > 0 ? mgr : "BOSS");
+            string text = Loc.Tr(memo.Key + "." + (i + 1), memo.Lines[i])
+                .Replace("%a", AsciiText(subject));
+            CareerTableText(s, FitText(text, false, panelW - 16), panelX + 8, y, line);
+            y += 11;
+        }
+        y += 8;
+        CareerTableText(s, Loc.Tr("chair.memo_sign", OpenSwos.Competition.Career.ChairmanModel.MemoSignature),
+            panelX + 8, y, head);
+
+        // Older memos below, one line each, so the season reads as a story.
+        y += 16;
+        if (memos.Count > 1 && y < panelY + panelH - 10)
+        {
+            CareerTableText(s, Loc.Tr("chair.earlier", "EARLIER MEMOS"), panelX + 8, y, head);
+            y += 10;
+            for (int i = 0; i < memos.Count && y < panelY + panelH - 8; i++)
+            {
+                if (i == _chairmanIndex) continue;
+                var m = memos[i];
+                Color c2 = m.Severity >= 2 ? alarm : m.Severity == 0 ? good : body;
+                string first = m.Lines.Count > 0 ? m.Lines[0] : "";
+                CareerCell(s, "S" + m.Season + "  " + first, panelX + 8, y, panelW - 20, c2);
+                y += 8;
+            }
+        }
+    }
+
+    // ================================================================
+    // JOB OFFERS — career depth plan feature #3
+    // ================================================================
+    // Other clubs come for the MANAGER. Every rule lives in the engine
+    // (Competition/Career/JobMarket.cs) so this screen and the browser's JOBS
+    // tab offer the same clubs with the same money; the menu only translates
+    // the letter and prints the figure in its own format.
+
+    private int _jobIndex;
+    private string? _jobNotice;
+
+    private System.Collections.Generic.List<OpenSwos.Competition.Career.JobOffer> JobOfferList()
+        => OpenSwos.Competition.Career.JobMarket.LiveOffers(LoadedComp()?.Career);
+
+    /// <summary>True while there is anything to show — an open letter or a signed deal.</summary>
+    private bool JobOffersWaiting()
+    {
+        var career = LoadedComp()?.Career;
+        if (career is null) return false;
+        return JobOfferList().Count > 0
+            || OpenSwos.Competition.Career.JobMarket.HasAcceptedOffer(career);
+    }
+
+    private string JobOffersEntryLabel()
+    {
+        var career = LoadedComp()?.Career;
+        int unseen = OpenSwos.Competition.Career.JobMarket.UnseenOffers(career);
+        string prefix = unseen > 0 ? Loc.Tr("dash.offers_unseen_mark", "!") + " " : "";
+        if (OpenSwos.Competition.Career.JobMarket.HasAcceptedOffer(career))
+            return Loc.Tr("job.new_job", "NEW JOB");
+        return prefix + Loc.Tr("job.title", "JOB OFFERS")
+             + " (" + JobOfferList().Count + ")";
+    }
+
+    private OpenSwos.Competition.Career.JobOffer? CurrentJobOffer()
+    {
+        var list = JobOfferList();
+        if (list.Count == 0) return null;
+        _jobIndex = System.Math.Clamp(_jobIndex, 0, list.Count - 1);
+        return list[_jobIndex];
+    }
+
+    private MenuScreen BuildJobOffersScreen()
+    {
+        var c = LoadedComp();
+        _jobIndex = 0;
+        _jobNotice = null;
+        // Opening the pile is what stops the entry flashing.
+        if (c?.Career is not null
+            && OpenSwos.Competition.Career.JobMarket.UnseenOffers(c.Career) > 0)
+        {
+            OpenSwos.Competition.Career.JobMarket.MarkSeen(c.Career);
+            CompetitionStore.Save(c);
+        }
+
+        var s = new MenuScreen { Title = Loc.Tr("job.title", "JOB OFFERS"), BodyReserve = 82 };
+        var list = JobOfferList();
+        bool signed = OpenSwos.Competition.Career.JobMarket.HasAcceptedOffer(c?.Career);
+        if (list.Count == 0)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+                Label = () => Loc.Tr("job.none", "NO JOB OFFERS") });
+        }
+        else
+        {
+            if (list.Count > 1)
+            {
+                var field = new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+                    Label = () => Loc.Tr("job.offer", "OFFER"), Value = JobSelectedLabel,
+                    OnActivate = EnterTableSelectCurrent };
+                s.Entries.Add(field);
+                s.TableSelect = new MenuTableSelect
+                {
+                    Field = field,
+                    Count = () => JobOfferList().Count,
+                    GetIndex = () => _jobIndex,
+                    SetIndex = idx => { _jobIndex = idx; },
+                };
+            }
+            if (!signed)
+            {
+                s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
+                    Label = () => Loc.Tr("job.accept", "ACCEPT"), OnActivate = AcceptSelectedJob });
+                s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = false,
+                    Label = () => Loc.Tr("job.decline", "DECLINE"), OnActivate = DeclineSelectedJob });
+            }
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = () => _jobNotice ?? "" });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => Loc.Tr("common.back", "BACK"), OnActivate = () => Pop() });
+        s.Body = client => client.InTableSpace(() => client.DrawJobOffersBody(s));
+        return s;
+    }
+
+    private string JobSelectedLabel()
+    {
+        var offer = CurrentJobOffer();
+        if (offer is null) return Loc.Tr("common.none", "NONE");
+        var list = JobOfferList();
+        return FitText(AsciiText(offer.ClubName) + "  " + (_jobIndex + 1) + "/" + list.Count, false, 150);
+    }
+
+    private void AcceptSelectedJob()
+    {
+        var c = LoadedComp();
+        var offer = CurrentJobOffer();
+        if (c?.Career is null || offer is null)
+        {
+            _jobNotice = Loc.Tr("job.not_available", "OFFER NOT AVAILABLE");
+            RebuildCurrent();
+            return;
+        }
+        if (OpenSwos.Competition.Career.JobMarket.Accept(c.Career, offer.Id))
+        {
+            CompetitionStore.Save(c);
+            _jobNotice = Loc.Tr("job.signed_prefix", "AGREED WITH") + " " + AsciiText(offer.ClubName);
+        }
+        else _jobNotice = Loc.Tr("job.not_available", "OFFER NOT AVAILABLE");
+        _jobIndex = 0;
+        RebuildCurrent();
+    }
+
+    private void DeclineSelectedJob()
+    {
+        var c = LoadedComp();
+        var offer = CurrentJobOffer();
+        if (c?.Career is null || offer is null)
+        {
+            _jobNotice = Loc.Tr("job.not_available", "OFFER NOT AVAILABLE");
+            RebuildCurrent();
+            return;
+        }
+        if (OpenSwos.Competition.Career.JobMarket.Decline(c.Career, offer.Id))
+        {
+            CompetitionStore.Save(c);
+            _jobNotice = Loc.Tr("job.declined", "OFFER DECLINED");
+        }
+        else _jobNotice = Loc.Tr("job.not_available", "OFFER NOT AVAILABLE");
+        _jobIndex = 0;
+        RebuildCurrent();
+    }
+
+    private void DrawJobOffersBody(MenuScreen s)
+    {
+        int panelX = 8, panelY = TablePanelY, panelW = TableVw - 16, panelH = TableVh - panelY - 21;
+        if (panelH < 32) return;
+        BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
+        var head = new Color(0.7f, 0.85f, 1f);
+        var body = new Color(0.92f, 0.94f, 1f);
+        var good = new Color(0.55f, 0.88f, 0.35f);
+
+        var career = LoadedComp()?.Career;
+        if (career is null)
+        {
+            CareerTableText(s, Loc.Tr("common.no_career_data", "NO CAREER DATA"), panelX + 8, panelY + 8, head);
+            return;
+        }
+
+        // What the game thinks of the manager — the reason these clubs called.
+        string rep = Loc.Tr("job.reputation", "REPUTATION") + ": "
+            + Loc.Tr("job.rep_" + career.Reputation switch
+              {
+                  >= 80 => "world", >= 65 => "high", >= 48 => "good",
+                  >= 32 => "known", >= 18 => "unproven", _ => "unwanted",
+              },
+              OpenSwos.Competition.Career.JobMarket.ReputationLabel(career.Reputation))
+            + "  (" + career.Reputation + ")";
+        CareerTableText(s, FitText(rep, false, panelW - 16), panelX + 8, panelY + 4, head);
+
+        var offer = CurrentJobOffer();
+        if (offer is null)
+        {
+            CareerTableText(s, Loc.Tr("job.none", "NO JOB OFFERS"), panelX + 8, panelY + 20, body);
+            return;
+        }
+
+        int y = panelY + 18;
+        CareerTableText(s, FitText(
+            Loc.Tr("job.letter_header", OpenSwos.Competition.Career.JobMarket.LetterHeader)
+                .Replace("%a", AsciiText(offer.ClubName)), false, panelW - 16),
+            panelX + 8, y, head);
+        y += 13;
+
+        // The club's own line: which country, which division, how strong.
+        string div = Loc.Tr("job.division", "DIVISION") + " " + (offer.Division + 1);
+        string where = AsciiText(offer.NationName.Length > 0 ? offer.NationName : "") ;
+        string sub = (where.Length > 0 ? where + "   " : "") + div
+                   + "   " + Loc.Tr("job.squad", "SQUAD") + " " + offer.Strength + "/7";
+        CareerTableText(s, FitText(sub, false, panelW - 16), panelX + 8, y, body);
+        y += 13;
+
+        // The letter, one translatable line at a time (job.letter.1, .2 ...).
+        var lines = OpenSwos.Competition.Career.JobMarket.OfferLetterLines;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (y >= panelY + panelH - 22) break;
+            string text = Loc.Tr("job.letter." + (i + 1), lines[i])
+                .Replace("%a", AsciiText(offer.ClubName))
+                .Replace("%b", FormatMoney(offer.TransferFunds));
+            CareerTableText(s, FitText(text, false, panelW - 16), panelX + 8, y, body);
+            y += 10;
+        }
+
+        y += 6;
+        if (y < panelY + panelH - 10)
+        {
+            string foot = offer.Accepted
+                ? Loc.Tr("job.accepted_note", "YOU HAVE ACCEPTED - THE MOVE HAPPENS NEXT SEASON")
+                : Loc.Tr("job.waiting_prefix", "THEY WILL WAIT") + " " + offer.MatchesLeft + " "
+                  + Loc.Tr("job.waiting_suffix", "MORE MATCHES");
+            CareerTableText(s, FitText(foot, false, panelW - 16), panelX + 8, y,
+                offer.Accepted ? good : head);
+        }
+    }
+
+    // ================================================================
+    // TOP GOAL SCORERS — career depth plan feature #5
+    // ================================================================
+    // The original has this in two places and we keep both:
+    //   the STATS menu's scorer list (asm:295076 "TOP GOAL SCORERS",
+    //   asm:295043 "LEADING COMPETITION GOAL SCORERS", with the two aggregate
+    //   rows asm:295686 "OWN GOALS" and asm:295696 "EX. PLAYER GOALS"), and
+    //   the MANAGEMENT RECORD's per-season "SEASON'S TOP SCORER" line
+    //   (asm:283007, plural asm:283027) — drawn by DrawManagementRecordBody.
+    // Every number comes from Competition/Career/ScorerModel.cs; this screen
+    // only lays it out, so the browser client and the menu cannot disagree.
+
+    private int _scorerView;    // 0 = the competition, 1 = my club, 2 = season by season
+    private int _scorerPage;
+
+    private const int ScorerViews = 3;
+
+    private MenuScreen BuildScorersScreen()
+    {
+        _scorerView = 0;
+        _scorerPage = 0;
+        var s = new MenuScreen { Title = Loc.Tr("scorer.title", "TOP GOAL SCORERS"), BodyReserve = 82 };
+
+        s.Entries.Add(new MenuEntry
+        {
+            Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => Loc.Tr("scorer.view", "LIST"),
+            Value = ScorerViewLabel,
+            // RebuildCurrent, not just a Refresh: the panel is drawn by
+            // s.Body, which only runs on a rebuild (LayoutAndBuild). Stepping
+            // the option without it left the LIST reading SEASON BY SEASON over
+            // last view's rows — caught by looking at the screenshot.
+            OnStep = delta =>
+            {
+                _scorerView = ((_scorerView + delta) % ScorerViews + ScorerViews) % ScorerViews;
+                _scorerPage = 0;
+                RebuildCurrent();
+            },
+        });
+        s.Entries.Add(new MenuEntry
+        {
+            Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => Loc.Tr("scorer.page", "PAGE"),
+            Value = () => (_scorerPage + 1) + "/" + System.Math.Max(1, ScorerPageCount()),
+            OnStep = delta =>
+            {
+                int pages = System.Math.Max(1, ScorerPageCount());
+                _scorerPage = ((_scorerPage + delta) % pages + pages) % pages;
+                RebuildCurrent();
+            },
+        });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => Loc.Tr("common.back", "BACK"), OnActivate = () => Pop() });
+        s.Body = client => client.InTableSpace(() => client.DrawScorersBody(s));
+        return s;
+    }
+
+    private string ScorerViewLabel()
+    {
+        var c = LoadedComp();
+        return _scorerView switch
+        {
+            0 => Loc.Tr("scorer.view_comp", "COMPETITION"),
+            1 => c is not null && c.PlayerTeam >= 0 && c.PlayerTeam < c.Teams.Count
+                    ? FitText(AsciiText(c.Teams[c.PlayerTeam].Name), false, 118)
+                    : Loc.Tr("scorer.view_club", "MY CLUB"),
+            _ => Loc.Tr("scorer.view_history", "SEASON BY SEASON"),
+        };
+    }
+
+    /// <summary>Rows the panel can hold — the paging step for every view.</summary>
+    private const int ScorerRowsPerPage = 9;
+
+    private int ScorerRowCount()
+    {
+        var c = LoadedComp();
+        if (c is null) return 0;
+        return _scorerView switch
+        {
+            0 => OpenSwos.Competition.Career.ScorerModel.Leaderboard(c, 30).Count,
+            1 => OpenSwos.Competition.Career.ScorerModel.FoldForClub(c, c.PlayerTeam).Count,
+            _ => c.Career?.SeasonTopScorers?.Count ?? 0,
+        };
+    }
+
+    private int ScorerPageCount()
+        => (System.Math.Max(1, ScorerRowCount()) + ScorerRowsPerPage - 1) / ScorerRowsPerPage;
+
+    /// <summary>The label for a row that stands for a group rather than a person.</summary>
+    private static string ScorerRowName(OpenSwos.Competition.Career.ScorerRow r)
+        => r.PlayerId == OpenSwos.Competition.Career.ScorerModel.OwnGoalPlayerId
+               ? Loc.Tr("scorer.own_goals", "OWN GOALS")
+         : r.PlayerId == OpenSwos.Competition.Career.ScorerModel.ExPlayerPlayerId
+               ? Loc.Tr("scorer.ex_player", "EX. PLAYER GOALS")
+         : r.Name;
+
+    private void DrawScorersBody(MenuScreen s)
+    {
+        int panelX = 8, panelY = TablePanelY, panelW = TableVw - 16, panelH = TableVh - panelY - 21;
+        if (panelH < 32) return;
+        BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
+        var head = new Color(0.7f, 0.85f, 1f);
+        var body = new Color(0.92f, 0.94f, 1f);
+        var gold = new Color(1f, 0.85f, 0.25f);
+        var dim  = new Color(0.62f, 0.68f, 0.82f);
+
+        var c = LoadedComp();
+        if (c is null)
+        {
+            CareerTableText(s, Loc.Tr("common.no_career_data", "NO CAREER DATA"), panelX + 8, panelY + 8, head);
+            return;
+        }
+
+        int goalsX = panelX + panelW - 30;
+        int y = panelY + 4;
+
+        if (_scorerView == 2)
+        {
+            CareerTableText(s, Loc.Tr("scorer.season_top", "SEASON'S TOP SCORER"), panelX + 8, y, head);
+            y += 13;
+            var hist = c.Career?.SeasonTopScorers;
+            if (hist is null || hist.Count == 0)
+            {
+                CareerTableText(s, Loc.Tr("scorer.no_seasons", "NO SEASON COMPLETED YET"), panelX + 8, y, body);
+                return;
+            }
+            int from = _scorerPage * ScorerRowsPerPage;
+            for (int i = from; i < hist.Count && i < from + ScorerRowsPerPage; i++)
+            {
+                if (y + 9 > panelY + panelH - 4) break;
+                var h = hist[i];
+                // Plural when the season ended level (asm:283027).
+                string who = string.Join(" / ", h.Names);
+                CareerTableText(s, Loc.Tr("scorer.season", "SEASON") + " " + h.Season, panelX + 8, y, dim);
+                // +70, not +62: "SEASON 12" is nine characters and ran into the
+                // name once the career passed season 9.
+                CareerTableText(s, FitText(AsciiText(who), false, panelW - 104), panelX + 70, y, body);
+                CareerTableText(s, h.Goals.ToString(), goalsX, y, gold);
+                y += 10;
+            }
+            return;
+        }
+
+        if (_scorerView == 0)
+        {
+            CareerTableText(s, FitText(Loc.Tr("scorer.leading",
+                "LEADING COMPETITION GOAL SCORERS"), false, panelW - 76), panelX + 8, y, head);
+            CareerTableText(s, Loc.Tr("scorer.goals", "GOALS"), goalsX - 26, y, dim);
+            y += 13;
+            var rows = OpenSwos.Competition.Career.ScorerModel.Leaderboard(c, 30);
+            if (rows.Count == 0)
+            {
+                CareerTableText(s, Loc.Tr("scorer.no_goals", "NO GOALS YET THIS SEASON"), panelX + 8, y, body);
+                return;
+            }
+            int from = _scorerPage * ScorerRowsPerPage;
+            for (int i = from; i < rows.Count && i < from + ScorerRowsPerPage; i++)
+            {
+                if (y + 9 > panelY + panelH - 4) break;
+                var r = rows[i];
+                bool mine = r.Team == c.PlayerTeam;
+                CareerTableText(s, (i + 1) + ".", panelX + 8, y, dim);
+                CareerTableText(s, FitText(AsciiText(ScorerRowName(r)), false, 104),
+                    panelX + 26, y, mine ? gold : body);
+                CareerTableText(s, FitText(AsciiText(TeamShort(c, r.Team, 18)), false, 124),
+                    panelX + 134, y, dim);
+                CareerTableText(s, r.Goals.ToString(), goalsX, y, mine ? gold : body);
+                y += 10;
+            }
+            return;
+        }
+
+        // My club: this season's goals and, where it differs, the running total.
+        CareerTableText(s, FitText(AsciiText(
+            c.PlayerTeam >= 0 && c.PlayerTeam < c.Teams.Count ? c.Teams[c.PlayerTeam].Name : ""),
+            false, panelW - 90), panelX + 8, y, head);
+        CareerTableText(s, Loc.Tr("scorer.goals", "GOALS"), panelX + 152, y, dim);
+        CareerTableText(s, Loc.Tr("scorer.career_total", "CAREER TOTAL"), panelX + 196, y, dim);
+        y += 13;
+        var mineRows = OpenSwos.Competition.Career.ScorerModel.FoldForClub(c, c.PlayerTeam);
+        if (mineRows.Count == 0)
+        {
+            CareerTableText(s, Loc.Tr("scorer.no_goals", "NO GOALS YET THIS SEASON"), panelX + 8, y, body);
+            return;
+        }
+        var totals = ScorerCareerTotals(c);
+        int start = _scorerPage * ScorerRowsPerPage;
+        for (int i = start; i < mineRows.Count && i < start + ScorerRowsPerPage; i++)
+        {
+            if (y + 9 > panelY + panelH - 4) break;
+            var r = mineRows[i];
+            bool aggregate = r.PlayerId < 0;
+            CareerTableText(s, FitText(AsciiText(ScorerRowName(r)), false, 138),
+                panelX + 8, y, aggregate ? dim : body);
+            CareerTableText(s, r.Goals.ToString(), panelX + 152, y, aggregate ? dim : gold);
+            // The running total always, not only when it differs: a blank
+            // column under a heading reads as a bug, and a player in his first
+            // season legitimately has the same number twice.
+            if (!aggregate && totals.TryGetValue(r.PlayerId, out int total) && total > 0)
+                CareerTableText(s, total.ToString(), panelX + 200, y, dim);
+            y += 10;
+        }
+    }
+
+    /// <summary>CareerPlayer.CareerGoals for the managed club, keyed by player id.</summary>
+    private static System.Collections.Generic.Dictionary<int, int> ScorerCareerTotals(CompetitionState c)
+    {
+        var map = new System.Collections.Generic.Dictionary<int, int>();
+        var world = c.Career?.World;
+        if (world?.Clubs is null || c.PlayerTeam < 0 || c.PlayerTeam >= c.Teams.Count) return map;
+        if (!world.Clubs.TryGetValue(c.Teams[c.PlayerTeam].GlobalId, out var club) || club?.Squad is null)
+            return map;
+        foreach (var p in club.Squad)
+            if (p is not null && p.CareerGoals > 0) map[p.Id] = p.CareerGoals;
+        return map;
+    }
+
+    // ================================================================
+    // THE NATIONAL-TEAM JOB — career depth plan feature #4
+    // ================================================================
+    // Held ALONGSIDE the club. Every rule, every letter and the tournament
+    // itself live in the engine (Competition/Career/NationalJob.cs) so this
+    // screen and the browser's NATIONAL tab name the same squad and play the
+    // same competition; the menu only translates and draws.
+
+    private int _natIndex;
+    private string? _natNotice;
+    private System.Collections.Generic.List<OpenSwos.Competition.Career.NationalCandidate>? _natPool;
+
+    /// <summary>
+    /// The eligible pool, cached for the life of one screen build. Candidates()
+    /// walks every club in the world, which is far too heavy to re-run for each
+    /// drawn row and each label query.
+    /// </summary>
+    private System.Collections.Generic.List<OpenSwos.Competition.Career.NationalCandidate> NatPool()
+    {
+        if (_natPool is not null) return _natPool;
+        _natPool = OpenSwos.Competition.Career.NationalJob.Candidates(
+            _comp?.Career, _comp?.Career?.World);
+        return _natPool;
+    }
+
+    private void InvalidateNatPool() { _natPool = null; }
+
+    private bool NationalEntryVisible()
+    {
+        var career = LoadedComp()?.Career;
+        return OpenSwos.Competition.Career.NationalJob.HasJob(career)
+            || OpenSwos.Competition.Career.NationalJob.HasOffer(career);
+    }
+
+    private string NationalEntryLabel()
+    {
+        var career = LoadedComp()?.Career;
+        if (OpenSwos.Competition.Career.NationalJob.HasOffer(career))
+            return Loc.Tr("dash.offers_unseen_mark", "!") + " "
+                 + Loc.Tr("natjob.entry_offer", "INTERNATIONAL JOB OFFER");
+        int missing = OpenSwos.Competition.Career.NationalJob.StillToSelect(career);
+        string label = Loc.Tr("natjob.entry", "NATIONAL TEAM");
+        return missing > 0 ? Loc.Tr("dash.offers_unseen_mark", "!") + " " + label : label;
+    }
+
+    private MenuScreen BuildNationalScreen()
+    {
+        var c = LoadedComp();
+        var career = c?.Career;
+        _natIndex = 0;
+        _natNotice = null;
+        InvalidateNatPool();
+
+        bool offer = OpenSwos.Competition.Career.NationalJob.HasOffer(career);
+        var s = new MenuScreen
+        {
+            Title = offer
+                ? Loc.Tr("natjob.title_offer", "INTERNATIONAL JOB OFFER")
+                : FitText(((career?.NationalCountry ?? "").Trim().Length > 0
+                    ? career!.NationalCountry + " "
+                    : "") + Loc.Tr("natjob.title", "NATIONAL TEAM"), true, 294),
+            BodyReserve = 82,
+        };
+
+        if (offer)
+        {
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
+                Label = () => Loc.Tr("job.accept", "ACCEPT"), OnActivate = AcceptNationalJob });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = false,
+                Label = () => Loc.Tr("job.decline", "DECLINE"), OnActivate = DeclineNationalJob });
+        }
+        else if (OpenSwos.Competition.Career.NationalJob.HasJob(career))
+        {
+            var field = new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+                Label = () => Loc.Tr("natjob.player", "PLAYER"), Value = NatSelectedLabel,
+                OnActivate = EnterTableSelectCurrent };
+            s.Entries.Add(field);
+            s.TableSelect = new MenuTableSelect
+            {
+                Field = field,
+                Count = () => NatPool().Count,
+                GetIndex = () => _natIndex,
+                SetIndex = idx => { _natIndex = idx; },
+            };
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
+                Label = NatToggleLabel, OnActivate = ToggleNationalPick });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => Loc.Tr("natjob.auto", "AUTO PICK"), OnActivate = AutoPickNationalSquad });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = false,
+                Label = () => Loc.Tr("natjob.resign", "RESIGN"), OnActivate = ResignNationalJob });
+        }
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = () => _natNotice ?? "" });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
+            Label = () => Loc.Tr("common.back", "BACK"), OnActivate = () => Pop() });
+        s.Body = client => client.InTableSpace(() => client.DrawNationalBody(s));
+        return s;
+    }
+
+    private string NatSelectedLabel()
+    {
+        var pool = NatPool();
+        if (pool.Count == 0) return Loc.Tr("common.none", "NONE");
+        _natIndex = System.Math.Clamp(_natIndex, 0, pool.Count - 1);
+        var p = pool[_natIndex];
+        return FitText(AsciiText(p.Name) + "  " + (_natIndex + 1) + "/" + pool.Count, false, 150);
+    }
+
+    private string NatToggleLabel()
+    {
+        var pool = NatPool();
+        if (pool.Count == 0) return Loc.Tr("natjob.add", "ADD PLAYER");
+        _natIndex = System.Math.Clamp(_natIndex, 0, pool.Count - 1);
+        return pool[_natIndex].Selected
+            ? Loc.Tr("natjob.remove", "REMOVE PLAYER")
+            : Loc.Tr("natjob.add", "ADD PLAYER");
+    }
+
+    private void AcceptNationalJob()
+    {
+        var c = LoadedComp();
+        if (c?.Career is null) return;
+        string country = c.Career.NationalOffer?.Country ?? "";
+        if (OpenSwos.Competition.Career.NationalJob.AcceptOffer(c.Career))
+        {
+            CompetitionStore.Save(c);
+            InvalidateNatPool();
+            _natNotice = Loc.Tr("natjob.appointed", "COACH OF") + " " + AsciiText(country);
+        }
+        ReplaceTop(BuildNationalScreen());
+    }
+
+    private void DeclineNationalJob()
+    {
+        var c = LoadedComp();
+        if (c?.Career is null) return;
+        OpenSwos.Competition.Career.NationalJob.DeclineOffer(c.Career);
+        CompetitionStore.Save(c);
+        Pop();
+    }
+
+    private void ToggleNationalPick()
+    {
+        var c = LoadedComp();
+        var pool = NatPool();
+        if (c?.Career is null || pool.Count == 0) return;
+        _natIndex = System.Math.Clamp(_natIndex, 0, pool.Count - 1);
+        var p = pool[_natIndex];
+        if (!OpenSwos.Competition.Career.NationalJob.ToggleSelection(c.Career, p.PlayerId))
+        {
+            _natNotice = Loc.Tr("natjob.full", "SQUAD FULL");
+            RebuildCurrent();
+            return;
+        }
+        CompetitionStore.Save(c);
+        InvalidateNatPool();
+        _natNotice = OpenSwos.Competition.Career.NationalJob.StatusLine(c.Career);
+        RebuildCurrent();
+    }
+
+    private void AutoPickNationalSquad()
+    {
+        var c = LoadedComp();
+        if (c?.Career is null) return;
+        OpenSwos.Competition.Career.NationalJob.AutoPick(c.Career, c.Career.World);
+        CompetitionStore.Save(c);
+        InvalidateNatPool();
+        _natNotice = OpenSwos.Competition.Career.NationalJob.StatusLine(c.Career);
+        RebuildCurrent();
+    }
+
+    private void ResignNationalJob()
+    {
+        var c = LoadedComp();
+        if (c?.Career is null) return;
+        OpenSwos.Competition.Career.NationalJob.EndJob(c.Career, byFederation: false);
+        CompetitionStore.Save(c);
+        InvalidateNatPool();
+        Pop();
+    }
+
+    private void DrawNationalBody(MenuScreen s)
+    {
+        int panelX = 8, panelY = TablePanelY, panelW = TableVw - 16, panelH = TableVh - panelY - 21;
+        if (panelH < 32) return;
+        BodyBox(s, panelX, panelY, panelW, panelH, MenuTheme.Style.Value, 6);
+        var head = new Color(0.7f, 0.85f, 1f);
+        var body = new Color(0.92f, 0.94f, 1f);
+        var good = new Color(0.55f, 0.88f, 0.35f);
+        var cursor = new Color(1f, 0.86f, 0.35f);
+
+        var career = _comp?.Career;
+        if (career is null)
+        {
+            CareerTableText(s, Loc.Tr("common.no_career_data", "NO CAREER DATA"), panelX + 8, panelY + 8, head);
+            return;
+        }
+
+        // ---- the federation's letter ----
+        if (OpenSwos.Competition.Career.NationalJob.HasOffer(career))
+        {
+            string country = career.NationalOffer!.Country;
+            int ly = panelY + 6;
+            CareerTableText(s, FitText(
+                Loc.Tr("natjob.letter_header",
+                    OpenSwos.Competition.Career.NationalJob.OfferHeader).Replace("%a", AsciiText(country)),
+                false, panelW - 16), panelX + 8, ly, head);
+            ly += 14;
+            var lines = OpenSwos.Competition.Career.NationalJob.OfferLetterLines;
+            for (int i = 0; i < lines.Count && ly < panelY + panelH - 12; i++)
+            {
+                // Same six lines the memo inbox prints, so one set of keys
+                // serves both (natjob.offer.1 .. .6).
+                string text = Loc.Tr("natjob.offer." + (i + 1), lines[i])
+                    .Replace("%a", AsciiText(country));
+                CareerTableText(s, FitText(text, false, panelW - 16), panelX + 8, ly, body);
+                ly += 11;
+            }
+            return;
+        }
+
+        if (!OpenSwos.Competition.Career.NationalJob.HasJob(career))
+        {
+            CareerTableText(s, Loc.Tr("natjob.none", "NO INTERNATIONAL JOB"),
+                panelX + 8, panelY + 8, head);
+            return;
+        }
+
+        // ---- the job ----
+        int y = panelY + 4;
+        int strength = OpenSwos.Competition.Career.NationalJob.SquadStrength(career, career.World);
+        CareerTableText(s, FitText(
+            OpenSwos.Competition.Career.NationalJob.TournamentName(career.NationalContinent)
+            + "   " + Loc.Tr("natjob.squad_word", "SQUAD") + " "
+            + (career.NationalSquad?.Count ?? 0) + "/"
+            + OpenSwos.Competition.Career.NationalJob.SquadSize
+            + "   " + Loc.Tr("natjob.rating", "RATING") + " " + strength + "/7",
+            false, panelW - 16), panelX + 8, y, head);
+        y += 11;
+        string status = OpenSwos.Competition.Career.NationalJob.StatusLine(career);
+        if (status.Length > 0)
+        {
+            CareerTableText(s, FitText(status, false, panelW - 16), panelX + 8, y,
+                OpenSwos.Competition.Career.NationalJob.StillToSelect(career) > 0 ? head : good);
+            y += 12;
+        }
+
+        // Column header, then a window of the pool around the selection.
+        int nameX = panelX + 8, posX = panelX + 200, ovrX = panelX + 250,
+            whereX = panelX + 300, clubX = panelX + 360;
+        CareerTableText(s, Loc.Tr("natjob.col_name", "NAME"), nameX, y, head);
+        CareerTableText(s, Loc.Tr("natjob.col_pos", "POS"), posX, y, head);
+        CareerTableText(s, Loc.Tr("natjob.col_ovr", "OVR"), ovrX, y, head);
+        CareerTableText(s, Loc.Tr("natjob.col_where", "WHERE"), whereX, y, head);
+        CareerTableText(s, Loc.Tr("natjob.col_club", "CLUB"), clubX, y, head);
+        y += 10;
+
+        var pool = NatPool();
+        if (pool.Count == 0)
+        {
+            CareerTableText(s, Loc.Tr("natjob.no_players", "NO ELIGIBLE PLAYERS"), nameX, y, body);
+            return;
+        }
+        _natIndex = System.Math.Clamp(_natIndex, 0, pool.Count - 1);
+        int rows = System.Math.Max(1, (panelY + panelH - 8 - y) / 8);
+        int first = System.Math.Clamp(_natIndex - rows / 2, 0, System.Math.Max(0, pool.Count - rows));
+        var names = TeamNamesByGlobalId();
+
+        for (int i = first; i < pool.Count && i < first + rows; i++)
+        {
+            var p = pool[i];
+            // The SWOS charset has no '>' — the cursor row is marked by COLOUR,
+            // not by a glyph that renders as a box.
+            Color col = i == _natIndex ? cursor : (p.Selected ? good : body);
+            CareerCell(s, AsciiText(p.Name), nameX, y, 186, col);
+            CareerTableText(s, p.Position, posX, y, col);
+            CareerTableText(s, p.Overall.ToString(), ovrX, y, col);
+            CareerTableText(s, p.Home ? Loc.Tr("natjob.home", "HOME") : Loc.Tr("natjob.abroad", "ABROAD"),
+                whereX, y, col);
+            string club = names.TryGetValue(p.ClubId, out string? cn) ? AsciiText(cn) : "";
+            CareerCell(s, club, clubX, y, panelW - (clubX - panelX) - 10, col);
             y += 8;
         }
     }
@@ -1597,6 +2642,7 @@ public sealed partial class MenuClient
             if (TransferModel.Buy(c.Career.World, c.Career.ClubGlobalId, player.Id, bid))
             {
                 c.Career.BuysThisSeason++;
+                Chronicle.Signed(c.Career, ScorerModel.CleanName(player.Name), bid, c.CurrentRound);
                 _negotiationTargetId = -1;
                 _bidCounterAsking = 0;
                 CompetitionStore.Save(c);
@@ -2001,8 +3047,6 @@ public sealed partial class MenuClient
     // kits is a distinct texture (#223 — heads now wear the club's HOME kit
     // colours instead of neutral grey). Free agents keep the neutral grey key.
     private readonly System.Collections.Generic.Dictionary<long, ImageTexture> _headIcons = new();
-    private AmigaSpriteAtlas? _headAtlas;
-    private bool _headAtlasTried;
 
     // Neutral grey kit {shirtType, stripes, basic, shorts, socks} — SWOS colour
     // name 0 is grey (KitPalette.Colours[0]); used for free agents (no club).
@@ -2066,85 +3110,10 @@ public sealed partial class MenuClient
         return tex;
     }
 
+    // The bust itself now lives in Assets/HeadIcon.cs so the web career client
+    // renders the identical 7x7 image; this stays as the local call site.
     private Image? BuildHeadImage(int face, byte[] kit)
-    {
-        // Primary: crop the bust from the real player atlas (loaded once, lazily).
-        if (!_headAtlasTried)
-        {
-            _headAtlasTried = true;
-            try
-            {
-                string dir = OpenSwos.Assets.DataPaths.AmigaGrafsDir();
-                if (dir.Length > 0)
-                {
-                    // Case-insensitive resolve: case-SENSITIVE Linux/Android/R36S
-                    // filesystems may hold this as cjcteam1.raw. "" means absent.
-                    string path = OpenSwos.Assets.DataPaths.ResolveFile(dir, "CJCTEAM1.RAW");
-                    if (path.Length > 0)
-                        _headAtlas = AmigaSpriteAtlas.Load(path);
-                }
-            }
-            catch { _headAtlas = null; }
-        }
-        if (_headAtlas is not null)
-        {
-            try
-            {
-                var a = _headAtlas.WithKitRecolour(kit).WithFaceRecolour(face);
-                // Standing South cell (col 3, row 0) → pixel x0 = 48; take cols 1-7.
-                return a.GetRegion(48 + 1, 0, HeadIconW, HeadIconH);
-            }
-            catch { /* fall through to procedural */ }
-        }
-        return BuildProceduralHead(face, kit);
-    }
-
-    // Fallback bust when the Amiga atlas is unavailable (bring-your-own-assets):
-    // a flat-shaded 7x7 head using the EXACT palette colours the atlas recolour
-    // would apply — KitPalette.ApplyFace over the sprite palette
-    // (Palette.SwosAmigaSprite(), tools/sprite-decode/Palette.cs), reading the
-    // skin ramp (slot 5) and per-face hair ramp (slot 13), grey shoulders from
-    // KitPalette colour 0. Visually consistent with the real crop.
-    private static Image BuildProceduralHead(int face, byte[] kit)
-    {
-        byte[] pal = KitPalette.ApplyFace(OpenSwos.Tools.SpriteDecode.Palette.SwosAmigaSprite(), face);
-        (byte r, byte g, byte b) Slot(int i) => (pal[i * 3], pal[i * 3 + 1], pal[i * 3 + 2]);
-        var (sr, sg, sb) = Slot(5);            // mid skin shade
-        var (hr, hg, hb) = Slot(13);           // hair (per-face recoloured)
-        // Shoulders take the club shirt BODY colour (matching KitPalette.Apply's
-        // body-vs-accent rule), so the procedural bust wears the club kit too;
-        // free agents (grey kit) still read grey.
-        byte shirtType = kit.Length > 0 ? kit[0] : (byte)0;
-        byte stripes = kit.Length > 1 ? kit[1] : (byte)0;
-        byte basic = kit.Length > 2 ? kit[2] : stripes;
-        byte body = (shirtType == 1 || shirtType == 3) ? stripes : basic;
-        var (kr, kg, kb) = KitPalette.Get(body);  // club shirt shoulders
-        // 7x7 mask: 0 transparent, 1 hair, 2 skin, 3 shoulder.
-        int[,] m =
-        {
-            {0,1,1,1,1,1,0},
-            {0,1,1,1,1,1,0},
-            {0,1,2,2,2,1,0},
-            {0,0,2,2,2,0,0},
-            {0,3,2,2,2,3,0},
-            {3,3,3,3,3,3,3},
-            {0,3,3,3,3,3,0},
-        };
-        var bytes = new byte[HeadIconW * HeadIconH * 4];
-        for (int yy = 0; yy < HeadIconH; yy++)
-            for (int xx = 0; xx < HeadIconW; xx++)
-            {
-                int o = (yy * HeadIconW + xx) * 4;
-                switch (m[yy, xx])
-                {
-                    case 1: bytes[o] = hr; bytes[o + 1] = hg; bytes[o + 2] = hb; bytes[o + 3] = 255; break;
-                    case 2: bytes[o] = sr; bytes[o + 1] = sg; bytes[o + 2] = sb; bytes[o + 3] = 255; break;
-                    case 3: bytes[o] = kr; bytes[o + 1] = kg; bytes[o + 2] = kb; bytes[o + 3] = 255; break;
-                    default: bytes[o + 3] = 0; break;
-                }
-            }
-        return Image.CreateFromData(HeadIconW, HeadIconH, false, Image.Format.Rgba8, bytes);
-    }
+        => OpenSwos.Assets.HeadIcon.Build(face, kit);
 
     // ======================================================================
     //  Player NATION FLAGS for the career tables (#223)

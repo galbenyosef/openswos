@@ -559,3 +559,285 @@ staff.spec_attack	ANGRIFF
 staff.spec_defence	ABWEHR
 staff.spec_general	ALLGEMEIN
 staff.spec_youth	JUGEND
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANZEN
+fin.title	FINANZEN
+fin.show_history	SAISON FUER SAISON
+fin.show_sheet	DIESE SAISON
+fin.no_season	KEINE ABGESCHLOSSENE SAISON
+fin.drawn_up	DIE BILANZ FOLGT AM SAISONENDE
+fin.col_season	SAISON
+fin.col_league	LIGA
+fin.col_cup	POKAL
+fin.col_income	EINNAHMEN
+fin.col_wages	GEHAELTER
+fin.col_balance	SALDO
+fin.season	SAISON
+fin.league	LIGA
+fin.cup	POKAL
+fin.home_games	HEIMSPIELE
+fin.crowd	ZUSCHAUER
+fin.row.opening	KONTOSTAND ZU SAISONBEGINN:
+fin.row.gate	EINTRITTSGELDER:
+fin.row.bonuses	PRAEMIEN + TV-RECHTE:
+fin.row.sponsor	SPONSORING VON SENSISOFT PLC:
+fin.row.invest	ZUSATZINVESTITION DES PRAESIDENTEN:
+fin.row.invest_new	ZUSATZINVESTITION DES NEUEN PRAESIDENTEN:
+fin.row.wages	SPIELERGEHAELTER:
+fin.row.profit	GESAMTGEWINN:
+fin.row.loss	GESAMTVERLUST:
+fin.row.closing	NEUER KONTOSTAND:
+fin.row.sales	SPIELERVERKAEUFE:
+fin.row.purchases	SPIELERKAEUFE:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PRAESIDENT
+dash.status_sacked	ENTLASSEN
+chair.title	PRAESIDENT
+chair.memo	MEMO
+chair.none	KEINE MEMOS
+chair.memo_header	MEMO VOM VEREINSPRAESIDENTEN
+chair.memo_sign	IHR PRAESIDENT
+chair.earlier	FRUEHERE MEMOS
+opt.board	VORSTAND
+opt.board_hint	WIE SCHNELL DER PRAESIDENT SIE ENTLAESST
+opt.board_patient	GEDULDIG
+opt.board_normal	NORMAL
+opt.board_ruthless	GNADENLOS
+chair.verdict0.1	GUT GEMACHT %a, SIE HABEN AUSGEZEICHNETE ARBEIT
+chair.verdict0.2	GELEISTET UND WIR WISSEN DAS ZU SCHAETZEN
+chair.verdict1.1	EINE GUTE SAISON %a, WIR SIND ALLE SEHR
+chair.verdict1.2	ZUFRIEDEN, MACHEN SIE WEITER SO
+chair.verdict2.1	EINE WECHSELHAFTE SAISON %a, WIR HOFFEN
+chair.verdict2.2	AUF EINE BALDIGE VERBESSERUNG
+chair.verdict3.1	KEINE GUTE SAISON %a, WIR HOFFEN SIE KOENNEN
+chair.verdict3.2	SICH NAECHSTE SAISON STEIGERN
+chair.verdict4.1	EINE SEHR ENTTAEUSCHENDE SAISON %a, WIR FORDERN
+chair.verdict4.2	NAECHSTE SAISON DEUTLICH MEHR VON IHNEN
+chair.sacked_league.1	MIT GROSSEM BEDAUERN HABEN DER VORSTAND UND ICH
+chair.sacked_league.2	BESCHLOSSEN SIE VON IHREN AUFGABEN ZU ENTBINDEN
+chair.not_renewed.1	MIT GROSSEM BEDAUERN HABEN WIR BESCHLOSSEN
+chair.not_renewed.2	IHREN VERTRAG NICHT ZU VERLAENGERN - VIEL GLUECK
+chair.not_renewed.3	UND WIR FREUEN UNS AUF EIN WIEDERSEHEN
+chair.league_note.1	BEACHTEN SIE UNSEREN TABELLENPLATZ UND
+chair.league_note.2	SORGEN SIE BALDMOEGLICHST FUER EINE VERBESSERUNG
+chair.league_warn.1	DENKEN SIE DARAN, OHNE BALDIGE VERBESSERUNG
+chair.league_warn.2	MUESSEN WIR IHRE POSITION UEBERDENKEN
+chair.league_crisis.1	NACH EINER VERTRAUENSFRAGE HABEN SIE HOECHSTENS
+chair.league_crisis.2	3 SPIELE ZUR WENDE ODER SIE WERDEN ENTLASSEN
+chair.money_note.1	BEACHTEN SIE UNSEREN KONTOSTAND UND
+chair.money_note.2	GLEICHEN SIE DEN DISPO BALDMOEGLICHST AUS
+chair.money_warn.1	NUR EINE ERINNERUNG AN DEN DISPOKREDIT
+chair.money_warn.2	SONST MUESSEN WIR IHRE POSITION UEBERDENKEN
+chair.money_crisis.1	NACH EINER KRISENSITZUNG BESTEHEN WIR DARAUF
+chair.money_crisis.2	DEN DISPO SOFORT AUSZUGLEICHEN ODER SIE GEHEN
+chair.new_season.1	NUR EIN GRUSS MIT DEN BESTEN WUENSCHEN FUER DIE
+chair.new_season.2	NEUE SAISON
+chair.embargo_buy.1	TUT MIR LEID %a, DER VEREIN IST NICHT BEREIT
+chair.embargo_buy.2	IN DIESER SAISON WEITERE SPIELER ZU KAUFEN
+chair.embargo_sell.1	BITTE BEACHTEN SIE %a, WIR ERLAUBEN
+chair.embargo_sell.2	IN DIESER SAISON KEINE WEITEREN SPIELERVERKAEUFE
+chair.sacked_money.1	MIT GROSSEM BEDAUERN HABEN DER VORSTAND UND ICH
+chair.sacked_money.2	BESCHLOSSEN SIE VON IHREN AUFGABEN ZU ENTBINDEN
+# JOB OFFERS (career depth plan feature #3)
+job.title	JOBANGEBOTE
+job.none	KEINE JOBANGEBOTE
+job.offer	ANGEBOT
+job.accept	ANNEHMEN
+job.decline	ABLEHNEN
+job.declined	ANGEBOT ABGELEHNT
+job.not_available	ANGEBOT NICHT VERFUEGBAR
+job.signed_prefix	EINIG MIT
+job.new_job	NEUER JOB
+job.reputation	RUF
+job.rep_world	WELTKLASSE
+job.rep_high	HOCH GEHANDELT
+job.rep_good	ANGESEHEN
+job.rep_known	BEKANNT
+job.rep_unproven	UNERPROBT
+job.rep_unwanted	UNERWUENSCHT
+job.division	LIGA
+job.squad	KADER
+job.letter_header	JOBANGEBOT VON %a
+job.letter.1	SEHR GEEHRTE DAMEN UND HERREN
+job.letter.2	WIR VON %a MOECHTEN IHNEN DEN
+job.letter.3	TRAINERPOSTEN IN UNSEREM KLUB ANBIETEN
+job.letter.4	WIR BIETEN IHNEN EIN SEHR GUTES GEHALT UND
+job.letter.5	WIR HOFFEN MITTEL BEREITSTELLEN ZU KOENNEN
+job.letter.6	IN HOEHE VON RUND %b FUER DEN KADER
+job.letter.7	WIR FREUEN UNS AUF IHRE ANTWORT
+job.accepted_note	SIE HABEN ZUGESAGT - DER WECHSEL FOLGT NAECHSTE SAISON
+job.waiting_prefix	SIE WARTEN NOCH
+job.waiting_suffix	SPIELE
+job.accepted.1	WIR VON %a FREUEN UNS SEHR DASS SIE
+job.accepted.2	DEN TRAINERPOSTEN BEI UNS ANGENOMMEN HABEN
+job.accepted.3	AB BEGINN DER NAECHSTEN SAISON
+job.farewell.1	DANKE FUER ALLES %a, WIR WUENSCHEN
+job.farewell.2	IHNEN VIEL ERFOLG IM NEUEN JOB
+job.welcome.1	WILLKOMMEN %a, WIR FREUEN UNS AUF VIEL
+job.welcome.2	ERFOLG IN UNSERER NEUEN ZUSAMMENARBEIT
+job.withdrawn.1	JOBANGEBOT VON %a ZURUECKGEZOGEN
+# board expectation line (feature #2 follow-up)
+chair.expected	VORSTAND ERWARTETE
+chair.of	VON
+chair.finished	ERREICHT
+chair.expects	VORSTAND ERWARTET
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	NATIONALMANNSCHAFT
+natjob.entry_offer	INTERNATIONALES JOBANGEBOT
+natjob.title	NATIONALMANNSCHAFT
+natjob.title_offer	INTERNATIONALES JOBANGEBOT
+natjob.player	SPIELER
+natjob.add	SPIELER HINZU
+natjob.remove	SPIELER RAUS
+natjob.auto	AUTO-AUFGEBOT
+natjob.resign	ZURUECKTRETEN
+natjob.full	KADER VOLL
+natjob.appointed	TRAINER VON
+natjob.none	KEIN NATIONALTRAINERPOSTEN
+natjob.no_players	KEINE SPIELER VERFUEGBAR
+natjob.squad_word	KADER
+natjob.rating	STAERKE
+natjob.home	HEIM
+natjob.abroad	AUSLAND
+natjob.col_name	NAME
+natjob.col_pos	POS
+natjob.col_ovr	GES
+natjob.col_where	WO
+natjob.col_club	KLUB
+natjob.letter_header	INTERNATIONALES JOBANGEBOT VON %a
+natjob.offer.1	DIE MITGLIEDER DES FUSSBALLAUSSCHUSSES
+natjob.offer.2	VON %a MOECHTEN IHNEN DEN POSTEN
+natjob.offer.3	DES NATIONALTRAINERS ANBIETEN
+natjob.offer.4	WIR VERSPRECHEN EIN AUSGEZEICHNETES GEHALT UND
+natjob.offer.5	EINEN JAEHRLICH VERLAENGERBAREN VERTRAG
+natjob.offer.6	WIR FREUEN UNS AUF IHRE ANTWORT
+natjob.accepted.1	DIE MITGLIEDER DES FUSSBALLAUSSCHUSSES
+natjob.accepted.2	VON %a FREUEN SICH SEHR DASS SIE
+natjob.accepted.3	DEN POSTEN DES NATIONALTRAINERS ANNAHMEN
+natjob.ended.1	DIE MITGLIEDER DES FUSSBALLAUSSCHUSSES
+natjob.ended.2	VON %a VERLAENGERN IHREN JAEHRLICH
+natjob.ended.3	VERLAENGERBAREN VERTRAG NICHT
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	BITTE WARTEN
+busy.new_career	WELT WIRD ERSTELLT
+busy.next_season	DER SOMMER LAUFT
+dash.scorers	TORJAGER
+scorer.title	TORJAGERLISTE
+scorer.view	LISTE
+scorer.page	SEITE
+scorer.view_comp	WETTBEWERB
+scorer.view_club	MEIN VEREIN
+scorer.view_history	SAISON FUR SAISON
+scorer.leading	BESTE TORJAGER DES WETTBEWERBS
+scorer.goals	TORE
+scorer.own_goals	EIGENTORE
+scorer.ex_player	TORE EHEM. SPIELER
+scorer.career_total	KARRIERE GESAMT
+scorer.season	SAISON
+scorer.season_top	TORJAGER DER SAISON
+scorer.season_top_plural	TORJAGER DER SAISON
+scorer.no_goals	NOCH KEINE TORE IN DIESER SAISON
+scorer.no_seasons	NOCH KEINE SAISON BEENDET
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	SPIEL
+dash.sec_team	MANNSCHAFT
+dash.sec_club	VEREIN
+dash.sec_game	SPIELSTAND
+nav.hint_cols	OBEN/UNTEN WAHL   LINKS/RECHTS SPALTE   FEUER OK   ESC ZURUCK
+# TRAINING / CLUB DIARY / YOUTH INTAKE / CLUB RECORDS (2026-08-26)
+dash.training	TRAINING
+dash.chronicle	VEREINSCHRONIK
+dash.legends	VEREINSREKORDE
+busy.training	TRAINING
+train.title	TRAINING
+train.drill	UEBUNG
+train.intensity	INTENSITAET
+train.toggle	HINZU / RAUS
+train.auto	AUTO-AUSWAHL
+train.auto_done	GRUPPE NACH POTENZIAL GEWAEHLT
+train.run	EINHEIT STARTEN
+train.report	LETZTER BERICHT
+train.report_title	TRAININGSBERICHT
+train.ready	EINHEIT BEREIT
+train.closed	KEIN TRAINING ZWISCHEN SAISONS
+train.done_week	DIESE WOCHE TRAINIERT - NAECHSTE EINHEIT NACH DEM SPIEL
+train.coach	TRAINER
+train.trains	TRAINIERT
+train.trains_fitness	KONDITION
+train.trains_keeper	TORWARTSPIEL
+train.col_in	IN
+train.col_con	KON
+train.col_shp	FRM
+train.col_room	LUFT
+train.col_grade	EINHEIT
+train.col_gain	FORTSCHRITT
+train.group_full	GRUPPE VOLL - MAX
+train.no_report	NOCH KEINE EINHEIT ABSOLVIERT
+train.injured	IM TRAINING VERLETZT
+train.potential_up	GRENZE ANGEHOBEN
+train.int_0	LEICHT
+train.int_1	NORMAL
+train.int_2	INTENSIV
+train.grade_0	SCHWACH
+train.grade_1	OK
+train.grade_2	GUT
+train.grade_3	HERVORRAGEND
+train.drill_shooting	SCHUSSTRAINING
+train.drill_finishing	ABSCHLUSSTRAINING
+train.drill_passing	PASSEN UND FLANKEN
+train.drill_control	DRIBBELPARCOURS
+train.drill_pace	SPRINTS UND LAEUFE
+train.drill_heading	KOPFBALLTRAINING
+train.drill_defending	ABWEHR UND ZWEIKAMPF
+train.drill_keeper	TORWARTTRAINING
+train.drill_recovery	REGENERATION UND FITNESS
+skill.passing	PASS
+skill.shooting	SCHUSS
+skill.heading	KOPFBALL
+skill.tackling	ZWEIKAMPF
+skill.control	ANNAHME
+skill.speed	TEMPO
+skill.finishing	ABSCHLUSS
+chron.title	VEREINSCHRONIK
+chron.season	SAISON
+chron.all	ALLE
+chron.empty	NOCH IST NICHTS PASSIERT
+chron.apps	%a BESTREITET SPIEL %0 FUER DEN VEREIN
+chron.goals	%a ERZIELT TOR %0 FUER DEN VEREIN
+chron.training	TRAINING: %a, INTENSITAET %b
+chron.training_break	%0 SPIELER UEBERTRAFEN IHR POTENZIAL
+chron.breakthrough	%a TRAINIERT UEBER SEINEM NIVEAU
+chron.train_injury	%a HAT SICH IM TRAINING VERLETZT
+chron.intake	DIE JUGEND BRACHTE %0 SPIELER HERVOR
+chron.league_won	%a IST MEISTER
+chron.league_pos	PLATZ %a IN DER LIGA
+chron.cup_won	%a GEWINNT DEN POKAL
+chron.topscorer	TORSCHUETZENKOENIG: %a MIT %0
+chron.signed	%a VERPFLICHTET FUER %b
+chron.sold	%a VERKAUFT FUER %b
+chron.released	%a ABLOESEFREI ABGEGEBEN
+chron.sacked	VON %a ENTLASSEN
+chron.verdict	DER VORSTAND BEWERTET DIE SAISON: %a
+chron.big_win	SIEG GEGEN %a %b
+chron.big_loss	NIEDERLAGE %b GEGEN %a
+chron.win_run	%0 SIEGE IN FOLGE
+chron.unbeaten	%0 SPIELE UNGESCHLAGEN
+chron.winless	%0 SPIELE OHNE SIEG
+youth.entry	JUGEND
+youth.title	JUGENDJAHRGANG
+youth.none	DIE JUGEND BRACHTE DIESEN SOMMER NIEMANDEN HERVOR
+youth.header	BERICHT DER JUGEND - SCOUTS NENNEN EINE SPANNE, KEINE ZAHL
+youth.col_est	SCOUT-URTEIL
+youth.promote	ZUR TRAININGSGRUPPE
+youth.release	FREIGEBEN
+youth.released	FREIGEGEBEN
+youth.added	ZUM TRAINING HINZU
+youth.already	SCHON IN DER GRUPPE
+youth.cannot_release	KADER ZU KLEIN
+legend.title	VEREINSREKORDE
+legend.header	EWIGE EINSATZLISTE
+legend.empty	NOCH KEINE SAISON BEI DIESEM VEREIN
+legend.col_apps	SP
+legend.col_goals	TOR
+legend.col_last	LETZT
+legend.still	HIER

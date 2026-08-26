@@ -111,12 +111,11 @@ public static class CareerMatchTeam
         }
         if (ordered.Count == 0 || !IsKeeper(ordered[0])) return null;       // slot 0 keeper-only
 
-        // Anything not explicitly placed is appended by the auto priority:
-        // remaining outfield (by position group then ability) first, reserve
-        // keepers last, so the bench fills sensibly.
+        // Anything not explicitly placed is appended BEST FIRST, reserve keepers
+        // last. See the note on the same fill in BuildFromBaseLineup for why it
+        // is ability and not position group.
         var rest = squad.Where(p => !used.Contains(p.Id))
             .OrderBy(p => IsKeeper(p) ? 1 : 0)
-            .ThenBy(p => PositionGroupOrder(p.Position))
             .ThenByDescending(p => p.EffectiveOverall());
         foreach (CareerPlayer p in rest)
         {
@@ -188,12 +187,20 @@ public static class CareerMatchTeam
             }
         }
 
-        // Append career-added players not in the base lineup (bought/regens) by
-        // the auto priority: outfield (position group then ability) first,
-        // reserve keepers last, so the bench fills sensibly.
+        // Whoever the base lineup did not place — a signing, a regen, or the
+        // replacement for a player who is injured, sold or retired — comes in
+        // BEST FIRST, reserve keepers last.
+        //
+        // This used to order by position group, and position group is an enum
+        // with A last (RB=0 ... A=6). So every gap in the projected XI was
+        // plugged with a defender and the strikers queued behind them: lose a
+        // forward to injury, a sale or retirement and a full-back came on in his
+        // place. Same root cause as the strikerless auto lineup below (found by
+        // measuring scorers, 2026-08-24); this path is the one that bites a club
+        // whose base lineup is only PARTLY intact, which is every club that has
+        // been running a few seasons.
         var rest = squad.Where(p => !used.Contains(p.Id))
             .OrderBy(p => IsKeeper(p) ? 1 : 0)
-            .ThenBy(p => PositionGroupOrder(p.Position))
             .ThenByDescending(p => p.EffectiveOverall());
         foreach (CareerPlayer p in rest)
         {
@@ -239,12 +246,9 @@ public static class CareerMatchTeam
         CareerPlayer? starterKeeper = keepers.Count > 0 ? keepers[0] : null;
         if (starterKeeper is not null) ordered.Add(starterKeeper);
 
-        // slots 1..10 — field lineup by position group, tie-broken by ability.
-        var starters = outfield
-            .OrderBy(p => PositionGroupOrder(p.Position))
-            .ThenByDescending(p => p.EffectiveOverall())
-            .Take(10)
-            .ToList();
+        // slots 1..10 — a real formation, then sorted back into the in-game
+        // position order the loader expects.
+        var starters = PickOutfieldXI(outfield);
         ordered.AddRange(starters);
         var startersSet = new HashSet<CareerPlayer>(starters);
 
@@ -261,6 +265,63 @@ public static class CareerMatchTeam
         }
         return ordered;
     }
+
+    /// <summary>
+    /// Picks the ten outfield starters as a 4-4-2 and returns them in the
+    /// in-game position order (RB, LB, D, RW, LW, M, A).
+    ///
+    /// DEFECT, found 2026-08-24 by measuring who scored across a simulated
+    /// season: this used to be "sort by position group, take the first ten".
+    /// The position group IS an enum with A last (RB=0 ... A=6), so any squad
+    /// with ten or more non-attackers fielded ZERO strikers and sat its whole
+    /// forward line on the bench — 16 of 16 clubs in the test league did. The
+    /// bug is invisible in an ordinary career because a club with its original
+    /// TEAM.* lineup intact never reaches this path (BuildFromBaseLineup wins);
+    /// it bites a club whose base players have retired or been sold, which is
+    /// every club eventually.
+    ///
+    /// Lines short of bodies are topped up from whoever is left by ability, so
+    /// a squad with no recognised attacker still fields eleven.
+    /// </summary>
+    private static List<CareerPlayer> PickOutfieldXI(List<CareerPlayer> outfield)
+    {
+        var shape = new (string Line, int Count)[] { ("D", 4), ("M", 4), ("A", 2) };
+        var picked = new List<CareerPlayer>(10);
+        var used = new HashSet<int>();
+        foreach (var (line, count) in shape)
+        {
+            var pool = outfield
+                .Where(p => !used.Contains(p.Id) && LineOfPosition(p.Position) == line)
+                .OrderByDescending(p => p.EffectiveOverall())
+                .Take(count);
+            foreach (CareerPlayer p in pool) { picked.Add(p); used.Add(p.Id); }
+        }
+        // Top up to ten from the rest (a lopsided squad, or one short of a line).
+        foreach (CareerPlayer p in outfield.Where(p => !used.Contains(p.Id))
+                                           .OrderByDescending(p => p.EffectiveOverall()))
+        {
+            if (picked.Count >= 10) break;
+            picked.Add(p);
+            used.Add(p.Id);
+        }
+        return picked
+            .OrderBy(p => PositionGroupOrder(p.Position))
+            .ThenByDescending(p => p.EffectiveOverall())
+            .ToList();
+    }
+
+    /// <summary>
+    /// The line a SWOS position belongs to. RW and LW are SWOS' WIDE players and
+    /// sit in the midfield four of a 4-4-2 (swos.asm formation slots), so they
+    /// count as midfield here, not as forwards.
+    /// </summary>
+    private static string LineOfPosition(string? pos) => (pos ?? "").Trim().ToUpperInvariant() switch
+    {
+        "G" => "G",
+        "RB" or "LB" or "D" => "D",
+        "A" => "A",
+        _ => "M",
+    };
 
     public static bool IsKeeper(CareerPlayer p)
         => string.Equals(p.Position, "G", StringComparison.OrdinalIgnoreCase);
@@ -281,6 +342,23 @@ public static class CareerMatchTeam
     private static PlayerRecord ToPlayerRecord(CareerPlayer p)
     {
         int[] s = p.QuantizedSkills();  // P,Sh,He,Ta,Co,Sp,Fi
+        // FORM and SHARPNESS reach the pitch here, and only here. Both were
+        // computed by the career for a long time and neither had ever changed a
+        // match: FormModel.FormSkillDelta had no caller outside a test. Together
+        // they move a player at most one SWOS level either way — a man in form
+        // who has been training is a 5 where he is normally a 4, a stale
+        // reserve thrown in cold is a 3. That cap is deliberate: training is a
+        // development lever, not a cheat code.
+        int nudge = System.Math.Clamp(
+            FormModel.FormSkillDelta(p) + TrainingModel.SharpnessSkillDelta(p), -1, 1);
+        if (nudge != 0)
+            for (int i = 0; i < s.Length; i++)
+                s[i] = System.Math.Clamp(s[i] + nudge, 0, 7);
+        // A keeper carries no outfield skills; his ability IS his price code
+        // (seven codes to a level), so nudge that instead.
+        double valueCode = p.ValueCode;
+        if (nudge != 0 && IsKeeper(p))
+            valueCode = System.Math.Clamp(valueCode + nudge * 3.5, 0.0, 60.0);
         return new PlayerRecord
         {
             Name = ToAsciiUpper(p.Name),
@@ -295,7 +373,7 @@ public static class CareerMatchTeam
             Control = s[4],
             Speed = s[5],
             Finishing = s[6],
-            ValueCode = (int)Math.Clamp(Math.Round(p.ValueCode), 0, 47),
+            ValueCode = (int)Math.Clamp(Math.Round(valueCode), 0, 47),
             Stamina = System.Math.Clamp(p.Stamina, 0, 7),
             FatigueCarry = System.Math.Clamp(p.FatigueCarry, 0, 100),
             InjurySeverity = System.Math.Clamp(p.InjurySeverity, 0, 7),

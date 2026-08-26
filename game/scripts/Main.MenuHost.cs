@@ -169,6 +169,11 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     // The human (HOME) team's post-match injuries as (in-game slot, severity 1..7),
     // captured at the same FullTime; handed to the career layer for persistence.
     private System.Collections.Generic.List<(int slot, int severity)>? _lastMatchInjuries;
+    // Feature #5: the same FullTime capture's real scorers, handed to the career
+    // layer so the season's scorer table records what actually happened rather
+    // than attributing the human's own goals like a simulated scoreline.
+    private System.Collections.Generic.List<(bool playerTeam, int slot, int goals, bool ownGoal)>?
+        _lastMatchScorers;
 
     // Optional per-match TeamRecord overrides. When set (career fixtures), the
     // sim seeds these LIVE squads instead of the read-only _allTeams master
@@ -191,6 +196,7 @@ public partial class Main : OpenSwos.Menu.IMenuHost
         _competitionMatchPending = true;
         _lastCompetitionResult = null;
         _lastMatchInjuries = null;
+        _lastMatchScorers = null;
         _match = MatchState.NewMatch();
         EnterPreKickoff();
         _appState = AppState.Match;
@@ -216,6 +222,14 @@ public partial class Main : OpenSwos.Menu.IMenuHost
         var inj = _lastMatchInjuries;
         _lastMatchInjuries = null;
         return inj;
+    }
+
+    System.Collections.Generic.List<(bool playerTeam, int slot, int goals, bool ownGoal)>?
+        OpenSwos.Menu.IMenuHost.TakeLastMatchScorers()
+    {
+        var sc = _lastMatchScorers;
+        _lastMatchScorers = null;
+        return sc;
     }
 
     int OpenSwos.Menu.IMenuHost.TeamStrength(int idx)
@@ -405,6 +419,31 @@ public partial class Main : OpenSwos.Menu.IMenuHost
     {
         // Two-state toggle — any delta flips it.
         _commentator = !_commentator;
+        SaveSettings();
+    }
+
+    // OPTIONS "BOARD" row — PATIENT / NORMAL / RUTHLESS. Sets how quickly the
+    // chairman escalates from a note to a dismissal (career depth plan feature
+    // #2, Competition/Career/ChairmanModel.cs). NORMAL is the default and the
+    // one the original's "3 MATCHES" memo is written for.
+    string OpenSwos.Menu.IMenuHost.BoardPatienceLabel =>
+        OpenSwos.Competition.Career.ChairmanModel.Patience switch
+        {
+            OpenSwos.Competition.Career.BoardPatience.Patient
+                => OpenSwos.Menu.Loc.Tr("opt.board_patient", "PATIENT"),
+            OpenSwos.Competition.Career.BoardPatience.Ruthless
+                => OpenSwos.Menu.Loc.Tr("opt.board_ruthless", "RUTHLESS"),
+            _ => OpenSwos.Menu.Loc.Tr("opt.board_normal", "NORMAL"),
+        };
+
+    void OpenSwos.Menu.IMenuHost.StepBoardPatience(int delta)
+    {
+        int v = (int)OpenSwos.Competition.Career.ChairmanModel.Patience + (delta >= 0 ? 1 : -1);
+        if (v < 0) v = 2;
+        if (v > 2) v = 0;
+        OpenSwos.Competition.Career.ChairmanModel.Patience =
+            (OpenSwos.Competition.Career.BoardPatience)v;
+        _boardPatience = v;
         SaveSettings();
     }
 

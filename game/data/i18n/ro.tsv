@@ -559,3 +559,188 @@ staff.spec_attack	ATAC
 staff.spec_defence	APARARE
 staff.spec_general	GENERAL
 staff.spec_youth	TINERET
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANTE
+fin.title	FINANTE
+fin.show_history	SEZON DUPA SEZON
+fin.show_sheet	SEZONUL ACESTA
+fin.no_season	NICIUN SEZON INCHEIAT
+fin.drawn_up	BILANTUL SE FACE LA FINAL DE SEZON
+fin.col_season	SEZON
+fin.col_league	LIGA
+fin.col_cup	CUPA
+fin.col_income	VENITURI
+fin.col_wages	SALARII
+fin.col_balance	SOLD
+fin.season	SEZON
+fin.league	LIGA
+fin.cup	CUPA
+fin.home_games	MECIURI ACASA
+fin.crowd	SPECTATORI
+fin.row.opening	SOLD LA INCEPUT DE SEZON:
+fin.row.gate	INCASARI DIN BILETE:
+fin.row.bonuses	PRIME + DREPTURI TV:
+fin.row.sponsor	SPONSORIZARE SENSISOFT PLC:
+fin.row.invest	INVESTITIE SUPLIMENTARA A PRESEDINTELUI:
+fin.row.invest_new	INVESTITIA NOULUI PRESEDINTE:
+fin.row.wages	SALARIILE JUCATORILOR:
+fin.row.profit	PROFIT TOTAL:
+fin.row.loss	PIERDERE TOTALA:
+fin.row.closing	SOLD NOU:
+fin.row.sales	VANZARI DE JUCATORI:
+fin.row.purchases	ACHIZITII DE JUCATORI:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PRESEDINTE
+dash.status_sacked	DEMIS
+chair.title	PRESEDINTE
+chair.memo	NOTA
+chair.none	NICIO NOTA
+chair.memo_header	NOTA DE LA PRESEDINTELE CLUBULUI
+chair.memo_sign	PRESEDINTELE TAU
+chair.earlier	NOTE ANTERIOARE
+opt.board	CONDUCERE
+opt.board_hint	CAT DE REPEDE TE DEMITE PRESEDINTELE
+opt.board_patient	RABDATOARE
+opt.board_normal	NORMALA
+opt.board_ruthless	NECRUTATOARE
+chair.verdict0.1	BRAVO %a, AI FACUT O TREABA EXCELENTA
+chair.verdict0.2	IN ACEST SEZON SI TOTI APRECIEM ASTA
+chair.verdict1.1	UN SEZON BUN %a, SUNTEM CU TOTII FOARTE
+chair.verdict1.2	MULTUMITI, TINE-O TOT ASA
+chair.verdict2.1	UN SEZON CU SUISURI SI COBORASURI %a, SPERAM
+chair.verdict2.2	INTR-O IMBUNATATIRE APROPIATA
+chair.verdict3.1	UN SEZON NU PREA BUN %a, SPERAM SA
+chair.verdict3.2	IMBUNATATESTI REZULTATELE SEZONUL VIITOR
+chair.verdict4.1	UN SEZON FOARTE DEZAMAGITOR %a, CEREM
+chair.verdict4.2	MULT MAI MULT DE LA TINE SEZONUL VIITOR
+chair.sacked_league.1	CU MARE REGRET CONDUCEREA SI CU MINE
+chair.sacked_league.2	AM DECIS SA TE ELIBERAM DIN FUNCTIE
+chair.not_renewed.1	CU MARE REGRET AM DECIS SA NU
+chair.not_renewed.2	ITI PRELUNGIM CONTRACTUL - MULT NOROC
+chair.not_renewed.3	SI SPERAM SA NE REVEDEM CURAND
+chair.league_note.1	IA AMINTE LA POZITIA NOASTRA IN CLASAMENT SI
+chair.league_note.2	ASIGURA-TE CA SE IMBUNATATESTE CAT MAI REPEDE
+chair.league_warn.1	TINE MINTE, DACA POZITIA NU SE IMBUNATATESTE
+chair.league_warn.2	VA TREBUI SA ITI RECONSIDERAM POSTUL
+chair.league_crisis.1	DUPA UN VOT DE INCREDERE AI CEL MULT
+chair.league_crisis.2	3 MECIURI SA REDRESEZI CLUBUL SAU VEI FI DEMIS
+chair.money_note.1	IA AMINTE LA SOLDUL NOSTRU BANCAR SI
+chair.money_note.2	ASIGURA-TE CA ACOPERIM DESCOPERIREA CAT MAI REPEDE
+chair.money_warn.1	DOAR O REAMINTIRE PRIVIND DESCOPERIREA DE CONT
+chair.money_warn.2	ALTFEL VA TREBUI SA ITI RECONSIDERAM POSTUL
+chair.money_crisis.1	DUPA O SEDINTA DE CRIZA INSISTAM SA
+chair.money_crisis.2	ACOPERI DESCOPERIREA IMEDIAT SAU ESTI DEMIS
+chair.new_season.1	CATEVA RANDURI CU MULT SUCCES IN
+chair.new_season.2	NOUL SEZON
+chair.embargo_buy.1	IMI PARE RAU %a, CLUBUL NU DORESTE
+chair.embargo_buy.2	SA MAI CUMPERE JUCATORI IN ACEST SEZON
+chair.embargo_sell.1	RETINE %a CA NU VOM PERMITE
+chair.embargo_sell.2	ALTE VANZARI DE JUCATORI IN ACEST SEZON
+chair.sacked_money.1	CU MARE REGRET CONDUCEREA SI CU MINE
+chair.sacked_money.2	AM DECIS SA TE ELIBERAM DIN FUNCTIE
+# JOB OFFERS (career depth plan feature #3)
+job.title	OFERTE DE ANGAJARE
+job.none	NICIO OFERTA
+job.offer	OFERTA
+job.accept	ACCEPTA
+job.decline	REFUZA
+job.declined	OFERTA REFUZATA
+job.not_available	OFERTA INDISPONIBILA
+job.signed_prefix	INTELEGERE CU
+job.new_job	POST NOU
+job.reputation	REPUTATIE
+job.rep_world	CLASA MONDIALA
+job.rep_high	FOARTE APRECIAT
+job.rep_good	BINE COTAT
+job.rep_known	CUNOSCUT
+job.rep_unproven	NECONFIRMAT
+job.rep_unwanted	NEDORIT
+job.division	DIVIZIE
+job.squad	LOT
+job.letter_header	OFERTA DE ANGAJARE DE LA %a
+job.letter.1	STIMATE DOMN/DOAMNA
+job.letter.2	NOI CEI DE LA %a AM DORI SA VA OFERIM
+job.letter.3	POSTUL DE ANTRENOR PENTRU SEZONUL VIITOR
+job.letter.4	VA PUTEM OFERI UN SALARIU FOARTE BUN SI
+job.letter.5	SPERAM SA PUNEM LA DISPOZITIE FONDURI
+job.letter.6	DE ORDINUL A %b PENTRU INTARIREA ECHIPEI
+job.letter.7	ASTEPTAM RASPUNSUL DUMNEAVOASTRA
+job.accepted_note	ATI ACCEPTAT - MUTAREA ARE LOC SEZONUL VIITOR
+job.waiting_prefix	VOR MAI ASTEPTA
+job.waiting_suffix	MECIURI
+job.accepted.1	NOI CEI DE LA %a SUNTEM INCANTATI CA
+job.accepted.2	ATI ACCEPTAT POSTUL DE ANTRENOR LA NOI
+job.accepted.3	DE LA INCEPUTUL SEZONULUI VIITOR
+job.farewell.1	MULTUMIM PENTRU TOT %a, VA DORIM
+job.farewell.2	MULT SUCCES LA NOUL POST
+job.welcome.1	BINE ATI VENIT %a, ASTEPTAM MULTE
+job.welcome.2	SUCCESE DIN NOUL NOSTRU PARTENERIAT
+job.withdrawn.1	OFERTA DE ANGAJARE DE LA %a RETRASA
+# board expectation line (feature #2 follow-up)
+chair.expected	CONDUCEREA ASTEPTA
+chair.of	DIN
+chair.finished	AI TERMINAT
+chair.expects	CONDUCEREA ASTEAPTA
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	ECHIPA NATIONALA
+natjob.entry_offer	OFERTA DE ANGAJARE INTERNATIONALA
+natjob.title	ECHIPA NATIONALA
+natjob.title_offer	OFERTA DE ANGAJARE INTERNATIONALA
+natjob.player	JUCATOR
+natjob.add	ADAUGA JUCATOR
+natjob.remove	SCOATE JUCATOR
+natjob.auto	SELECTIE AUTOMATA
+natjob.resign	DEMISIONEAZA
+natjob.full	LOT COMPLET
+natjob.appointed	SELECTIONER AL
+natjob.none	NICIUN POST INTERNATIONAL
+natjob.no_players	NICIUN JUCATOR DISPONIBIL
+natjob.squad_word	LOT
+natjob.rating	EVALUARE
+natjob.home	IN TARA
+natjob.abroad	STRAINATATE
+natjob.col_name	NUME
+natjob.col_pos	POZ
+natjob.col_ovr	GEN
+natjob.col_where	UNDE
+natjob.col_club	CLUB
+natjob.letter_header	OFERTA DE ANGAJARE INTERNATIONALA DE LA %a
+natjob.offer.1	MEMBRII COMITETULUI DE FOTBAL
+natjob.offer.2	AL %a AR DORI SA VA OFERE POSTUL
+natjob.offer.3	DE SELECTIONER AL ECHIPEI NATIONALE
+natjob.offer.4	VA PROMITEM UN SALARIU EXCELENT SI
+natjob.offer.5	UN CONTRACT REINNOIT ANUAL
+natjob.offer.6	ASTEPTAM RASPUNSUL DUMNEAVOASTRA
+natjob.accepted.1	MEMBRII COMITETULUI DE FOTBAL
+natjob.accepted.2	AL %a SUNT INCANTATI CA ATI
+natjob.accepted.3	ACCEPTAT POSTUL DE SELECTIONER
+natjob.ended.1	MEMBRII COMITETULUI DE FOTBAL
+natjob.ended.2	AL %a AU DECIS SA NU VA REINNOIASCA
+natjob.ended.3	CONTRACTUL ANUAL
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	VA RUGAM ASTEPTATI
+busy.new_career	SE CREEAZA LUMEA
+busy.next_season	SE JOACA VARA
+dash.scorers	GOLGHETERI
+scorer.title	GOLGHETERI
+scorer.view	LISTA
+scorer.page	PAGINA
+scorer.view_comp	COMPETITIE
+scorer.view_club	CLUBUL MEU
+scorer.view_history	SEZON DUPA SEZON
+scorer.leading	GOLGHETERII COMPETITIEI
+scorer.goals	GOLURI
+scorer.own_goals	AUTOGOLURI
+scorer.ex_player	GOLURI FOSTI JUCATORI
+scorer.career_total	TOTAL CARIERA
+scorer.season	SEZON
+scorer.season_top	GOLGHETERUL SEZONULUI
+scorer.season_top_plural	GOLGHETERII SEZONULUI
+scorer.no_goals	NICIUN GOL IN ACEST SEZON
+scorer.no_seasons	NICIUN SEZON INCHEIAT
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	MECI
+dash.sec_team	ECHIPA
+dash.sec_club	CLUB
+dash.sec_game	JOC
+nav.hint_cols	SUS/JOS ALEGE   STANGA/DREAPTA COLOANA   FOC OK   ESC INAPOI

@@ -101,7 +101,12 @@ public static class TransferModel
         else seller!.Squad.Remove(player);
 
         buyer.Budget = newBuyerBudget;
-        if (!freeAgent) seller!.Budget = newSellerBudget;
+        buyer.SeasonPlayerPurchases += price;                    // season ledger
+        if (!freeAgent)
+        {
+            seller!.Budget = newSellerBudget;
+            seller.SeasonPlayerSales += price;                   // season ledger
+        }
         player.ClubId = buyerId;
         player.ShirtNumber = shirt;
         buyer.Squad.Add(player);
@@ -134,6 +139,7 @@ public static class TransferModel
 
         seller.Squad.Remove(player);
         seller.Budget = newBudget;
+        seller.SeasonPlayerSales += value;                       // season ledger
         player.ClubId = 0;
         player.ShirtNumber = 0;
         world.FreeAgents.Add(player);
@@ -174,7 +180,9 @@ public static class TransferModel
 
         seller.Squad.Remove(player);
         seller.Budget = newSellerBudget;
+        seller.SeasonPlayerSales += amount;                      // season ledger
         buyer.Budget = newBuyerBudget;
+        buyer.SeasonPlayerPurchases += amount;                   // season ledger
         player.ClubId = buyerId;
         player.ShirtNumber = shirt;
         buyer.Squad.Add(player);

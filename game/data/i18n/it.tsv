@@ -559,3 +559,285 @@ staff.spec_attack	ATTACCO
 staff.spec_defence	DIFESA
 staff.spec_general	GENERALE
 staff.spec_youth	GIOVANILI
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANZE
+fin.title	FINANZE
+fin.show_history	STAGIONE PER STAGIONE
+fin.show_sheet	QUESTA STAGIONE
+fin.no_season	NESSUNA STAGIONE COMPLETATA
+fin.drawn_up	IL BILANCIO SI CHIUDE A FINE STAGIONE
+fin.col_season	STAGIONE
+fin.col_league	CAMPIONATO
+fin.col_cup	COPPA
+fin.col_income	ENTRATE
+fin.col_wages	STIPENDI
+fin.col_balance	SALDO
+fin.season	STAGIONE
+fin.league	CAMPIONATO
+fin.cup	COPPA
+fin.home_games	PARTITE IN CASA
+fin.crowd	SPETTATORI
+fin.row.opening	SALDO A INIZIO STAGIONE:
+fin.row.gate	INCASSI BIGLIETTI:
+fin.row.bonuses	PREMI + DIRITTI TV:
+fin.row.sponsor	SPONSOR SENSISOFT PLC:
+fin.row.invest	INVESTIMENTO DEL PRESIDENTE:
+fin.row.invest_new	INVESTIMENTO DEL NUOVO PRESIDENTE:
+fin.row.wages	STIPENDI GIOCATORI:
+fin.row.profit	UTILE TOTALE:
+fin.row.loss	PERDITA TOTALE:
+fin.row.closing	NUOVO SALDO:
+fin.row.sales	CESSIONI GIOCATORI:
+fin.row.purchases	ACQUISTI GIOCATORI:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PRESIDENTE
+dash.status_sacked	ESONERATO
+chair.title	PRESIDENTE
+chair.memo	NOTA
+chair.none	NESSUNA NOTA
+chair.memo_header	NOTA DEL PRESIDENTE DEL CLUB
+chair.memo_sign	IL SUO PRESIDENTE
+chair.earlier	NOTE PRECEDENTI
+opt.board	SOCIETA
+opt.board_hint	QUANTO IN FRETTA IL PRESIDENTE TI ESONERA
+opt.board_patient	PAZIENTE
+opt.board_normal	NORMALE
+opt.board_ruthless	SPIETATA
+chair.verdict0.1	BRAVO %a, HAI FATTO UN LAVORO ECCELLENTE
+chair.verdict0.2	QUESTA STAGIONE E TE NE SIAMO GRATI
+chair.verdict1.1	BUONA STAGIONE %a, SIAMO TUTTI MOLTO
+chair.verdict1.2	SODDISFATTI, CONTINUA COSI
+chair.verdict2.1	STAGIONE ALTALENANTE %a, SPERIAMO TUTTI
+chair.verdict2.2	IN UN MIGLIORAMENTO IN TEMPI BREVI
+chair.verdict3.1	STAGIONE NON BRILLANTE %a, SPERIAMO CHE
+chair.verdict3.2	MIGLIORI IL RENDIMENTO IL PROSSIMO ANNO
+chair.verdict4.1	STAGIONE MOLTO DELUDENTE %a, PRETENDIAMO
+chair.verdict4.2	MOLTO DI PIU DA TE LA PROSSIMA STAGIONE
+chair.sacked_league.1	CON GRANDE RAMMARICO IL CONSIGLIO ED IO
+chair.sacked_league.2	ABBIAMO DECISO DI SOLLEVARTI DALL'INCARICO
+chair.not_renewed.1	CON GRANDE RAMMARICO ABBIAMO DECISO DI NON
+chair.not_renewed.2	RINNOVARE IL TUO CONTRATTO - BUONA FORTUNA
+chair.not_renewed.3	E SPERIAMO DI RIVEDERTI PRESTO
+chair.league_note.1	PRENDI NOTA DELLA NOSTRA POSIZIONE IN CLASSIFICA
+chair.league_note.2	E FAI IN MODO DI MIGLIORARLA AL PIU PRESTO
+chair.league_warn.1	RICORDA, SE LA CLASSIFICA NON MIGLIORA
+chair.league_warn.2	DOVREMO RICONSIDERARE LA TUA POSIZIONE
+chair.league_crisis.1	DOPO UN VOTO DI FIDUCIA, HAI AL MASSIMO
+chair.league_crisis.2	3 PARTITE PER RADDRIZZARE IL CLUB O SARAI ESONERATO
+chair.money_note.1	PRENDI NOTA DEL NOSTRO SALDO IN BANCA E
+chair.money_note.2	PROVVEDI A COPRIRE LO SCOPERTO AL PIU PRESTO
+chair.money_warn.1	SOLO UN PROMEMORIA SULLO SCOPERTO
+chair.money_warn.2	ALTRIMENTI DOVREMO RICONSIDERARE LA TUA POSIZIONE
+chair.money_crisis.1	DOPO UNA RIUNIONE DI CRISI, PRETENDIAMO CHE
+chair.money_crisis.2	COPRA SUBITO LO SCOPERTO O SARAI ESONERATO
+chair.new_season.1	DUE RIGHE PER AUGURARTI OGNI SUCCESSO NELLA
+chair.new_season.2	NUOVA STAGIONE
+chair.embargo_buy.1	MI SPIACE %a, IL CLUB NON INTENDE
+chair.embargo_buy.2	ACQUISTARE ALTRI GIOCATORI QUESTA STAGIONE
+chair.embargo_sell.1	NOTA BENE %a CHE NON PERMETTEREMO
+chair.embargo_sell.2	ALTRE CESSIONI DI GIOCATORI QUESTA STAGIONE
+chair.sacked_money.1	CON GRANDE RAMMARICO IL CONSIGLIO ED IO
+chair.sacked_money.2	ABBIAMO DECISO DI SOLLEVARTI DALL'INCARICO
+# JOB OFFERS (career depth plan feature #3)
+job.title	OFFERTE DI LAVORO
+job.none	NESSUNA OFFERTA
+job.offer	OFFERTA
+job.accept	ACCETTA
+job.decline	RIFIUTA
+job.declined	OFFERTA RIFIUTATA
+job.not_available	OFFERTA NON DISPONIBILE
+job.signed_prefix	ACCORDO CON
+job.new_job	NUOVO INCARICO
+job.reputation	REPUTAZIONE
+job.rep_world	CLASSE MONDIALE
+job.rep_high	MOLTO STIMATO
+job.rep_good	BEN CONSIDERATO
+job.rep_known	CONOSCIUTO
+job.rep_unproven	SENZA ESPERIENZA
+job.rep_unwanted	NON GRADITO
+job.division	DIVISIONE
+job.squad	ROSA
+job.letter_header	OFFERTA DI LAVORO DA %a
+job.letter.1	GENTILE SIGNORE/SIGNORA
+job.letter.2	NOI DI %a VORREMMO OFFRIRLE IL
+job.letter.3	RUOLO DI ALLENATORE PER LA PROSSIMA STAGIONE
+job.letter.4	POSSIAMO OFFRIRLE UN OTTIMO INGAGGIO E
+job.letter.5	SPERIAMO DI METTERE A DISPOSIZIONE FONDI
+job.letter.6	NELL ORDINE DI %b PER RINFORZARE LA ROSA
+job.letter.7	ATTENDIAMO UNA SUA RISPOSTA
+job.accepted_note	HA ACCETTATO - IL PASSAGGIO E LA PROSSIMA STAGIONE
+job.waiting_prefix	ASPETTERANNO ANCORA
+job.waiting_suffix	PARTITE
+job.accepted.1	NOI DI %a SIAMO FELICI CHE LEI
+job.accepted.2	ABBIA ACCETTATO IL RUOLO DI ALLENATORE
+job.accepted.3	DALL INIZIO DELLA PROSSIMA STAGIONE
+job.farewell.1	GRAZIE DI TUTTO %a, TI AUGURIAMO
+job.farewell.2	OGNI BENE NEL NUOVO INCARICO
+job.welcome.1	BENVENUTO %a, CI ASPETTIAMO MOLTI
+job.welcome.2	SUCCESSI DALLA NOSTRA NUOVA COLLABORAZIONE
+job.withdrawn.1	OFFERTA DI LAVORO DA %a RITIRATA
+# board expectation line (feature #2 follow-up)
+chair.expected	LA DIRIGENZA ATTENDEVA
+chair.of	SU
+chair.finished	ARRIVATO
+chair.expects	LA DIRIGENZA ATTENDE
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	NAZIONALE
+natjob.entry_offer	OFFERTA DI LAVORO INTERNAZIONALE
+natjob.title	NAZIONALE
+natjob.title_offer	OFFERTA DI LAVORO INTERNAZIONALE
+natjob.player	GIOCATORE
+natjob.add	AGGIUNGI GIOCATORE
+natjob.remove	TOGLI GIOCATORE
+natjob.auto	SCELTA AUTOMATICA
+natjob.resign	DIMETTERSI
+natjob.full	ROSA COMPLETA
+natjob.appointed	CT DI
+natjob.none	NESSUN INCARICO IN NAZIONALE
+natjob.no_players	NESSUN GIOCATORE DISPONIBILE
+natjob.squad_word	ROSA
+natjob.rating	VALORE
+natjob.home	IN PATRIA
+natjob.abroad	ALL ESTERO
+natjob.col_name	NOME
+natjob.col_pos	RUO
+natjob.col_ovr	VAL
+natjob.col_where	DOVE
+natjob.col_club	CLUB
+natjob.letter_header	OFFERTA DI LAVORO INTERNAZIONALE DA %a
+natjob.offer.1	I MEMBRI DEL COMITATO CALCISTICO
+natjob.offer.2	DI %a VORREBBERO OFFRIRLE IL RUOLO
+natjob.offer.3	DI COMMISSARIO TECNICO
+natjob.offer.4	LE PROMETTIAMO UN OTTIMO INGAGGIO E
+natjob.offer.5	UN CONTRATTO RINNOVABILE OGNI ANNO
+natjob.offer.6	ATTENDIAMO UNA SUA RISPOSTA
+natjob.accepted.1	I MEMBRI DEL COMITATO CALCISTICO
+natjob.accepted.2	DI %a SONO FELICI CHE LEI ABBIA
+natjob.accepted.3	ACCETTATO IL RUOLO DI COMMISSARIO TECNICO
+natjob.ended.1	I MEMBRI DEL COMITATO CALCISTICO
+natjob.ended.2	DI %a HANNO DECISO DI NON RINNOVARE
+natjob.ended.3	IL SUO CONTRATTO ANNUALE
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	ATTENDERE PREGO
+busy.new_career	CREAZIONE DEL MONDO
+busy.next_season	SI GIOCA L ESTATE
+dash.scorers	CAPOCANNONIERI
+scorer.title	CAPOCANNONIERI
+scorer.view	ELENCO
+scorer.page	PAGINA
+scorer.view_comp	COMPETIZIONE
+scorer.view_club	IL MIO CLUB
+scorer.view_history	STAGIONE PER STAGIONE
+scorer.leading	MIGLIORI MARCATORI DELLA COMPETIZIONE
+scorer.goals	GOL
+scorer.own_goals	AUTORETI
+scorer.ex_player	GOL DI EX GIOCATORI
+scorer.career_total	TOTALE CARRIERA
+scorer.season	STAGIONE
+scorer.season_top	CAPOCANNONIERE DELLA STAGIONE
+scorer.season_top_plural	CAPOCANNONIERI DELLA STAGIONE
+scorer.no_goals	NESSUN GOL IN QUESTA STAGIONE
+scorer.no_seasons	NESSUNA STAGIONE COMPLETATA
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	PARTITA
+dash.sec_team	SQUADRA
+dash.sec_club	CLUB
+dash.sec_game	GIOCO
+nav.hint_cols	SU/GIU SCELTA   SIN/DES COLONNA   FUOCO OK   ESC INDIETRO
+# TRAINING / CLUB DIARY / YOUTH INTAKE / CLUB RECORDS (2026-08-26)
+dash.training	ALLENAMENTO
+dash.chronicle	DIARIO DEL CLUB
+dash.legends	RECORD DEL CLUB
+busy.training	ALLENAMENTO
+train.title	ALLENAMENTO
+train.drill	ESERCIZIO
+train.intensity	INTENSITA
+train.toggle	AGGIUNGI / TOGLI
+train.auto	SCELTA AUTO
+train.auto_done	GRUPPO SCELTO PER POTENZIALE
+train.run	AVVIA SEDUTA
+train.report	ULTIMO RAPPORTO
+train.report_title	RAPPORTO ALLENAMENTO
+train.ready	SEDUTA PRONTA
+train.closed	NIENTE ALLENAMENTO TRA LE STAGIONI
+train.done_week	GIA ALLENATI QUESTA SETTIMANA - PROSSIMA SEDUTA DOPO LA PARTITA
+train.coach	ALLENATORE
+train.trains	ALLENA
+train.trains_fitness	CONDIZIONE
+train.trains_keeper	GIOCO IN PORTA
+train.col_in	IN
+train.col_con	CON
+train.col_shp	FRM
+train.col_room	MARG
+train.col_grade	SEDUTA
+train.col_gain	PROGRESSI
+train.group_full	GRUPPO PIENO - MAX
+train.no_report	NESSUNA SEDUTA ANCORA SVOLTA
+train.injured	INFORTUNIO IN ALLENAMENTO
+train.potential_up	TETTO ALZATO
+train.int_0	LEGGERA
+train.int_1	NORMALE
+train.int_2	INTENSA
+train.grade_0	SCARSA
+train.grade_1	OK
+train.grade_2	BUONA
+train.grade_3	OTTIMA
+train.drill_shooting	TIRI IN PORTA
+train.drill_finishing	CONCLUSIONE
+train.drill_passing	PASSAGGI E CROSS
+train.drill_control	PERCORSO DI DRIBBLING
+train.drill_pace	SCATTI E NAVETTE
+train.drill_heading	GIOCO AEREO
+train.drill_defending	DIFESA E CONTRASTO
+train.drill_keeper	PORTIERI
+train.drill_recovery	RECUPERO E CONDIZIONE
+skill.passing	PASSAGGIO
+skill.shooting	TIRO
+skill.heading	COLPO DI TESTA
+skill.tackling	CONTRASTO
+skill.control	CONTROLLO
+skill.speed	VELOCITA
+skill.finishing	CONCLUSIONE
+chron.title	DIARIO DEL CLUB
+chron.season	STAGIONE
+chron.all	TUTTO
+chron.empty	NON E ANCORA SUCCESSO NULLA
+chron.apps	%a GIOCA LA PARTITA %0 PER IL CLUB
+chron.goals	%a SEGNA IL GOL %0 PER IL CLUB
+chron.training	ALLENAMENTO: %a, INTENSITA %b
+chron.training_break	%0 GIOCATORI HANNO SUPERATO IL LORO TETTO
+chron.breakthrough	%a SI ALLENA SOPRA IL SUO LIVELLO
+chron.train_injury	%a SI E INFORTUNATO IN ALLENAMENTO
+chron.intake	IL SETTORE GIOVANILE HA PRODOTTO %0 GIOCATORI
+chron.league_won	%a E CAMPIONE
+chron.league_pos	%a POSTO IN CAMPIONATO
+chron.cup_won	%a VINCE LA COPPA
+chron.topscorer	CAPOCANNONIERE: %a CON %0
+chron.signed	PRESO %a PER %b
+chron.sold	CEDUTO %a PER %b
+chron.released	%a SVINCOLATO
+chron.sacked	ESONERATO DA %a
+chron.verdict	IL CONSIGLIO HA GIUDICATO LA STAGIONE: %a
+chron.big_win	VITTORIA CON %a %b
+chron.big_loss	SCONFITTA %b CON %a
+chron.win_run	%0 VITTORIE DI FILA
+chron.unbeaten	%0 PARTITE SENZA SCONFITTE
+chron.winless	%0 PARTITE SENZA VITTORIE
+youth.entry	GIOVANILI
+youth.title	SETTORE GIOVANILE
+youth.none	IL SETTORE GIOVANILE NON HA PRODOTTO NESSUNO
+youth.header	RAPPORTO GIOVANILE - GLI OSSERVATORI DANNO UNA FORBICE
+youth.col_est	GIUDIZIO OSSERVATORE
+youth.promote	AGGIUNGI AL GRUPPO
+youth.release	SVINCOLA
+youth.released	SVINCOLATO
+youth.added	AGGIUNTO ALL'ALLENAMENTO
+youth.already	GIA NEL GRUPPO
+youth.cannot_release	ROSA TROPPO CORTA
+legend.title	RECORD DEL CLUB
+legend.header	PRESENZE DI SEMPRE
+legend.empty	NESSUNA STAGIONE COMPLETATA IN QUESTO CLUB
+legend.col_apps	PRE
+legend.col_goals	GOL
+legend.col_last	ULT
+legend.still	QUI

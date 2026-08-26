@@ -225,6 +225,16 @@ public static class AiBrain
         {
             d2Word = 769;
         }
+        // FIDELITY FIX (task #242): in the asm D2 is ONE register. The 769/129
+        // write at updatePlayers.cpp:16091/16095 therefore also seeds the LOW
+        // BYTE that the spin-direction sign test reads later at
+        // cseg_850F9 (18488-18501) and l_activate_normal_fire (18805-18812)
+        // whenever no intervening block rewrote D2. Our port kept `d2Byte` as a
+        // separate variable initialised to 0, which made that default read as
+        // "sign clear" for BOTH teams (always left spin). The asm's real
+        // defaults are 769 & 0xFF = 0x01 (sign clear, top team) and
+        // 129 & 0xFF = 0x81 (sign SET, bottom team) — opposite spins.
+        d2Byte = d2Word & 0xFF;
 
         // l_calc_distance: (L16097)
         // D1 = 336 (centre goal X — pitch is 671 px wide; goal X centres at 336)

@@ -559,3 +559,188 @@ staff.spec_attack	SERANGAN
 staff.spec_defence	PERTAHANAN
 staff.spec_general	UMUM
 staff.spec_youth	REMAJA
+# FINANCES (career depth plan feature 1)
+dash.finances	KEWANGAN
+fin.title	KEWANGAN
+fin.show_history	MUSIM DEMI MUSIM
+fin.show_sheet	MUSIM INI
+fin.no_season	TIADA MUSIM SELESAI
+fin.drawn_up	AKAUN DISEDIAKAN DI AKHIR MUSIM
+fin.col_season	MUSIM
+fin.col_league	LIGA
+fin.col_cup	PIALA
+fin.col_income	PENDAPATAN
+fin.col_wages	GAJI
+fin.col_balance	BAKI
+fin.season	MUSIM
+fin.league	LIGA
+fin.cup	PIALA
+fin.home_games	PERLAWANAN KANDANG
+fin.crowd	PENONTON
+fin.row.opening	BAKI AWAL MUSIM:
+fin.row.gate	KUTIPAN TIKET:
+fin.row.bonuses	BONUS + HAK TV:
+fin.row.sponsor	PENAJAAN SENSISOFT PLC:
+fin.row.invest	PELABURAN TAMBAHAN PENGERUSI:
+fin.row.invest_new	PELABURAN PENGERUSI BARU:
+fin.row.wages	GAJI PEMAIN:
+fin.row.profit	JUMLAH UNTUNG:
+fin.row.loss	JUMLAH RUGI:
+fin.row.closing	BAKI BARU:
+fin.row.sales	JUALAN PEMAIN:
+fin.row.purchases	BELIAN PEMAIN:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PRESIDEN
+dash.status_sacked	DIPECAT
+chair.title	PRESIDEN
+chair.memo	MEMO
+chair.none	TIADA MEMO
+chair.memo_header	MEMO DARIPADA PRESIDEN KELAB
+chair.memo_sign	PRESIDEN ANDA
+chair.earlier	MEMO TERDAHULU
+opt.board	LEMBAGA
+opt.board_hint	SEBERAPA CEPAT PRESIDEN MEMECAT ANDA
+opt.board_patient	SABAR
+opt.board_normal	BIASA
+opt.board_ruthless	KEJAM
+chair.verdict0.1	SYABAS %a, ANDA MELAKUKAN KERJA YANG
+chair.verdict0.2	SANGAT BAIK MUSIM INI DAN KAMI HARGAI
+chair.verdict1.1	MUSIM YANG BAIK %a, KAMI SEMUA AMAT
+chair.verdict1.2	BERPUAS HATI, TERUSKAN
+chair.verdict2.1	MUSIM TURUN NAIK %a, KAMI BERHARAP
+chair.verdict2.2	ADA PENAMBAHBAIKAN TIDAK LAMA LAGI
+chair.verdict3.1	MUSIM KURANG BAIK %a, KAMI BERHARAP
+chair.verdict3.2	ANDA PERBAIKI PRESTASI MUSIM DEPAN
+chair.verdict4.1	MUSIM AMAT MENGECEWAKAN %a, KAMI MENUNTUT
+chair.verdict4.2	JAUH LEBIH BAIK MUSIM DEPAN
+chair.sacked_league.1	DENGAN DUKACITA LEMBAGA DAN SAYA
+chair.sacked_league.2	TELAH MEMUTUSKAN UNTUK MELEPASKAN ANDA
+chair.not_renewed.1	DENGAN DUKACITA KAMI MEMUTUSKAN UNTUK TIDAK
+chair.not_renewed.2	MEMBAHARUI KONTRAK ANDA - SEMOGA BERJAYA
+chair.not_renewed.3	DAN KAMI BERHARAP BERTEMU LAGI TIDAK LAMA LAGI
+chair.league_note.1	AMBIL PERHATIAN KEDUDUKAN LIGA KAMI DAN
+chair.league_note.2	PASTIKAN IA DIPERBAIKI SECEPAT MUNGKIN
+chair.league_warn.1	INGAT, JIKA KEDUDUKAN TIDAK SEGERA BAIK
+chair.league_warn.2	KAMI TERPAKSA MENILAI SEMULA JAWATAN ANDA
+chair.league_crisis.1	SELEPAS UNDI PERCAYA, ANDA ADA PALING BANYAK
+chair.league_crisis.2	3 PERLAWANAN UNTUK PULIH ATAU ANDA DIPECAT
+chair.money_note.1	AMBIL PERHATIAN BAKI BANK KAMI DAN
+chair.money_note.2	PASTIKAN DEFISIT DILANGSAIKAN SECEPAT MUNGKIN
+chair.money_warn.1	SEKADAR PERINGATAN TENTANG DEFISIT
+chair.money_warn.2	JIKA TIDAK KAMI NILAI SEMULA JAWATAN ANDA
+chair.money_crisis.1	SELEPAS MESYUARAT KRISIS, KAMI MENUNTUT ANDA
+chair.money_crisis.2	LANGSAIKAN DEFISIT SEGERA ATAU DIPECAT
+chair.new_season.1	SEKADAR NOTA, SEMOGA BERJAYA DALAM
+chair.new_season.2	MUSIM BARU
+chair.embargo_buy.1	MAAF %a, KELAB TIDAK BERSEDIA
+chair.embargo_buy.2	MEMBELI PEMAIN LAGI MUSIM INI
+chair.embargo_sell.1	AMBIL PERHATIAN %a BAHAWA KAMI TIDAK BENARKAN
+chair.embargo_sell.2	JUALAN PEMAIN LAGI MUSIM INI
+chair.sacked_money.1	DENGAN DUKACITA LEMBAGA DAN SAYA
+chair.sacked_money.2	TELAH MEMUTUSKAN UNTUK MELEPASKAN ANDA
+# JOB OFFERS (career depth plan feature #3)
+job.title	TAWARAN KERJA
+job.none	TIADA TAWARAN
+job.offer	TAWARAN
+job.accept	TERIMA
+job.decline	TOLAK
+job.declined	TAWARAN DITOLAK
+job.not_available	TAWARAN TIADA
+job.signed_prefix	BERSETUJU DENGAN
+job.new_job	KERJA BARU
+job.reputation	REPUTASI
+job.rep_world	KELAS DUNIA
+job.rep_high	AMAT DIHARGAI
+job.rep_good	DIHORMATI
+job.rep_known	DIKENALI
+job.rep_unproven	BELUM TERBUKTI
+job.rep_unwanted	TIDAK DIPERLUKAN
+job.division	DIVISYEN
+job.squad	SKUAD
+job.letter_header	TAWARAN KERJA DARI %a
+job.letter.1	TUAN/PUAN YANG DIHORMATI
+job.letter.2	KAMI DI %a INGIN MENAWARKAN ANDA
+job.letter.3	JAWATAN JURULATIH UNTUK MUSIM HADAPAN
+job.letter.4	KAMI MENAWARKAN GAJI YANG SANGAT BAIK DAN
+job.letter.5	KAMI BERHARAP DAPAT MENYEDIAKAN DANA
+job.letter.6	SEKITAR %b UNTUK MEMPERKUKUH PASUKAN
+job.letter.7	KAMI MENANTIKAN JAWAPAN ANDA
+job.accepted_note	ANDA TELAH SETUJU - PERPINDAHAN MUSIM HADAPAN
+job.waiting_prefix	MEREKA AKAN MENUNGGU
+job.waiting_suffix	PERLAWANAN LAGI
+job.accepted.1	KAMI DI %a AMAT GEMBIRA KERANA ANDA
+job.accepted.2	MENERIMA JAWATAN JURULATIH DI KELAB KAMI
+job.accepted.3	MULAI AWAL MUSIM HADAPAN
+job.farewell.1	TERIMA KASIH ATAS SEGALANYA %a, KAMI
+job.farewell.2	MENDOAKAN KEJAYAAN DI TEMPAT BARU
+job.welcome.1	SELAMAT DATANG %a, KAMI MENANTIKAN
+job.welcome.2	BANYAK KEJAYAAN DARI KERJASAMA BARU INI
+job.withdrawn.1	TAWARAN KERJA DARI %a DITARIK BALIK
+# board expectation line (feature #2 follow-up)
+chair.expected	LEMBAGA MENJANGKA
+chair.of	DARI
+chair.finished	TAMAT
+chair.expects	LEMBAGA MENJANGKA
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	PASUKAN KEBANGSAAN
+natjob.entry_offer	TAWARAN KERJA ANTARABANGSA
+natjob.title	PASUKAN KEBANGSAAN
+natjob.title_offer	TAWARAN KERJA ANTARABANGSA
+natjob.player	PEMAIN
+natjob.add	TAMBAH PEMAIN
+natjob.remove	BUANG PEMAIN
+natjob.auto	PILIH AUTO
+natjob.resign	LETAK JAWATAN
+natjob.full	SKUAD PENUH
+natjob.appointed	JURULATIH
+natjob.none	TIADA JAWATAN ANTARABANGSA
+natjob.no_players	TIADA PEMAIN
+natjob.squad_word	SKUAD
+natjob.rating	NILAI
+natjob.home	DALAM NEGARA
+natjob.abroad	LUAR NEGARA
+natjob.col_name	NAMA
+natjob.col_pos	POS
+natjob.col_ovr	NIL
+natjob.col_where	DI MANA
+natjob.col_club	KELAB
+natjob.letter_header	TAWARAN KERJA ANTARABANGSA DARI %a
+natjob.offer.1	AHLI JAWATANKUASA BOLA SEPAK
+natjob.offer.2	%a INGIN MENAWARKAN ANDA JAWATAN
+natjob.offer.3	JURULATIH PASUKAN KEBANGSAAN
+natjob.offer.4	KAMI JANJIKAN GAJI YANG SANGAT BAIK DAN
+natjob.offer.5	KONTRAK YANG DISEMAK SETIAP TAHUN
+natjob.offer.6	KAMI MENANTIKAN JAWAPAN ANDA
+natjob.accepted.1	AHLI JAWATANKUASA BOLA SEPAK
+natjob.accepted.2	%a GEMBIRA KERANA ANDA TELAH
+natjob.accepted.3	MENERIMA JAWATAN JURULATIH KEBANGSAAN
+natjob.ended.1	AHLI JAWATANKUASA BOLA SEPAK
+natjob.ended.2	%a MEMUTUSKAN TIDAK MENYAMBUNG
+natjob.ended.3	KONTRAK TAHUNAN ANDA
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	SILA TUNGGU
+busy.new_career	MEMBINA DUNIA
+busy.next_season	MUSIM PANAS BERJALAN
+dash.scorers	PENJARING TERBANYAK
+scorer.title	SENARAI PENJARING
+scorer.view	SENARAI
+scorer.page	HALAMAN
+scorer.view_comp	PERTANDINGAN
+scorer.view_club	KELAB SAYA
+scorer.view_history	MUSIM DEMI MUSIM
+scorer.leading	PENJARING TERBANYAK PERTANDINGAN
+scorer.goals	GOL
+scorer.own_goals	GOL SENDIRI
+scorer.ex_player	GOL BEKAS PEMAIN
+scorer.career_total	JUMLAH KERJAYA
+scorer.season	MUSIM
+scorer.season_top	PENJARING TERBAIK MUSIM
+scorer.season_top_plural	PENJARING TERBAIK MUSIM
+scorer.no_goals	BELUM ADA GOL MUSIM INI
+scorer.no_seasons	BELUM ADA MUSIM SELESAI
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	PERLAWANAN
+dash.sec_team	PASUKAN
+dash.sec_club	KELAB
+dash.sec_game	PERMAINAN
+nav.hint_cols	ATAS/BAWAH PILIH   KIRI/KANAN LAJUR   TEMBAK OK   ESC KEMBALI

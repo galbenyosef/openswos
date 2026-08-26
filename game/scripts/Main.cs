@@ -362,6 +362,10 @@ public partial class Main : Node2D
     // engine even on PC sound; applied to MatchAudio.CommentatorEnabled at match
     // start. When the settings key is ABSENT, LoadSettings leaves this ON.
     private bool _commentator = true;
+    // Career depth plan feature #2: board patience, 0 PATIENT / 1 NORMAL /
+    // 2 RUTHLESS. Persisted here and mirrored onto ChairmanModel.Patience,
+    // which is what the engine reads.
+    private int _boardPatience = 1;
 
     // Android: set when we bailed out to the first-run screen while storage access was
     // still missing. The all-files grant arrives ASYNCHRONOUSLY (the user leaves for a
@@ -1219,6 +1223,15 @@ public partial class Main : Node2D
                     int ticks = 100;
                     if (i + 1 < allArgs.Count && int.TryParse(allArgs[i + 1], out int parsed))
                         ticks = parsed;
+                    // Optional team overrides: --swos-smoke <ticks> <homeIdx> <awayIdx>.
+                    // Lets a harness sample many different fixtures instead of
+                    // re-running the single ARSENAL/CHELSEA pairing (task #242).
+                    if (i + 2 < allArgs.Count && int.TryParse(allArgs[i + 2], out int hIdx)
+                        && _allTeams != null && _allTeams.Count > 0)
+                        _homeTeamIndex = ((hIdx % _allTeams.Count) + _allTeams.Count) % _allTeams.Count;
+                    if (i + 3 < allArgs.Count && int.TryParse(allArgs[i + 3], out int aIdx)
+                        && _allTeams != null && _allTeams.Count > 0)
+                        _awayTeamIndex = ((aIdx % _allTeams.Count) + _allTeams.Count) % _allTeams.Count;
                     RunSwosPortSmokeTest(ticks);
                     break;
                 }
@@ -1265,6 +1278,13 @@ public partial class Main : Node2D
                     RunCareerReport();
                     break;
                 }
+                // Flags belonging to the OPTIONAL web module (--match-record,
+                // --career-web). Handled in Main.Web.cs when that file is part
+                // of the build; when it is not, this call compiles away and the
+                // flags are simply unknown. See "optional module" below.
+                bool webHandled = false;
+                TryWebArgs(allArgs, i, ref webHandled);
+                if (webHandled) break;
                 if (allArgs[i] == "--headnum-test")
                 {
                     RunHeadNumberTest();
@@ -1517,6 +1537,682 @@ public partial class Main : Node2D
             Check(car.Career!.Season == 2, $"career season advanced to 2 (got {car.Career!.Season})");
             Check(!car.Finished && OpenSwos.Competition.CompetitionEngine.NextPlayerFixture(car) is not null,
                 "season 2 has fixtures to play");
+
+            // --- STEP 06b: SEASON FINANCES (career depth plan feature #1) -----
+            // The rollover above must have produced the club's income and
+            // expenditure statement, in the original game's line items.
+            var acct = car.Career!.LastAccount;
+            Check(acct is not null, "season finance statement produced at rollover");
+            if (acct is not null)
+            {
+                Check(acct.Season == 1, $"statement covers season 1 (got {acct.Season})");
+                Check(acct.Unreconciled == 0,
+                    $"statement reconciles exactly (unaccounted {acct.Unreconciled})");
+                Check(acct.ClosingBalance == acct.OpeningBalance + acct.TotalIncome - acct.TotalExpenditure,
+                    "statement balances: opening + income - expenditure == closing");
+                Check(acct.GateReceipts > 0, $"gate receipts earned (got {acct.GateReceipts})");
+                Check(acct.HomeGames > 0, $"home games counted (got {acct.HomeGames})");
+                Check(acct.Attendance > 0, $"attendance computed (got {acct.Attendance})");
+                Check(acct.WageBill > 0, $"wage bill charged (got {acct.WageBill})");
+                Check(car.Career!.AccountHistory.Count == 1,
+                    $"statement archived ({car.Career!.AccountHistory.Count})");
+                foreach (var row in OpenSwos.Competition.Career.SeasonFinances.StatementRows(acct))
+                    GD.Print($"  [finances] {row.Label,-46} {row.Amount,14:N0}");
+                GD.Print($"  [finances] league {acct.LeaguePosition}/{acct.LeagueTeams}, cup {(acct.CupResult == "" ? "-" : acct.CupResult)}, " +
+                    $"{acct.HomeGames} home games @ {acct.Attendance:N0}");
+            }
+
+            // Prize money must actually discriminate: finishing top pays more
+            // than finishing bottom. Rebuild the inputs from the season that was
+            // just accounted for and compare the extremes.
+            {
+                var champAcct = car.Career!.LastAccount;
+                Check(champAcct is null || champAcct.CompetitionBonuses > 0,
+                    $"competition bonuses + TV rights credited (got {champAcct?.CompetitionBonuses ?? -1})");
+            }
+
+            // --- STEP 06c: THE CHAIRMAN (career depth plan feature #2) --------
+            {
+                var cm = car.Career!;
+                Check(cm.LastVerdict >= 0 && cm.LastVerdict <= 4,
+                    $"end-of-season verdict issued (got {cm.LastVerdict}, score {cm.LastSeasonScore})");
+                Check(cm.Memos.Count > 0, $"chairman filed memos ({cm.Memos.Count})");
+                var verdictMemo = cm.Memos.Find(m => m.Kind == "verdict");
+                Check(verdictMemo is not null && verdictMemo.Lines.Count == 2,
+                    "verdict memo has the original two lines");
+                Check(verdictMemo is null || !verdictMemo.Lines[0].Contains("%a"),
+                    "manager name substituted into the memo");
+                var newSeason = cm.Memos.Find(m => m.Kind == "renewed");
+                Check(cm.Sacked || newSeason is not null, "new-season note filed after renewal");
+                Check(cm.Sacked || (newSeason is not null && newSeason.Season == cm.Season),
+                    $"new-season note carries the NEW season number ({newSeason?.Season} vs {cm.Season})");
+                Check(cm.ChairmanWarnLeague == 0 && cm.CrisisMatchesLeft == 0,
+                    "warning ladders cleared for the new season");
+                foreach (var m in cm.Memos)
+                    GD.Print($"  [chairman] S{m.Season} {m.Kind,-8} {string.Join(" / ", m.Lines)}");
+            }
+
+            // Pure-function checks on the verdict scale — cheap, and they pin the
+            // mapping so a later tweak cannot silently invert it.
+            {
+                int champScore = OpenSwos.Competition.Career.ChairmanModel.SeasonScore(
+                    1, 16, 8, true, false, false, true, false, 4);
+                int floppedScore = OpenSwos.Competition.Career.ChairmanModel.SeasonScore(
+                    16, 16, 2, false, false, true, false, false, 0);
+                Check(champScore > floppedScore, $"winning scores above flopping ({champScore} vs {floppedScore})");
+                Check(OpenSwos.Competition.Career.ChairmanModel.VerdictFor(champScore)
+                      == OpenSwos.Competition.Career.ChairmanVerdict.Excellent,
+                    $"double winner -> EXCELLENT (score {champScore})");
+                Check(OpenSwos.Competition.Career.ChairmanModel.VerdictFor(floppedScore)
+                      == OpenSwos.Competition.Career.ChairmanVerdict.VeryDisappointing,
+                    $"relegated favourite -> VERY DISAPPOINTING (score {floppedScore})");
+                int parScore = OpenSwos.Competition.Career.ChairmanModel.SeasonScore(
+                    9, 16, 9, false, false, false, false, false, 0);
+                Check(OpenSwos.Competition.Career.ChairmanModel.VerdictFor(parScore)
+                      == OpenSwos.Competition.Career.ChairmanVerdict.UpAndDown,
+                    $"finishing to expectation -> UP AND DOWN (score {parScore})");
+            }
+
+            // The escalation ladder, driven directly so the whole path is covered
+            // without needing a scripted losing season.
+            {
+                var probe = new OpenSwos.Competition.CareerState { ManagerName = "PROBE", Season = 1, ClubName = "PROBE FC" };
+                bool sacked = false;
+                for (int m = 0; m < 40 && !sacked; m++)
+                {
+                    int pct = System.Math.Min(99, 20 + m * 6);
+                    sacked = OpenSwos.Competition.Career.ChairmanModel.AfterPlayerFixture(
+                        probe, OpenSwos.Competition.Career.BoardPatience.Normal,
+                        16, 16, pct, true, false, 1000);
+                }
+                Check(sacked, "bottom-of-the-table manager is eventually sacked");
+                Check(probe.Sacked && probe.Retired, "sacking ends the career");
+                var kinds = new System.Collections.Generic.List<string>();
+                foreach (var m in probe.Memos) kinds.Add(m.Kind);
+                Check(kinds.Contains("warning") && kinds.Contains("final")
+                      && kinds.Contains("crisis") && kinds.Contains("sacked"),
+                    $"full ladder fired in order ({string.Join(">", kinds)})");
+
+                var saved = new OpenSwos.Competition.CareerState { ManagerName = "SAVED", Season = 1, ClubName = "SAVED FC" };
+                bool everSacked = false;
+                for (int m = 0; m < 40 && !everSacked; m++)
+                {
+                    int pct = System.Math.Min(99, 20 + m * 6);
+                    everSacked = OpenSwos.Competition.Career.ChairmanModel.AfterPlayerFixture(
+                        saved, OpenSwos.Competition.Career.BoardPatience.Normal,
+                        16, 16, pct, true, m % 3 == 0, 1000);
+                }
+                Check(!everSacked, "a manager who keeps winning is not sacked");
+
+                var broke = new OpenSwos.Competition.CareerState { ManagerName = "BROKE", Season = 1, ClubName = "BROKE FC" };
+                bool brokeSacked = false;
+                for (int m = 0; m < 60 && !brokeSacked; m++)
+                    brokeSacked = OpenSwos.Competition.Career.ChairmanModel.AfterPlayerFixture(
+                        broke, OpenSwos.Competition.Career.BoardPatience.Normal,
+                        1, 16, 10, true, true, -5_000_000);
+                Check(brokeSacked, "a manager who never clears the overdraft is sacked");
+                var brokeKeys = new System.Collections.Generic.List<string>();
+                foreach (var m in broke.Memos) brokeKeys.Add(m.Key);
+                Check(brokeKeys.Contains("chair.money_note") && brokeKeys.Contains("chair.money_warn")
+                      && brokeKeys.Contains("chair.money_crisis"),
+                    $"overdraft ladder fired ({string.Join(">", brokeKeys)})");
+
+                var cleared = new OpenSwos.Competition.CareerState { ManagerName = "OK", Season = 1, ClubName = "OK FC" };
+                OpenSwos.Competition.Career.ChairmanModel.AfterPlayerFixture(
+                    cleared, OpenSwos.Competition.Career.BoardPatience.Normal, 1, 16, 10, true, true, -100);
+                Check(cleared.ChairmanWarnMoney == 1, "overdraft note filed");
+                OpenSwos.Competition.Career.ChairmanModel.AfterPlayerFixture(
+                    cleared, OpenSwos.Competition.Career.BoardPatience.Normal, 1, 16, 20, true, true, 50_000);
+                // The ladder is MONOTONIC within a season: the letter stays in
+                // the inbox, but the standing order comes off the header.
+                Check(cleared.ChairmanWarnMoney == 1 && !cleared.InOverdraft,
+                    "clearing the overdraft keeps the letter but lifts the warning");
+                Check(OpenSwos.Competition.Career.ChairmanModel.StatusLine(cleared) == "",
+                    "no standing order once the overdraft is cleared");
+            }
+
+            // --- STEP 06d: JOB OFFERS (career depth plan feature #3) ---------
+            // Driven directly against a synthetic club list, so the whole path
+            // is covered without needing a scripted losing season. The source is
+            // cleared again at the end: the seasons played below must stay
+            // exactly as they were before this feature existed.
+            {
+                // A ladder of clubs from village side to giant, all in nation 7.
+                int Strength(int m) => 1 + (m % 7);
+                int Division(int m) => (m / 7) % 4;
+                OpenSwos.Competition.Career.JobMarket.Source =
+                    OpenSwos.Competition.Career.JobMarketSource.FromHost(
+                        (count, exclude) =>
+                        {
+                            var l = new System.Collections.Generic.List<int>();
+                            for (int i = 0; i < 60; i++) l.Add((i * 7 + count) % 60);
+                            return l;
+                        },
+                        m => "CLUB " + m,
+                        m => (ushort)(5000 + m),
+                        m => 7,
+                        Division,
+                        Strength,
+                        n => "TESTLAND");
+
+                // Standing must rise with squad strength and with division rank.
+                Check(OpenSwos.Competition.Career.JobMarket.ClubStanding(7, 0)
+                      > OpenSwos.Competition.Career.JobMarket.ClubStanding(2, 0),
+                    "a stronger squad ranks a club higher");
+                Check(OpenSwos.Competition.Career.JobMarket.ClubStanding(4, 0)
+                      > OpenSwos.Competition.Career.JobMarket.ClubStanding(4, 3),
+                    "the same squad ranks higher in a higher division");
+
+                // A well-regarded manager attracts suitors of roughly his own level.
+                var jm = new OpenSwos.Competition.CareerState
+                { ManagerName = "JOBBER", Season = 3, ClubName = "OLD FC", ClubGlobalId = 4999, Reputation = 60 };
+                OpenSwos.Competition.Career.JobMarket.DrawOffers(jm, null, unemployed: false, matchesToDecide: 12);
+                var live = OpenSwos.Competition.Career.JobMarket.LiveOffers(jm);
+                Check(live.Count >= 1 && live.Count <= 3, $"suitors drawn for a rated manager ({live.Count})");
+                bool banded = true, funded = true;
+                foreach (var o in live)
+                {
+                    int st = OpenSwos.Competition.Career.JobMarket.ClubStanding(o.Strength, o.Division);
+                    if (st < jm.Reputation - 22 || st > jm.Reputation + 14) banded = false;
+                    if (o.TransferFunds <= 0) funded = false;
+                }
+                Check(banded, "suitors sit in the manager's own standing band");
+                Check(funded, "every letter promises real transfer funds");
+
+                // Deterministic: the same career draws the same clubs, always.
+                var jm2 = new OpenSwos.Competition.CareerState
+                { ManagerName = "JOBBER", Season = 3, ClubName = "OLD FC", ClubGlobalId = 4999, Reputation = 60 };
+                OpenSwos.Competition.Career.JobMarket.DrawOffers(jm2, null, unemployed: false, matchesToDecide: 12);
+                var live2 = OpenSwos.Competition.Career.JobMarket.LiveOffers(jm2);
+                bool sameDraw = live.Count == live2.Count;
+                for (int i = 0; sameDraw && i < live.Count; i++)
+                    if (live[i].ClubGlobalId != live2[i].ClubGlobalId) sameDraw = false;
+                Check(sameDraw, "the same career draws the same suitors");
+
+                // Nobody calls an unknown.
+                var nobody = new OpenSwos.Competition.CareerState
+                { ManagerName = "NOBODY", Season = 2, ClubName = "TINY FC", ClubGlobalId = 4998, Reputation = 10 };
+                OpenSwos.Competition.Career.JobMarket.DrawOffers(nobody, null, unemployed: false, matchesToDecide: 12);
+                Check(OpenSwos.Competition.Career.JobMarket.LiveOffers(nobody).Count == 0,
+                    "an unproven manager gets no offers");
+
+                // Accepting books the move and tells the other clubs no.
+                var chosen = live[0];
+                Check(OpenSwos.Competition.Career.JobMarket.Accept(jm, chosen.Id), "offer accepted");
+                Check(OpenSwos.Competition.Career.JobMarket.LiveOffers(jm).Count == 1,
+                    "accepting withdraws the other suitors");
+                Check(!OpenSwos.Competition.Career.JobMarket.Accept(jm, chosen.Id),
+                    "a manager cannot agree with two clubs");
+                var acceptMemo = jm.Memos.Find(m => m.Kind == "job_accepted");
+                Check(acceptMemo is not null && acceptMemo.Lines.Count == 3,
+                    "the acceptance letter is the original's three lines");
+                Check(acceptMemo is null || !acceptMemo.Lines[0].Contains("%a"),
+                    "club name substituted into the acceptance letter");
+                Check(acceptMemo is null || acceptMemo.Subject == chosen.ClubName,
+                    "the letter records that %a meant the CLUB, not the manager");
+
+                // The move itself.
+                string oldName = jm.ClubName;
+                var moved = OpenSwos.Competition.Career.JobMarket.ApplyPendingMove(jm);
+                Check(moved is not null && jm.ClubGlobalId == chosen.ClubGlobalId,
+                    "the manager is now at the new club");
+                Check(jm.ClubName == chosen.ClubName && jm.Division == chosen.Division
+                      && jm.Nation == chosen.Nation, "club, division and nation all moved");
+                Check(jm.SeasonsAtClub == 0, "seasons-at-club reset by the move");
+                Check(OpenSwos.Competition.Career.JobMarket.LiveOffers(jm).Count == 0,
+                    "the letter pile is cleared by the move");
+                Check(jm.History.Exists(h => h.Contains(oldName) && h.Contains(chosen.ClubName)),
+                    "the move is written into the management record");
+                var byeMemo = jm.Memos.Find(m => m.Kind == "job_farewell");
+                var hiMemo = jm.Memos.Find(m => m.Kind == "job_welcome");
+                Check(byeMemo is not null && hiMemo is not null,
+                    "both the farewell and the welcome letters are filed");
+
+                // A board that turns on the manager scares the suitors off.
+                var shaky = new OpenSwos.Competition.CareerState
+                { ManagerName = "SHAKY", Season = 4, ClubName = "SHAKY FC", ClubGlobalId = 4997, Reputation = 60 };
+                OpenSwos.Competition.Career.JobMarket.DrawOffers(shaky, null, unemployed: false, matchesToDecide: 12);
+                Check(OpenSwos.Competition.Career.JobMarket.LiveOffers(shaky).Count > 0, "suitors on the table");
+                shaky.ChairmanWarnLeague = 2;         // a final warning from his own board
+                OpenSwos.Competition.Career.JobMarket.AfterPlayerFixture(shaky, null, 24, 30);
+                Check(OpenSwos.Competition.Career.JobMarket.LiveOffers(shaky).Count == 0,
+                    "a manager under review loses his suitors");
+                Check(shaky.Memos.Exists(m => m.Kind == "job_withdrawn"),
+                    "the withdrawal is put in writing");
+
+                // Sacked, but not finished: somebody smaller takes a chance.
+                var out_ = new OpenSwos.Competition.CareerState
+                { ManagerName = "SACKED", Season = 5, ClubName = "GONE FC", ClubGlobalId = 4996,
+                  Reputation = 55, Sacked = true, Retired = true };
+                OpenSwos.Competition.Career.JobMarket.AfterSacking(out_, null);
+                var rescue = OpenSwos.Competition.Career.JobMarket.LiveOffers(out_);
+                Check(rescue.Count >= 1, $"a sacked manager is offered work ({rescue.Count})");
+                Check(out_.Reputation < 55, $"being sacked costs standing ({out_.Reputation})");
+                OpenSwos.Competition.Career.JobMarket.Accept(out_, rescue[0].Id);
+                OpenSwos.Competition.Career.JobMarket.ApplyPendingMove(out_);
+                Check(!out_.Sacked && !out_.Retired, "taking a new job puts him back in work");
+
+                foreach (var o in live)
+                    GD.Print($"  [jobs] {o.ClubName,-10} div {o.Division + 1} squad {o.Strength}/7 " +
+                        $"funds {o.TransferFunds:N0} wait {o.MatchesLeft}");
+
+                // The rest of this test must run exactly as it did before.
+                OpenSwos.Competition.Career.JobMarket.Source = null;
+            }
+
+            // --- STEP 06e: THE NATIONAL-TEAM JOB (career depth plan feature #4)
+            // Run against the REAL master roster and the REAL career world, so
+            // the country bridge (TEAM.* name -> player-nationality byte) and
+            // the eligible pool are exercised for real. The probe career is
+            // separate from `car`, and the source is cleared again afterwards.
+            {
+                OpenSwos.Competition.Career.NationalJob.Source =
+                    OpenSwos.Competition.Career.NationalSource.FromHost(
+                        (nation, division, max) =>
+                        {
+                            var l = new System.Collections.Generic.List<int>();
+                            for (int i = 0; i < _allTeams.Count && l.Count < max; i++)
+                            {
+                                if (_allTeams[i].Nation != nation) continue;
+                                if (division >= 0 && _allTeams[i].Division != division) continue;
+                                l.Add(i);
+                            }
+                            return l;
+                        },
+                        m => _allTeams[m].Name,
+                        m => _allTeams[m].GlobalId,
+                        m => _allTeams[m].Nation,
+                        m => _allTeams[m].Division,
+                        m =>
+                        {
+                            var t = _allTeams[m];
+                            int sum = 0;
+                            foreach (var p in t.Players)
+                                sum += p.Passing + p.Shooting + p.Heading + p.Tackling
+                                     + p.Control + p.Speed + p.Finishing;
+                            return t.Players.Count > 0
+                                ? System.Math.Clamp(sum / (t.Players.Count * 7), 1, 7) : 3;
+                        });
+
+                // The country bridge: ITALY the club nation -> ITALY the national side.
+                int italy = -1;
+                for (int n = 0; n < 80 && italy < 0; n++)
+                    if (OpenSwos.Assets.NationNames.Name(n) == "ITALY") italy = n;
+                Check(italy >= 0, "ITALY found in the club-nation table");
+                var side = OpenSwos.Competition.Career.NationalJob.FindNationalSide(italy);
+                Check(side is not null && side.Country == "ITALY", "ITALY has a national side");
+                Check(side is null || side.PlayerNationality >= 0,
+                    $"the country bridges to a player-nationality byte ({side?.PlayerNationality})");
+
+                // Nobody is offered the job without a reputation AND silverware.
+                var green = new OpenSwos.Competition.CareerState
+                { ManagerName = "GREEN", Season = 3, Nation = italy, Reputation = 20, World = car.Career!.World };
+                OpenSwos.Competition.Career.NationalJob.MaybeOffer(green, green.World, italy);
+                Check(!OpenSwos.Competition.Career.NationalJob.HasOffer(green),
+                    "an unproven manager gets no international offer");
+
+                var rated = new OpenSwos.Competition.CareerState
+                { ManagerName = "RATED", Season = 5, Nation = italy,
+                  Reputation = OpenSwos.Competition.Career.NationalJob.ReputationGate,
+                  World = car.Career!.World };
+                OpenSwos.Competition.Career.NationalJob.MaybeOffer(rated, rated.World, italy);
+                Check(!OpenSwos.Competition.Career.NationalJob.HasOffer(rated),
+                    "reputation alone is not enough - a committee wants a trophy");
+                rated.Trophies.Add("SEASON 4 LEAGUE CHAMPIONS");
+                OpenSwos.Competition.Career.NationalJob.MaybeOffer(rated, rated.World, italy);
+                Check(OpenSwos.Competition.Career.NationalJob.HasOffer(rated),
+                    "a well-regarded manager with a trophy is offered the national job");
+                var offerMemo = rated.Memos.Find(m => m.Kind == "national_offer");
+                Check(offerMemo is not null && offerMemo.Lines.Count == 6,
+                    "the committee's letter is the original's six lines");
+                Check(offerMemo is null || !offerMemo.Lines[1].Contains("%a"),
+                    "the country is substituted into the letter");
+
+                Check(OpenSwos.Competition.Career.NationalJob.AcceptOffer(rated), "job accepted");
+                Check(OpenSwos.Competition.Career.NationalJob.HasJob(rated), "manager is the national coach");
+                Check(OpenSwos.Competition.Career.NationalJob.StillToSelect(rated)
+                      == OpenSwos.Competition.Career.NationalJob.SquadSize,
+                    "no internationals named yet");
+
+                // The pool, and a BALANCED automatic squad.
+                var pool = OpenSwos.Competition.Career.NationalJob.Candidates(rated, rated.World);
+                Check(pool.Count > 50, $"a real pool of eligible Italians ({pool.Count})");
+                bool anyAbroad = false, anyHome = false;
+                foreach (var p in pool) { if (p.Home) anyHome = true; else anyAbroad = true; }
+                Check(anyHome && anyAbroad, "the pool splits into HOME and ABROAD as the original does");
+
+                OpenSwos.Competition.Career.NationalJob.AutoPick(rated, rated.World);
+                Check(rated.NationalSquad.Count == OpenSwos.Competition.Career.NationalJob.SquadSize,
+                    $"auto pick names a full squad ({rated.NationalSquad.Count})");
+                int keepers = 0, forwards = 0;
+                foreach (var p in OpenSwos.Competition.Career.NationalJob.Candidates(rated, rated.World))
+                {
+                    if (!p.Selected) continue;
+                    if (p.Position == "G") keepers++;
+                    if (p.Position == "A") forwards++;
+                }
+                Check(keepers >= 2, $"the squad carries goalkeepers ({keepers})");
+                Check(forwards <= 5, $"the squad is not all strikers ({forwards} forwards)");
+                int rating = OpenSwos.Competition.Career.NationalJob.SquadStrength(rated, rated.World);
+                Check(rating >= 1 && rating <= 7, $"squad rating on the 1..7 scale ({rating})");
+
+                // The tournament, and the annually reviewable contract.
+                var res = OpenSwos.Competition.Career.NationalJob.RunSeason(rated, rated.World);
+                Check(res is not null, "the national side played its tournament");
+                Check(res is null || res.Tournament == "EUROPEAN CHAMPIONSHIP",
+                    $"Europe plays the EUROPEAN CHAMPIONSHIP (got {res?.Tournament})");
+                Check(res is null || res.Result.Length > 0, "the tournament produced a result");
+                Check(res is null || res.Matches.Count >= 1, "the side actually played matches");
+                Check(rated.NationalHistory.Count == 1, "the international record is kept");
+
+                // Deterministic: the same coach, season and squad play it again.
+                var twin = new OpenSwos.Competition.CareerState
+                { ManagerName = "RATED", Season = 5, Nation = italy, Reputation = 48,
+                  World = car.Career!.World, NationalTeamId = rated.NationalTeamId,
+                  NationalMasterIndex = rated.NationalMasterIndex,
+                  NationalCountry = rated.NationalCountry,
+                  NationalContinent = rated.NationalContinent,
+                  NationalPlayerNationality = rated.NationalPlayerNationality,
+                  NationalSince = rated.NationalSince };
+                twin.NationalSquad.AddRange(rated.NationalHistory.Count > 0
+                    ? new System.Collections.Generic.List<int>() : new System.Collections.Generic.List<int>());
+                OpenSwos.Competition.Career.NationalJob.AutoPick(twin, twin.World);
+                var res2 = OpenSwos.Competition.Career.NationalJob.RunSeason(twin, twin.World);
+                Check(res2 is not null && res is not null && res2.Result == res.Result
+                      && res2.Matches.Count == res.Matches.Count,
+                    $"the same tournament replays identically ({res?.Result} / {res2?.Result})");
+
+                GD.Print($"  [national] {rated.NationalCountry} squad {res?.Squad} rating {res?.SquadStrength}/7 " +
+                    $"-> {res?.Tournament}: {res?.Result}");
+                foreach (var m in res?.Matches ?? new System.Collections.Generic.List<string>())
+                    GD.Print($"  [national]   {m}");
+
+                OpenSwos.Competition.Career.NationalJob.Source = null;
+            }
+
+            // --- STEP 06f: SEASON'S TOP SCORER (career depth plan feature #5) -
+            // Every goal in a season must end up against a name. Runs on its OWN
+            // career so the scorer table is still the one just played (the
+            // rollover below rebuilds it), and checks the three things that can
+            // silently go wrong: goals going missing, the distribution drifting
+            // away from football, and the table not surviving a reload.
+            {
+                OpenSwos.Competition.Career.ScorerModel.Source =
+                    OpenSwos.Competition.Career.ScorerSource.FromHost(
+                        m => (m >= 0 && m < _allTeams.Count) ? _allTeams[m] : null);
+
+                var scoreCar = OpenSwos.Competition.CompetitionEngine.CreateCareer(
+                    "SCORER CAREER", MakeTeams(16), MakeTeams(8), 0, 0, 1, 5150);
+                OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(scoreCar, _allTeams);
+                PlayOut(scoreCar, 900);
+
+                int fixtureGoals = 0, playedFixtures = 0;
+                foreach (var f in scoreCar.Fixtures)
+                    if (f.Played) { fixtureGoals += f.HomeGoals + f.AwayGoals; playedFixtures++; }
+                int credited = 0;
+                foreach (var r in scoreCar.Scorers) credited += r.Goals;
+                Check(fixtureGoals > 0 && credited == fixtureGoals,
+                    $"every goal has a name against it ({credited}/{fixtureGoals} over {playedFixtures} games)");
+
+                // Distribution: forwards should lead, defenders should be rare,
+                // own goals rarer still. The numbers are ours (ScorerModel), so
+                // this guards the WEIGHTS, not the original.
+                var lineGoals = new System.Collections.Generic.Dictionary<string, int>
+                    { ["A"] = 0, ["W"] = 0, ["M"] = 0, ["D"] = 0, ["G"] = 0, ["OG"] = 0 };
+                var sw = scoreCar.Career!.World!;
+                foreach (var r in scoreCar.Scorers)
+                {
+                    if (r.PlayerId == OpenSwos.Competition.Career.ScorerModel.OwnGoalPlayerId)
+                    { lineGoals["OG"] += r.Goals; continue; }
+                    string pos = "M";
+                    foreach (var club in sw.Clubs.Values)
+                    {
+                        var found = club.Squad.Find(q => q.Id == r.PlayerId);
+                        if (found is not null) { pos = found.Position; break; }
+                    }
+                    lineGoals[OpenSwos.Competition.Career.ScorerModel.LineOf(pos)] += r.Goals;
+                }
+                int fwd = lineGoals["A"] * 100 / System.Math.Max(1, credited);
+                int wng = lineGoals["W"] * 100 / System.Math.Max(1, credited);
+                int mid = lineGoals["M"] * 100 / System.Math.Max(1, credited);
+                int def = lineGoals["D"] * 100 / System.Math.Max(1, credited);
+                int og  = lineGoals["OG"] * 100 / System.Math.Max(1, credited);
+                GD.Print($"  [scorers] {credited} goals: {fwd}% forwards, {wng}% wide, {mid}% midfield, " +
+                         $"{def}% defence, {og}% own goals, keepers {lineGoals["G"]}");
+                // Per LINE, not per player: there are twice as many defenders on
+                // the pitch as central midfielders, so defence out-scoring
+                // midfield in total is expected, not a fault.
+                // Shape, not exact percentages. Measured on this season: 41 %
+                // forwards / 26 % wide / 14 % central midfield / 14 % defence /
+                // 3 % own goals. The defence guard is a REGRESSION guard, not a
+                // target — before CareerMatchTeam.PickOutfieldXI existed the auto
+                // lineup fielded no strikers at all and defenders took 23 %.
+                Check(fwd > wng && wng > mid, "forwards outscore wide players outscore midfield");
+                Check(def <= 18, $"defenders stay a small share of the goals ({def}%)");
+                Check(og <= 8, $"own goals stay rare ({og}%)");
+                Check(lineGoals["G"] == 0, $"goalkeepers do not score ({lineGoals["G"]})");
+
+                var board = OpenSwos.Competition.Career.ScorerModel.Leaderboard(scoreCar, 10);
+                Check(board.Count >= 10, $"the leaderboard fills up ({board.Count})");
+                Check(board[0].Goals >= 8,
+                    $"a league's top scorer reaches a believable total ({board[0].Goals})");
+                for (int i = 0; i < System.Math.Min(5, board.Count); i++)
+                    GD.Print($"  [scorers] {i + 1}. {board[i].Name} " +
+                             $"({scoreCar.Teams[board[i].Team].Name}) {board[i].Goals}");
+
+                // A career total is the sum of the seasons, so it must already
+                // equal this season's tally for a player who has played one.
+                bool totalsMatch = true;
+                foreach (var r in scoreCar.Scorers)
+                {
+                    if (r.PlayerId <= 0) continue;
+                    foreach (var club in sw.Clubs.Values)
+                    {
+                        var found = club.Squad.Find(q => q.Id == r.PlayerId);
+                        if (found is null) continue;
+                        if (found.CareerGoals != r.Goals) totalsMatch = false;
+                        break;
+                    }
+                }
+                Check(totalsMatch, "CareerGoals matches the season tally after one season");
+
+                // Determinism: the same seed must rebuild the same table, or a
+                // save/load would show a different top scorer than the game did.
+                var twinCar = OpenSwos.Competition.CompetitionEngine.CreateCareer(
+                    "SCORER CAREER", MakeTeams(16), MakeTeams(8), 0, 0, 1, 5150);
+                OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(twinCar, _allTeams);
+                PlayOut(twinCar, 900);
+                var twinBoard = OpenSwos.Competition.Career.ScorerModel.Leaderboard(twinCar, 10);
+                bool sameBoard = twinBoard.Count == board.Count;
+                for (int i = 0; sameBoard && i < board.Count; i++)
+                    if (twinBoard[i].Name != board[i].Name || twinBoard[i].Goals != board[i].Goals)
+                        sameBoard = false;
+                Check(sameBoard, "the same career replays to the same scorer table");
+
+                // The MANAGEMENT RECORD line exists for the season just played.
+                var top = OpenSwos.Competition.Career.ScorerModel.SeasonTop(
+                    scoreCar, scoreCar.PlayerTeam, 1);
+                Check(top is not null && top.Goals > 0 && top.Names.Count > 0,
+                    $"the club has a season top scorer ({top?.Names.Count} on {top?.Goals})");
+                GD.Print($"  [scorers] {scoreCar.Teams[scoreCar.PlayerTeam].Name} top scorer: " +
+                         $"{string.Join(" / ", top?.Names ?? new System.Collections.Generic.List<string>())} {top?.Goals}");
+
+                OpenSwos.Competition.Career.ScorerModel.Source = null;
+            }
+
+            // --- STEP 06g: APPEARANCES, DIARY AND TRAINING (features #7/#8 and
+            // the weekly training session, 2026-08-26) ------------------------
+            // Runs on its own career for the same reason 06f does: the counters
+            // and the diary describe the season that was just played.
+            {
+                OpenSwos.Competition.Career.ScorerModel.Source =
+                    OpenSwos.Competition.Career.ScorerSource.FromHost(
+                        m => (m >= 0 && m < _allTeams.Count) ? _allTeams[m] : null);
+
+                var recCar = OpenSwos.Competition.CompetitionEngine.CreateCareer(
+                    "RECORDS CAREER", MakeTeams(16), MakeTeams(8), 0, 0, 1, 7311);
+                OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(recCar, _allTeams);
+
+                // ---- TRAINING, before a ball is kicked -----------------------
+                var trainClub = recCar.Career!.World!.Clubs[recCar.Career!.ClubGlobalId];
+                // A young outfielder with room to grow is what training is FOR,
+                // so the test drives the feature the way a manager would.
+                OpenSwos.Competition.Career.CareerPlayer? pupil = null;
+                foreach (var q in trainClub.Squad)
+                    if (q is not null && !OpenSwos.Competition.Career.TrainingModel.IsKeeper(q)
+                        && q.Age <= 23 && q.Potential - OpenSwos.Competition.Career.PotentialModel.OverallOf(q) > 0.8)
+                    { pupil = q; break; }
+                if (pupil is null && trainClub.Squad.Count > 1) pupil = trainClub.Squad[1];
+
+                Check(OpenSwos.Competition.Career.TrainingModel.CanTrain(recCar),
+                    "a fresh career can train this week");
+                recCar.Career!.TrainingDrill = 3;      // DRIBBLING CIRCUIT: control + speed
+                recCar.Career!.TrainingIntensity = 2;  // INTENSE
+                recCar.Career!.TrainingGroup = new System.Collections.Generic.List<int>();
+                if (pupil is not null) recCar.Career!.TrainingGroup.Add(pupil.Id);
+
+                double ctrl0 = pupil?.Control ?? 0, speed0 = pupil?.Speed ?? 0;
+                double carry0 = (pupil?.GrowthCarry is { Length: 7 })
+                    ? pupil.GrowthCarry[4] + pupil.GrowthCarry[5] : 0.0;
+                int fit0 = pupil?.FatigueCarry ?? 0;
+                bool ran = OpenSwos.Competition.Career.TrainingModel.RunSession(recCar, out string trainRefusal);
+                Check(ran, $"a session runs ({trainRefusal})");
+                Check(recCar.Career!.TrainingReport.Count >= 1,
+                    $"the session writes a report ({recCar.Career!.TrainingReport.Count} rows)");
+                Check(!OpenSwos.Competition.Career.TrainingModel.CanTrain(recCar),
+                    "a second session in the same week is refused");
+                if (pupil is not null)
+                {
+                    double carry1 = pupil.GrowthCarry[4] + pupil.GrowthCarry[5];
+                    double moved = (pupil.Control - ctrl0) + (pupil.Speed - speed0) + (carry1 - carry0);
+                    Check(moved > 0.0,
+                        $"an INTENSE drill develops the skills it trains (+{moved:0.000})");
+                    Check(pupil.FatigueCarry > fit0,
+                        $"an INTENSE session costs condition ({fit0} -> {pupil.FatigueCarry})");
+                }
+                // Determinism: the same career, the same session, twice.
+                var twinTrain = OpenSwos.Competition.CompetitionEngine.CreateCareer(
+                    "RECORDS CAREER", MakeTeams(16), MakeTeams(8), 0, 0, 1, 7311);
+                OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(twinTrain, _allTeams);
+                twinTrain.Career!.TrainingDrill = 3;
+                twinTrain.Career!.TrainingIntensity = 2;
+                twinTrain.Career!.TrainingGroup = new System.Collections.Generic.List<int>(recCar.Career!.TrainingGroup);
+                OpenSwos.Competition.Career.TrainingModel.RunSession(twinTrain, out _);
+                bool sameSession = twinTrain.Career!.TrainingReport.Count == recCar.Career!.TrainingReport.Count;
+                for (int i = 0; sameSession && i < recCar.Career!.TrainingReport.Count; i++)
+                    if (twinTrain.Career!.TrainingReport[i].Grade != recCar.Career!.TrainingReport[i].Grade
+                        || twinTrain.Career!.TrainingReport[i].PlayerId != recCar.Career!.TrainingReport[i].PlayerId)
+                        sameSession = false;
+                Check(sameSession, "the same session replays to the same grades");
+                GD.Print($"  [training] {recCar.Career!.TrainingReport.Count} in the group, " +
+                         $"grade of the first = {OpenSwos.Competition.Career.TrainingModel.GradeNames[recCar.Career!.TrainingReport[0].Grade]}");
+
+                // A LIGHT recovery session must give condition back rather than
+                // take it — the whole reason that drill exists.
+                recCar.Career!.TrainingLastRound = -1;
+                recCar.Career!.TrainingDrill = 8;      // RECOVERY AND FITNESS
+                recCar.Career!.TrainingIntensity = 0;  // LIGHT
+                int beforeRecovery = pupil?.FatigueCarry ?? 0;
+                OpenSwos.Competition.Career.TrainingModel.RunSession(recCar, out _);
+                if (pupil is not null)
+                    Check(pupil.FatigueCarry < beforeRecovery,
+                        $"RECOVERY gives condition back ({beforeRecovery} -> {pupil.FatigueCarry})");
+
+                // ---- APPEARANCES ---------------------------------------------
+                PlayOut(recCar, 900);
+                int leaguePlayedByMe = 0;
+                foreach (var f in recCar.Fixtures)
+                    if (f.Played && (f.HomeTeam == recCar.PlayerTeam || f.AwayTeam == recCar.PlayerTeam))
+                        leaguePlayedByMe++;
+                int maxApps = 0, appsTotal = 0, withApps = 0;
+                foreach (var q in trainClub.Squad)
+                {
+                    if (q is null) continue;
+                    appsTotal += q.ClubAppearances;
+                    if (q.ClubAppearances > 0) withApps++;
+                    if (q.ClubAppearances > maxApps) maxApps = q.ClubAppearances;
+                }
+                // Eleven players are credited per fixture, no more and no fewer.
+                Check(appsTotal == leaguePlayedByMe * 11,
+                    $"exactly eleven appearances per fixture ({appsTotal} over {leaguePlayedByMe} games)");
+                Check(maxApps <= leaguePlayedByMe,
+                    $"nobody plays more matches than the club did ({maxApps}/{leaguePlayedByMe})");
+                Check(withApps >= 11, $"at least an XI has played ({withApps})");
+                GD.Print($"  [records] {leaguePlayedByMe} club fixtures, {appsTotal} appearances, " +
+                         $"{withApps} players used, most {maxApps}");
+
+                // ---- THE FITNESS EQUILIBRIUM ---------------------------------
+                // Regression guard for the defect the training screen exposed:
+                // with a FLAT recovery rate every regular ratcheted to 100
+                // fatigue and stayed there, so the whole first XI played a
+                // career at FatigueModel.SkillPenalty's worst tier. The number
+                // below is deliberately loose — it is a "not pinned at the cap"
+                // check, not a tuning target.
+                int worstCondition = 100, pinned = 0, regulars = 0;
+                foreach (var q in trainClub.Squad)
+                {
+                    if (q is null || q.ClubAppearances < leaguePlayedByMe / 2) continue;
+                    regulars++;
+                    int cond = System.Math.Clamp(100 - q.FatigueCarry, 0, 100);
+                    if (cond < worstCondition) worstCondition = cond;
+                    if (q.FatigueCarry >= 95) pinned++;
+                }
+                Check(regulars > 0 && pinned == 0,
+                    $"no regular is pinned at the fatigue cap ({pinned}/{regulars})");
+                Check(worstCondition >= 20,
+                    $"the tiredest regular still has condition left ({worstCondition})");
+                GD.Print($"  [fitness] {regulars} regulars, worst condition {worstCondition}, pinned {pinned}");
+
+                // ---- THE DIARY -----------------------------------------------
+                var diary = OpenSwos.Competition.Career.Chronicle.Read(recCar.Career);
+                Check(diary.Count > 0, $"the season wrote a diary ({diary.Count} lines)");
+                bool rendered = diary.Count > 0
+                    && OpenSwos.Competition.Career.Chronicle.RenderEnglish(diary[0]).Length > 0
+                    && !OpenSwos.Competition.Career.Chronicle.RenderEnglish(diary[0]).Contains("%");
+                Check(rendered, "a diary line renders with no placeholder left in it");
+                foreach (var e in diary)
+                    if (e.Kind == "training") { rendered = true; break; }
+                Check(rendered, "the training session reached the diary");
+                for (int i = 0; i < System.Math.Min(4, diary.Count); i++)
+                    GD.Print("  [diary] " + OpenSwos.Competition.Career.Chronicle.RenderEnglish(diary[i]));
+
+                // ---- LEGENDS --------------------------------------------------
+                OpenSwos.Competition.Career.CareerRecords.UpdateLegends(recCar.Career);
+                var legends = OpenSwos.Competition.Career.CareerRecords.Legends(recCar.Career);
+                Check(legends.Count > 0, $"the club has a records board ({legends.Count} rows)");
+                Check(legends.Count < 2 || legends[0].Appearances >= legends[1].Appearances,
+                    "the records board is sorted by appearances");
+                // The board must survive the player LEAVING, which is its point.
+                int legendId = legends.Count > 0 ? legends[0].PlayerId : -1;
+                if (legendId > 0)
+                {
+                    OpenSwos.Competition.Career.TransferModel.Release(
+                        recCar.Career!.World!, recCar.Career!.ClubGlobalId, legendId);
+                    var after = OpenSwos.Competition.Career.CareerRecords.Legends(recCar.Career);
+                    bool stillThere = false;
+                    foreach (var r in after) if (r.PlayerId == legendId) stillThere = true;
+                    Check(stillThere, "a sold player keeps his place on the records board");
+                }
+
+                // ---- ROUND TRIP ------------------------------------------------
+                OpenSwos.Competition.CompetitionStore.Save(recCar);
+                var reloaded = OpenSwos.Competition.CompetitionStore.Load();
+                int reloadedDiary = reloaded?.Career?.Chronicle?.Count ?? -1;
+                Check(reloadedDiary == (recCar.Career!.Chronicle?.Count ?? 0),
+                    $"the diary survives save/load ({reloadedDiary})");
+                var reloadedClub = reloaded?.Career?.World?.Clubs is not null
+                    && reloaded.Career.World.Clubs.TryGetValue(reloaded.Career.ClubGlobalId, out var rc)
+                    ? rc : null;
+                int reloadedApps = 0;
+                if (reloadedClub?.Squad is not null)
+                    foreach (var q in reloadedClub.Squad) if (q is not null) reloadedApps += q.ClubAppearances;
+                Check(reloadedClub is not null && reloadedApps > 0,
+                    $"appearances survive save/load ({reloadedApps})");
+                Check((reloadedClub?.Legends?.Count ?? 0) == legends.Count,
+                    "the records board survives save/load");
+
+                OpenSwos.Competition.Career.ScorerModel.Source = null;
+            }
 
             // --- STEP 07: multi-season ageing + retirement (no regen yet, so the
             // world only shrinks; refill lands in a later step).
@@ -1875,6 +2571,16 @@ public partial class Main : Node2D
             var loaded = OpenSwos.Competition.CompetitionStore.Load();
             Check(loaded is not null && loaded.Career?.Season == car.Career?.Season && loaded.Fixtures.Count == car.Fixtures.Count,
                 "store save/load round-trip");
+            // Feature #1: the season statement must survive a save/load, or the
+            // FINANCES screen goes blank the moment a player reloads.
+            Check(loaded?.Career?.Memos is not null
+                  && loaded.Career.Memos.Count == car.Career!.Memos.Count
+                  && loaded.Career.LastVerdict == car.Career!.LastVerdict,
+                "chairman memos survive save/load");
+            Check(loaded?.Career?.LastAccount is not null
+                  && loaded.Career.LastAccount.ClosingBalance == car.Career!.LastAccount!.ClosingBalance
+                  && loaded.Career.AccountHistory.Count == car.Career!.AccountHistory.Count,
+                "season finance statement survives save/load");
             // STEP 02: the CareerWorld must survive JSON save/load intact.
             bool worldRoundTrip = loaded?.Career?.World is not null
                 && loaded.Career.World.Clubs.Count == world.Clubs.Count
@@ -1891,6 +2597,32 @@ public partial class Main : Node2D
                 for (int i = 0; i < preferredIds.Count; i++)
                     if (llc2.PreferredLineup[i] != preferredIds[i]) { lineupRoundTrip = false; break; }
             Check(lineupRoundTrip, "preferred lineup survives save/load");
+
+            // The slot list must NOT deserialize the world (2026-08-24: doing so
+            // was reading ~130 MB of JSON while a menu screen was being built,
+            // which is the freeze the user reported). It now streams the label
+            // fields straight off the file and skips everything else — so guard
+            // that the streamed label still equals the fully-parsed one, or the
+            // two will drift the moment CompetitionState gains a property.
+            {
+                OpenSwos.Competition.CompetitionStore.SaveAs(car, "SLOTLABELTEST");
+                string streamed = "";
+                foreach (var (slotName, slotLabel) in OpenSwos.Competition.CompetitionStore.ListSlots())
+                    if (slotName == "SLOTLABELTEST") streamed = slotLabel;
+                var full = OpenSwos.Competition.CompetitionStore.LoadSlot("SLOTLABELTEST");
+                string expected = full is null ? "" :
+                    $"{full.Name} - " +
+                    (full.Finished
+                        ? (full.Champion >= 0 && full.Champion < full.Teams.Count
+                            ? $"WINNER {full.Teams[full.Champion].Name}" : "FINISHED")
+                        : $"ROUND {full.CurrentRound + 1}/{full.TotalRounds}") +
+                    " - " + (full.PlayerTeam >= 0 && full.PlayerTeam < full.Teams.Count
+                        ? full.Teams[full.PlayerTeam].Name : "NO TEAM");
+                Check(streamed.Length > 0 && streamed == expected,
+                    $"slot label read WITHOUT parsing the world ('{streamed}')");
+                OpenSwos.Competition.CompetitionStore.DeleteSlot("SLOTLABELTEST");
+            }
+
             OpenSwos.Competition.CompetitionStore.Delete();
             Check(!OpenSwos.Competition.CompetitionStore.Exists(), "store delete");
         }
@@ -1965,11 +2697,27 @@ public partial class Main : Node2D
         // locates the player's club inside the list it is given. 20 seasons =
         // the balance soak (step 18): watch for runaway inflation / collapse.
         for (int s = 0; s < 20; s++)
+        {
             OpenSwos.Competition.CompetitionEngine.AdvanceCareerSeason(
                 car,
                 new System.Collections.Generic.List<OpenSwos.Competition.TeamRef>(league),
                 new System.Collections.Generic.List<OpenSwos.Competition.TeamRef>(cup), 0);
+            // Feature #2: the chairman can end the career mid-soak. This report
+            // is a BALANCE soak, not a play-through, so keep the manager in post
+            // and note it rather than silently losing seasons off the end.
+            if (car.Career!.Sacked)
+            {
+                GD.Print($"  [chairman] would have been dismissed after season {car.Career!.Season} " +
+                    $"(verdict {car.Career!.LastVerdict}, score {car.Career!.LastSeasonScore}) " +
+                    "— report continues with the sacking waived");
+                car.Career!.Sacked = false;
+                car.Career!.Retired = false;
+                car.Career!.ConsecutiveBadSeasons = 0;
+            }
+        }
         PrintSquad($"season {car.Career!.Season}, after 20 seasons");
+        GD.Print($"  [chairman] last verdict {car.Career!.LastVerdict} " +
+            $"(score {car.Career!.LastSeasonScore}), memos {car.Career!.Memos.Count}");
 
         var youths = new System.Collections.Generic.List<OpenSwos.Competition.Career.CareerPlayer>();
         foreach (var club in world.Clubs.Values)
@@ -2016,6 +2764,7 @@ public partial class Main : Node2D
         OpenSwos.Sim.Port.Referee.ResetDebugCounters();
         OpenSwos.Sim.Port.PlayerUpdate.ResetDiveCounters();
         OpenSwos.Sim.Port.InputControls.ResetCtrlSwapCounters();
+        OpenSwos.Sim.Port.PlayerActions.ResetShotCounters();
 
         // ---- Telemetry tracking state -----------------------------------------
         // To detect "STUCK" (nobody moves for 200+ consecutive ticks) we snapshot
@@ -2074,6 +2823,10 @@ public partial class Main : Node2D
             {
                 TickSwosPort();
                 completed = t + 1;
+
+                // Task #242 - pure telemetry: sample each recorded shot's
+                // heading error against the goal 18 ticks after the kick.
+                OpenSwos.Sim.Port.PlayerActions.TickShotCurveTracker();
 
                 // OpenSWOS fatigue verification: the first tick runs
                 // InitSwosVmFromMatchSetup (seeds energy + sets EffectEnabled from
@@ -2329,6 +3082,14 @@ public partial class Main : Node2D
         // happened to skirt the threshold looked identical to one that
         // tripped it. Print a roll-up so callers see the real story.
         GD.Print($"[stall-summary] stuck-events={totalStuckEvents} clock-stall-events={totalClockStallEvents}");
+        {
+            // Shot geometry (task #242) — a plain kick apexes at 15.6 px after
+            // ~70 px of travel while the net window is z <= 15, so WHERE the AI
+            // shoots from decides whether it can score at all.
+            var b = OpenSwos.Sim.Port.PlayerActions.ShotDistanceBuckets;
+            GD.Print($"[shots] finishing={OpenSwos.Sim.Port.PlayerActions.ShotsFinishing} long={OpenSwos.Sim.Port.PlayerActions.ShotsLong} | dist<30={b[0]} <45={b[1]} <60={b[2]} <80={b[3]} <120={b[4]} >=120={b[5]}");
+            GD.Print($"[curve] toward={OpenSwos.Sim.Port.PlayerActions.CurveToward} away={OpenSwos.Sim.Port.PlayerActions.CurveAway} flat={OpenSwos.Sim.Port.PlayerActions.CurveFlat} | avg|err0|={OpenSwos.Sim.Port.PlayerActions.CurveErrStartAvg} avg|rot|={OpenSwos.Sim.Port.PlayerActions.CurveErrEndAvg} | onTarget={OpenSwos.Sim.Port.PlayerActions.ShotsOnTarget} offTarget={OpenSwos.Sim.Port.PlayerActions.ShotsOffTarget} | finishing on/off={OpenSwos.Sim.Port.PlayerActions.FinishingOnTarget}/{OpenSwos.Sim.Port.PlayerActions.FinishingOffTarget} miss(wide/high/short)={OpenSwos.Sim.Port.PlayerActions.FinMissWide}/{OpenSwos.Sim.Port.PlayerActions.FinMissHigh}/{OpenSwos.Sim.Port.PlayerActions.FinMissShort} crossOff<20={OpenSwos.Sim.Port.PlayerActions.FinCrossOffset[0]} <40={OpenSwos.Sim.Port.PlayerActions.FinCrossOffset[1]} <70={OpenSwos.Sim.Port.PlayerActions.FinCrossOffset[2]} >=70={OpenSwos.Sim.Port.PlayerActions.FinCrossOffset[3]}");
+        }
 
         // Referee FSM telemetry — counts state transitions so callers can
         // confirm the booking pipeline actually advances when fouls are
@@ -3621,8 +4382,19 @@ public partial class Main : Node2D
 
     // Idle-frame hook: ONLY drives the --menu-shot screenshot harness. The real
     // game logic runs in _PhysicsProcess; this stays empty in normal launches.
+    // ---- OPTIONAL MODULE: the browser career client -------------------------
+    // The web front-end (scripts/Web/, Main.Web.cs, Main.LiveMatch.cs) is not
+    // part of this repository. These are classic partial methods: with the
+    // module present they are implemented in Main.Web.cs, and without it the
+    // compiler removes both the declaration and every call to it, so the game
+    // builds and runs exactly the same minus those two CLI flags.
+    partial void TryWebArgs(System.Collections.Generic.List<string> allArgs, int index, ref bool handled);
+    partial void PumpCareerWeb();
+
     public override void _Process(double delta)
     {
+        PumpCareerWeb();
+
         if (_menuShotActive) { _menuShotStepSeconds += delta; MenuShotTick(); }
         if (_matchShotActive) { _matchShotSeconds += delta; MatchShotTick(); }
 
@@ -3641,6 +4413,10 @@ public partial class Main : Node2D
             }
         }
     }
+
+    // The chairman's end-of-season verdict has been seen and stepped off, so the
+    // career screens tour can start (menu-shot case 33).
+    private bool _menuShotSawMemo;
 
     // Wall-clock seconds spent in the CURRENT menu-shot step (frame counts are
     // useless as timeouts — an uncapped _Process can run at hundreds of fps).
@@ -3755,47 +4531,64 @@ public partial class Main : Node2D
                      // (wave M2) — shoot it, then confirm the default name.
                      if (f == 6) Shot("10b_manager_name");
                      if (f == 9 && c.DebugTextInputActive) c.DebugTextConfirm();
-                     if (f == 16) { Shot("11_career_dashboard"); GD.Print($"[menu-shot] comp: {c.DebugCompSummary()}"); }
+                     // +8 frames: confirming the name now goes through the
+                     // PLEASE WAIT screen (career creation builds a world of
+                     // ~29 000 players), so the dashboard does not exist for a
+                     // couple of frames after the confirm. Shooting too early
+                     // photographed PLEASE WAIT instead.
+                     if (f == 29) GD.Print($"[menu-shot] comp: {c.DebugCompSummary()}");
                      // Career SQUAD screen: ages / scouted potential / form / fitness.
                      // Inject injuries first so the red INJ / yellow-knock rows show.
-                     if (f == 18) c.DebugInjureSquadPlayers();
-                     if (f == 20) c.DebugFireLabel("SQUAD");
-                     if (f == 26) Shot("11b_career_squad");
-                     if (f == 30) c.DebugBack();
-                     if (f == 34) c.DebugFireLabel("TRANSFERS");
-                     if (f == 40) Shot("11c_career_transfers");
+                     if (f == 30) c.DebugInjureSquadPlayers();
+                     if (f == 32) c.DebugFireLabel("SQUAD");
+                     if (f == 38) Shot("11b_career_squad");
+                     if (f == 42) c.DebugBack();
+                     if (f == 46) c.DebugFireLabel("TRANSFERS");
+                     if (f == 52) Shot("11c_career_transfers");
                      // Inline table-select proof: FIRE on PLAYER drops into the
                      // visible transfer table (no pushed picker); move a few rows
                      // and the bound field turns accent-gold while the row
                      // highlight follows — screenshot then cancel back out.
-                     if (f == 42) c.DebugTableSelectEnter();
-                     if (f == 45) c.DebugTableSelectMove(+3);
-                     if (f == 48 && c.DebugTableSelectActive) Shot("11c2_transfers_tableselect");
-                     if (f == 51) c.DebugTableSelectCancel();
-                     if (f == 54) c.DebugBack();
-                     if (f == 58) c.DebugFireLabel("STAFF");
-                     if (f == 64) Shot("11d_career_staff");
-                     if (f == 68) c.DebugBack();
-                     if (f == 72) c.DebugFireLabel("SCOUTING");
-                     if (f == 78) Shot("11e_career_scouting");
-                     if (f == 82) c.DebugBack();
+                     if (f == 54) c.DebugTableSelectEnter();
+                     if (f == 57) c.DebugTableSelectMove(+3);
+                     if (f == 60 && c.DebugTableSelectActive) Shot("11c2_transfers_tableselect");
+                     if (f == 63) c.DebugTableSelectCancel();
+                     if (f == 66) c.DebugBack();
+                     if (f == 70) c.DebugFireLabel("STAFF");
+                     if (f == 76) Shot("11d_career_staff");
+                     if (f == 80) c.DebugBack();
+                     if (f == 84) c.DebugFireLabel("SCOUTING");
+                     if (f == 90) Shot("11e_career_scouting");
+                     if (f == 94) c.DebugBack();
+                     // FINANCES before any season has finished: proves the empty
+                     // state renders (career depth plan feature #1).
+                     if (f == 96) c.DebugFireLabel("FINANCES");
+                     if (f == 100) Shot("11j_career_finances_empty");
+                     if (f == 102) c.DebugBack();
                      // Pre-match lineup editor: SWOS inline-table swap. It enters
                      // directly in table mode over the 16 slot rows. Mark row 3,
                      // move to row 5 (both highlights visible), FIRE to swap, then
                      // restore via AUTO.
-                     if (f == 86) c.DebugFireLabel("LINEUP");        // push editor -> auto table mode
-                     if (f == 92) Shot("11f_career_lineup");        // table mode, row 0 lit
-                     if (f == 95) c.DebugTableSelectMove(+3);       // -> row 3
-                     if (f == 98) c.DebugTableSelectConfirm();      // mark row 3 (stays in table)
-                     if (f == 101) c.DebugTableSelectMove(+2);      // -> row 5
-                     if (f == 104) Shot("11g_career_lineup_marked");// mark@3 (gold) + nav@5 (blue)
-                     if (f == 107) c.DebugTableSelectConfirm();     // swap 3<->5, saves
-                     if (f == 110) Shot("11h_career_lineup_swapped");// swapped names
-                     if (f == 113) c.DebugTableSelectCancel();      // -> entry column (AUTO/BACK)
-                     if (f == 116) c.DebugFireLabel("AUTO");        // restore original lineup
-                     if (f == 119) Shot("11i_career_lineup_auto");
-                     if (f == 122) c.DebugBack();
-                     if (f >= 126) Adv();
+                     if (f == 106) c.DebugFireLabel("LINEUP");        // push editor -> auto table mode
+                     if (f == 112) Shot("11f_career_lineup");       // table mode, row 0 lit
+                     if (f == 115) c.DebugTableSelectMove(+3);      // -> row 3
+                     if (f == 118) c.DebugTableSelectConfirm();     // mark row 3 (stays in table)
+                     if (f == 121) c.DebugTableSelectMove(+2);      // -> row 5
+                     if (f == 124) Shot("11g_career_lineup_marked");// mark@3 (gold) + nav@5 (blue)
+                     if (f == 127) c.DebugTableSelectConfirm();     // swap 3<->5, saves
+                     if (f == 130) Shot("11h_career_lineup_swapped");// swapped names
+                     if (f == 133) c.DebugTableSelectCancel();      // -> entry column (AUTO/BACK)
+                     if (f == 136) c.DebugFireLabel("AUTO");        // restore original lineup
+                     if (f == 139) Shot("11i_career_lineup_auto");
+                     if (f == 142) c.DebugBack();
+                     // The DASHBOARD is photographed HERE, at the end of the tour,
+                     // rather than right after the career is created. Creation now
+                     // goes through PLEASE WAIT (a world of ~29 000 players) and
+                     // Shot captures a frame that lags the logic by several
+                     // frames, so an early shot photographed the wait screen.
+                     // Here we are demonstrably back on the dashboard.
+                     if (f == 148) Shot("11_career_dashboard");
+                     if (f >= 152) Adv();
                      break;
             case 27:
                      // E2E proof: instead of PLAYING the career's first fixture,
@@ -3832,11 +4625,209 @@ public partial class Main : Node2D
                          GD.Print($"[menu-shot] comp after match: {c.DebugCompSummary()}");
                          Adv();
                      } break;
-            case 31: if (f >= 3) { c.DebugBack(); Adv(); } break;                      // dashboard -> home
-            case 32: if (f >= 3) { c.DebugFireLabel("OPTIONS"); Adv(); } break;
-            case 33: if (f >= 6) { Shot("14_options_p1"); Adv(); } break;
-            case 34: if (f >= 3) { c.DebugFireLabel("PAGE"); Adv(); } break;           // pager -> page 2
-            case 35: if (f >= 6) { Shot("15_options_p2"); Adv(); } break;
+            case 31:
+                     // Career depth plan feature #1: play the season out so the
+                     // FINANCES screen has a real statement to show, then shoot
+                     // both of its pages.
+                     //
+                     // Feature #3 has to be photographed FIRST: job offers are
+                     // offers to coach NEXT season, so they lapse the instant
+                     // the rollover happens. Play the season without rolling it
+                     // over, shoot the letters, then roll.
+                     if (f == 3)
+                     {
+                         c.DebugFastForwardSeason(advance: false);
+                         GD.Print($"[menu-shot] jobs: {c.DebugJobSummary()}");
+                     }
+                     if (f == 6 && !c.DebugFireLabel("JOB OFFERS"))
+                         GD.Print("[menu-shot] no JOB OFFERS entry this run");
+                     if (f == 12) Shot("13e_job_offers");
+                     // Take the job, so the rollover below exercises the MOVE:
+                     // new club, new nation, new division, new league pool.
+                     if (f == 14) c.DebugFireLabel("ACCEPT");
+                     if (f == 16) c.DebugBack();
+                     // Roll over through the REAL button, not the debug helper,
+                     // so the PLEASE WAIT screen that now fronts the rollover is
+                     // exercised and photographed (measured at ~1.7 s of world
+                     // simulation; see MenuClient.RunBusy).
+                     if (f == 18 && !c.DebugFireLabel("NEXT SEASON"))
+                     {
+                         GD.Print("[menu-shot] no NEXT SEASON entry - using the debug roll");
+                         c.DebugFastForwardSeason();
+                     }
+                     if (f == 19) Shot("13l_please_wait");
+                     if (f == 21)
+                     {
+                         GD.Print($"[menu-shot] season rolled to: {c.DebugCompSummary()}");
+                         GD.Print($"[menu-shot] jobs after rollover: {c.DebugJobSummary()}");
+                     }
+                     // Feature #2: the rollover pushes the chairman's verdict on
+                     // top of the dashboard, so photograph it where it lands.
+                     if (f == 23) Shot("13c_chairman_verdict");
+                     if (f == 26) c.DebugBack();
+                     if (f == 29) c.DebugFireLabel("FINANCES");
+                     if (f == 35) Shot("13a_career_finances");
+                     if (f == 38) c.DebugFireLabel("SEASON BY SEASON");
+                     if (f == 44) Shot("13b_career_finances_history");
+                     if (f == 47) c.DebugBack();
+                     if (f == 50) c.DebugFireLabel("CHAIRMAN");
+                     if (f == 56) Shot("13d_chairman_inbox");
+                     if (f == 59) c.DebugBack();
+                     if (f >= 63) Adv();
+                     break;
+            case 32:
+                     // Feature #4: the national job is EARNED, so play seasons
+                     // until a committee calls, then photograph the letter and
+                     // the squad screen it opens.
+                     if (f == 3)
+                     {
+                         bool called = c.DebugPlayUntilNationalOffer(10);
+                         GD.Print($"[menu-shot] national: {c.DebugNationalSummary()} (called={called})");
+                     }
+                     // The rollover pushes the chairman's memo on top; step off
+                     // it before looking for the dashboard entry.
+                     if (f == 4 && c.DebugTitle.Contains("CHAIRMAN")) c.DebugBack();
+                     if (f == 6 && !c.DebugFireLabel("INTERNATIONAL JOB OFFER"))
+                         GD.Print("[menu-shot] no INTERNATIONAL JOB OFFER entry this run");
+                     if (f == 12) Shot("13f_national_offer");
+                     if (f == 15) c.DebugFireLabel("ACCEPT");
+                     if (f == 19) c.DebugFireLabel("AUTO PICK");
+                     if (f == 25) Shot("13g_national_squad");
+                     if (f == 28) GD.Print($"[menu-shot] national after: {c.DebugNationalSummary()}");
+                     // Only step back out of the national screens if we were
+                     // ever in them: the offer is EARNED, so a career that never
+                     // reached the reputation gate is still on the dashboard and
+                     // one more BACK would drop it to HOME.
+                     if (f == 31 && !c.DebugTitle.Contains("CAREER")) c.DebugBack();
+                     // Feature #5: several seasons have been played by now, so
+                     // the scorer lists and the MANAGEMENT RECORD's per-season
+                     // top-scorer line all have real content to photograph.
+                     // The rollover above left a season with no fixtures played,
+                     // so play THIS one out (without rolling again) or the
+                     // scorer list is legitimately empty and the shot proves
+                     // nothing.
+                     if (f == 33) c.DebugFastForwardSeason(advance: false);
+                     if (f == 34 && !c.DebugFireLabel("TOP SCORERS"))
+                     {
+                         GD.Print($"[menu-shot] not on the dashboard ({c.DebugTitle}) - re-entering");
+                         c.DebugFireLabel("CAREER");
+                     }
+                     if (f == 37 && !c.DebugTitle.Contains("SCORER")) c.DebugFireLabel("TOP SCORERS");
+                     if (f == 43) Shot("13h_top_scorers");
+                     if (f == 46) c.DebugFireLabel("LIST");      // -> my club
+                     if (f == 52) Shot("13i_top_scorers_club");
+                     if (f == 55) c.DebugFireLabel("LIST");      // -> season by season
+                     if (f == 61) Shot("13j_top_scorers_seasons");
+                     if (f == 64) c.DebugBack();
+                     if (f == 67) c.DebugFireLabel("RECORD");
+                     if (f == 73) Shot("13k_management_record");
+                     if (f == 76) c.DebugBack();
+                     if (f >= 80) Adv();   // stay on the dashboard for case 33
+                     break;
+            case 33:
+                     // Roll into a fresh season: there is no training between
+                     // seasons, and the youth intake belongs to the season that
+                     // is about to start. Then wait for the dashboard — the
+                     // rollover pushes the chairman's verdict on top of it, and
+                     // it arrives whenever the world simulation finishes.
+                     if (f == 2 && !c.DebugTitle.Contains("CAREER")) c.DebugFireLabel("CAREER");
+                     if (f == 4 && !c.DebugFireLabel("NEXT SEASON"))
+                         GD.Print("[menu-shot] no NEXT SEASON entry - season may already be live");
+                     // Wait for the verdict to ARRIVE and be stepped off, not
+                     // for an arbitrary frame: it is pushed when the world
+                     // simulation finishes, which took f=19 in one run and had
+                     // not happened by f=30 in the next — and then landed on top
+                     // of the YOUTH INTAKE screen the following step had opened.
+                     if (c.DebugTitle.Contains("CHAIRMAN")) { _menuShotSawMemo = true; c.DebugBack(); }
+                     if (f >= 30 && (_menuShotSawMemo || f >= 90) && c.DebugTitle.Contains("CAREER"))
+                         Adv();
+                     break;
+            case 34:
+                     if (c.DebugTitle.Contains("CHAIRMAN")) c.DebugBack();
+                     // YOUTH INTAKE (career depth plan feature #6).
+                     if (f == 2 && !c.DebugFireLabel("YOUTH INTAKE"))
+                     {
+                         GD.Print("[menu-shot] no YOUTH INTAKE entry this run");
+                         Adv();
+                     }
+                     if (f >= 8 && c.DebugTitle.Contains("YOUTH"))
+                     {
+                         Shot("16c_youth_intake");
+                         c.DebugBack();
+                         Adv();
+                     }
+                     if (f > 40) { GD.PrintErr("[menu-shot] YOUTH INTAKE never opened"); Adv(); }
+                     break;
+            case 35:
+                     if (c.DebugTitle.Contains("CHAIRMAN")) c.DebugBack();
+                     // TRAINING (user directive, 2026-08-26).
+                     if (f == 2 && !c.DebugFireLabel("TRAINING"))
+                         GD.Print($"[menu-shot] no TRAINING entry on '{c.DebugTitle}'");
+                     if (f == 8 && c.DebugTitle == "TRAINING") c.DebugFireLabel("AUTO PICK");
+                     if (f >= 14 && c.DebugTitle == "TRAINING")
+                     {
+                         Shot("16a_training");
+                         c.DebugFireLabel("RUN SESSION");
+                         Adv();
+                     }
+                     if (f > 40) { GD.PrintErr("[menu-shot] TRAINING never opened"); Adv(); }
+                     break;
+            case 36:
+                     if (c.DebugTitle.Contains("CHAIRMAN")) c.DebugBack();
+                     // The report the session pushes. Waits for the screen
+                     // rather than for a frame: RUN SESSION runs behind PLEASE
+                     // WAIT and that lasts as long as the work does.
+                     if (f >= 4 && c.DebugTitle.Contains("REPORT"))
+                     {
+                         Shot("16b_training_report");
+                         c.DebugBack();
+                         Adv();
+                     }
+                     if (f > 90) { GD.PrintErr("[menu-shot] TRAINING REPORT never appeared"); Adv(); }
+                     break;
+            case 37:
+                     if (c.DebugTitle.Contains("CHAIRMAN")) c.DebugBack();
+                     // CLUB DIARY (feature #7).
+                     if (f == 2 && !c.DebugTitle.Contains("CAREER")) c.DebugBack();
+                     if (f == 5) c.DebugFireLabel("CLUB DIARY");
+                     if (f >= 11 && c.DebugTitle.Contains("DIARY"))
+                     {
+                         Shot("16d_club_diary");
+                         c.DebugBack();
+                         Adv();
+                     }
+                     if (f > 40) { GD.PrintErr("[menu-shot] CLUB DIARY never opened"); Adv(); }
+                     break;
+            case 38:
+                     if (c.DebugTitle.Contains("CHAIRMAN")) c.DebugBack();
+                     // CLUB RECORDS (feature #8).
+                     if (f == 3) c.DebugFireLabel("CLUB RECORDS");
+                     if (f >= 9 && c.DebugTitle.Contains("RECORDS"))
+                     {
+                         Shot("16e_club_records");
+                         c.DebugBack();
+                         Adv();
+                     }
+                     if (f > 40) { GD.PrintErr("[menu-shot] CLUB RECORDS never opened"); Adv(); }
+                     break;
+            case 39:
+                     if (c.DebugTitle.Contains("CHAIRMAN")) c.DebugBack();
+                     // The squad screen now carries APP / GLS (feature #8), and
+                     // by this point in the tour they have numbers in them.
+                     if (f == 3) c.DebugFireLabel("SQUAD");
+                     if (f >= 9 && c.DebugTitle.Contains("SQUAD"))
+                     {
+                         Shot("16f_squad_counters");
+                         c.DebugBack();
+                         Adv();
+                     }
+                     if (f > 40) { GD.PrintErr("[menu-shot] SQUAD never opened"); Adv(); }
+                     break;
+            case 40: if (f >= 3) { c.DebugBack(); Adv(); } break;   // dashboard -> home
+            case 41: if (f >= 3) { c.DebugFireLabel("OPTIONS"); Adv(); } break;
+            case 42: if (f >= 6) { Shot("14_options_p1"); Adv(); } break;
+            case 43: if (f >= 3) { c.DebugFireLabel("PAGE"); Adv(); } break;           // pager -> page 2
+            case 44: if (f >= 6) { Shot("15_options_p2"); Adv(); } break;
             default:
                 OpenSwos.Competition.CompetitionStore.Delete();   // leave no test save behind
                 GD.Print("[menu-shot] done");
@@ -4006,47 +4997,15 @@ public partial class Main : Node2D
                             // client (player = home slot) BEFORE NewMatch zeroes it.
                             if (_competitionMatchPending)
                             {
-                                _lastCompetitionResult = (_match.ScorePlayer, _match.ScoreOpponent);
-                                // The human always sims on the top/home slots
-                                // (0..10). Average their consumed energy and map
-                                // to the 0..10 distance scale MatchEffects uses
-                                // (surrogate is a flat 5). Read while sim memory
-                                // is still live — before NewMatch zeroes it.
-                                int homeConsumed = 0;
-                                for (int slot = 0; slot <= 10; slot++)
-                                    homeConsumed += OpenSwos.Sim.Port.PlayerEnergy.Max
-                                        - OpenSwos.Sim.Port.PlayerEnergy.ReadEnergy(slot);
-                                homeConsumed /= 11;
-                                _lastMatchHomeDistance =
-                                    homeConsumed * 10 / OpenSwos.Sim.Port.PlayerEnergy.Max;
-
-                                // Post-match injuries (UpdatePlayerInjuries,
-                                // swos.asm:35651-35701). The human always plays the
-                                // home/top physical store (team1InGameTeamPlayers),
-                                // which never moves (half-time swaps only pointer
-                                // fields). Scan all 16 slots (a starter subbed off
-                                // keeps his record in the 11..15 range) and record
-                                // the severity of every slot that finished injured
-                                // and was NOT substituted off — the original skips
-                                // subbed-off and CPU players (only the human club
-                                // persists). Read while sim memory is still live.
-                                var injuries = new System.Collections.Generic.List<(int slot, int severity)>();
-                                int injBase = OpenSwos.SwosVm.Memory.Addr.team1InGameTeamPlayers;
-                                for (int islot = 0; islot < 16; islot++)
-                                {
-                                    int rec = injBase + islot * OpenSwos.Sim.Port.TeamDataLoader.PlayerInfoSize;
-                                    if (OpenSwos.SwosVm.Memory.ReadByte(rec + OpenSwos.Sim.Port.TeamDataLoader.OffSubstituted) != 0)
-                                        continue;
-                                    if (OpenSwos.SwosVm.Memory.ReadByte(rec + OpenSwos.Sim.Port.TeamDataLoader.OffIsInjured) == 0)
-                                        continue;
-                                    int severity = (OpenSwos.SwosVm.Memory.ReadByte(
-                                        rec + OpenSwos.Sim.Port.TeamDataLoader.OffInjuriesBits) >> 5) & 7;
-                                    if (severity <= 0) continue;
-                                    int index = OpenSwos.SwosVm.Memory.ReadByte(
-                                        rec + OpenSwos.Sim.Port.TeamDataLoader.OffIndex);
-                                    injuries.Add((index, severity));
-                                }
-                                _lastMatchInjuries = injuries.Count > 0 ? injuries : null;
+                                // Read while sim memory is still live — before
+                                // NewMatch zeroes it. Shared with the streamed
+                                // web match (Main.LiveMatch.cs) so a spectated
+                                // fixture carries the identical consequences.
+                                var outcome = CaptureMatchOutcome();
+                                _lastCompetitionResult = (outcome.player, outcome.opponent);
+                                _lastMatchHomeDistance = outcome.distance;
+                                _lastMatchInjuries = outcome.injuries;
+                                _lastMatchScorers = outcome.scorers;
                                 _competitionMatchPending = false;
                             }
                             else
@@ -6239,6 +7198,65 @@ public partial class Main : Node2D
     //
     // This integer add carries no fractional bits so we still satisfy the
     // "no float math" rule.
+    /// <summary>
+    /// Resolves the atlas cell a SwosVm slot should draw this tick, or false
+    /// when the VM has not wired enough state yet (caller falls back to the
+    /// legacy animation-phase lookup).
+    ///
+    /// Extracted from UpdateSprite so the match recorder (Web/MatchSnapshot.cs)
+    /// writes the SAME cell the renderer draws — a snapshot that resolved frames
+    /// its own way would play back subtly out of step with the game.
+    ///
+    /// Mirrors player.cpp:3517-3547:
+    ///   D0 = *(word *)(frameIndicesTable + frameIndex * 2);
+    ///   if (D0 &lt; 0)  keep current imageIndex;
+    ///   imageIndex = D0 + sprite.frameOffset;
+    /// frameIndex starts at -1 (SetPlayerAnimationTable sentinel); when negative
+    /// we read frame 0 as the "static" pose, which is what
+    /// SetPlayerAnimationTable would flip to anyway.
+    /// </summary>
+    internal static bool TryResolvePortCell(int portSlot, out (int col, int row) cell)
+    {
+        cell = default;
+        if (portSlot < 0) return false;
+        int slotBase = OpenSwos.SwosVm.PlayerSprite.Base(portSlot);
+        int animTablePtr = OpenSwos.SwosVm.Memory.ReadSignedDword(
+            slotBase + OpenSwos.SwosVm.PlayerSprite.OffAnimTablePtr);
+        int frameIndicesPtr = OpenSwos.SwosVm.Memory.ReadSignedDword(
+            slotBase + OpenSwos.SwosVm.PlayerSprite.OffFrameIndicesTable);
+        if (animTablePtr == 0 || frameIndicesPtr <= 0 || frameIndicesPtr >= 0x60000) return false;
+
+        short frameIdx = OpenSwos.SwosVm.Memory.ReadSignedWord(
+            slotBase + OpenSwos.SwosVm.PlayerSprite.OffFrameIndex);
+        if (frameIdx < 0) frameIdx = 0;
+        short rawImg = OpenSwos.SwosVm.Memory.ReadSignedWord(frameIndicesPtr + (frameIdx * 2));
+        int imageIndex;
+        if (rawImg >= 0)
+        {
+            short frameOff = OpenSwos.SwosVm.Memory.ReadSignedWord(
+                slotBase + OpenSwos.SwosVm.PlayerSprite.OffFrameOffset);
+            imageIndex = rawImg + frameOff;
+        }
+        else
+        {
+            // Negative entries are animation opcodes (-3..-50 pause, -90 goto,
+            // -101/-104/-999 terminators). The per-tick walker
+            // (SpriteUpdate.SetNextPlayerFrame, swos.asm:102834-102966) already
+            // resolved the current picture — frameOffset included — into
+            // sprite.imageIndex, so read that instead of falling to legacy.
+            imageIndex = OpenSwos.SwosVm.Memory.ReadSignedWord(
+                slotBase + OpenSwos.SwosVm.PlayerSprite.OffImageIndex);
+        }
+        if (imageIndex < 0) return false;
+
+        // The VM has already resolved the exact sprite ordinal for this tick
+        // (writhe frames included), so a plain ordinal->tile lookup is all we need.
+        var portCell = SwosOrdinalToAtlasCell(imageIndex);
+        if (!portCell.HasValue) return false;
+        cell = portCell.Value;
+        return true;
+    }
+
     private static void SyncPlayerStateFromSlot(ref PlayerState p, int slot)
     {
         int xPix = (OpenSwos.SwosVm.PlayerSprite.X(slot) >> 16) + PitchOffsetX;
@@ -6287,64 +7305,7 @@ public partial class Main : Node2D
         if (sprite is null) return (0, 0);
         (int col, int row) cell = default;
         bool resolved = false;
-        if (portSlot >= 0)
-        {
-            // SWOS-port path. Mirrors player.cpp:3517-3547:
-            //   D0 = *(word *)(frameIndicesTable + frameIndex * 2);
-            //   if (D0 < 0)  keep current imageIndex;
-            //   imageIndex = D0 + sprite.frameOffset;
-            // frameIndex starts at -1 (SetPlayerAnimationTable sentinel);
-            // SWOS's updateSpriteAnimation cycles 0..N-1 as frameDelay ticks
-            // elapse. Our port hasn't wired that walker yet (Referee.cs:484
-            // stub) so frameIndex stays -1 unless something else writes it -
-            // when negative we read frame 0 as the "static" pose, which is
-            // what SetPlayerAnimationTable would flip to anyway.
-            int slotBase = OpenSwos.SwosVm.PlayerSprite.Base(portSlot);
-            int animTablePtr = OpenSwos.SwosVm.Memory.ReadSignedDword(
-                slotBase + OpenSwos.SwosVm.PlayerSprite.OffAnimTablePtr);
-            int frameIndicesPtr = OpenSwos.SwosVm.Memory.ReadSignedDword(
-                slotBase + OpenSwos.SwosVm.PlayerSprite.OffFrameIndicesTable);
-            if (animTablePtr != 0 && frameIndicesPtr > 0 && frameIndicesPtr < 0x60000)
-            {
-                short frameIdx = OpenSwos.SwosVm.Memory.ReadSignedWord(
-                    slotBase + OpenSwos.SwosVm.PlayerSprite.OffFrameIndex);
-                if (frameIdx < 0) frameIdx = 0;
-                short rawImg = OpenSwos.SwosVm.Memory.ReadSignedWord(frameIndicesPtr + (frameIdx * 2));
-                int imageIndex;
-                if (rawImg >= 0)
-                {
-                    short frameOff = OpenSwos.SwosVm.Memory.ReadSignedWord(
-                        slotBase + OpenSwos.SwosVm.PlayerSprite.OffFrameOffset);
-                    imageIndex = rawImg + frameOff;
-                }
-                else
-                {
-                    // Negative entries are animation opcodes (-3..-50 pause,
-                    // -90 goto, -101/-104/-999 terminators). The per-tick
-                    // walker (SpriteUpdate.SetNextPlayerFrame, swos.asm:
-                    // 102834-102966) already resolved the current picture —
-                    // frameOffset included — into sprite.imageIndex, so read
-                    // that instead of falling straight to legacy. Matters on
-                    // the first tick of a freshly-installed stream whose
-                    // element 0 is a pause opcode (all dive/throw-in streams).
-                    imageIndex = OpenSwos.SwosVm.Memory.ReadSignedWord(
-                        slotBase + OpenSwos.SwosVm.PlayerSprite.OffImageIndex);
-                }
-                if (imageIndex >= 0)
-                {
-                    // The VM has already resolved the exact sprite ordinal for
-                    // this tick (writhe frames included — SpriteUpdate.
-                    // SetNextPlayerFrame flip-flops the pair with the axis
-                    // frozen), so a plain ordinal→tile lookup is all we need.
-                    var portCell = SwosOrdinalToAtlasCell(imageIndex);
-                    if (portCell.HasValue)
-                    {
-                        cell = portCell.Value;
-                        resolved = true;
-                    }
-                }
-            }
-        }
+        if (portSlot >= 0) resolved = TryResolvePortCell(portSlot, out cell);
         if (!resolved)
         {
             // Legacy hand-built path. Unchanged when portSlot < 0 or the port
@@ -8654,6 +9615,13 @@ public partial class Main : Node2D
             var mComm = System.Text.RegularExpressions.Regex.Match(text,
                 "\"commentator\"\\s*:\\s*(true|false)");
             if (mComm.Success) _commentator = mComm.Groups[1].Value == "true";
+            // Board patience (feature #2). Absent key -> NORMAL, so existing
+            // installs get the default the original's memos are written for.
+            var mBoard = System.Text.RegularExpressions.Regex.Match(text,
+                "\"boardPatience\"\\s*:\\s*([0-2])");
+            if (mBoard.Success) _boardPatience = int.Parse(mBoard.Groups[1].Value);
+            OpenSwos.Competition.Career.ChairmanModel.Patience =
+                (OpenSwos.Competition.Career.BoardPatience)System.Math.Clamp(_boardPatience, 0, 2);
             // Front-end menu music: "amiga" / "pc" / "custom" / "off". When the
             // key is ABSENT the field keeps its AMIGA default (fresh settings →
             // AMIGA). Resolved against availability at play time.
@@ -8713,6 +9681,7 @@ public partial class Main : Node2D
                 (_soundSource == OpenSwos.Audio.MatchAudio.SoundSource.Amiga ? "amiga" : "pc") + "\"" +
                 ",\"commentator\":" +
                 (_commentator ? "true" : "false") +
+                ",\"boardPatience\":" + System.Math.Clamp(_boardPatience, 0, 2) +
                 ",\"menuMusic\":\"" +
                 (_menuMusic switch {
                     OpenSwos.Audio.MenuMusic.MusicSource.Pc => "pc",

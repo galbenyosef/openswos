@@ -559,3 +559,188 @@ staff.spec_attack	AANVAL
 staff.spec_defence	VERDEDIGING
 staff.spec_general	ALGEMEEN
 staff.spec_youth	JEUGD
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANCIEN
+fin.title	FINANCIEN
+fin.show_history	SEIZOEN VOOR SEIZOEN
+fin.show_sheet	DIT SEIZOEN
+fin.no_season	GEEN VOLTOOID SEIZOEN
+fin.drawn_up	DE BALANS VOLGT AAN HET EIND VAN HET SEIZOEN
+fin.col_season	SEIZOEN
+fin.col_league	COMPETITIE
+fin.col_cup	BEKER
+fin.col_income	INKOMSTEN
+fin.col_wages	SALARISSEN
+fin.col_balance	SALDO
+fin.season	SEIZOEN
+fin.league	COMPETITIE
+fin.cup	BEKER
+fin.home_games	THUISWEDSTRIJDEN
+fin.crowd	TOESCHOUWERS
+fin.row.opening	SALDO BIJ START SEIZOEN:
+fin.row.gate	RECETTE:
+fin.row.bonuses	PREMIES + TV-RECHTEN:
+fin.row.sponsor	SPONSORING VAN SENSISOFT PLC:
+fin.row.invest	EXTRA INVESTERING VAN DE VOORZITTER:
+fin.row.invest_new	EXTRA INVESTERING VAN DE NIEUWE VOORZITTER:
+fin.row.wages	SPELERSSALARISSEN:
+fin.row.profit	TOTALE WINST:
+fin.row.loss	TOTAAL VERLIES:
+fin.row.closing	NIEUW SALDO:
+fin.row.sales	SPELERSVERKOPEN:
+fin.row.purchases	SPELERSAANKOPEN:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	VOORZITTER
+dash.status_sacked	ONTSLAGEN
+chair.title	VOORZITTER
+chair.memo	MEMO
+chair.none	GEEN MEMOS
+chair.memo_header	MEMO VAN DE CLUBVOORZITTER
+chair.memo_sign	UW VOORZITTER
+chair.earlier	EERDERE MEMOS
+opt.board	BESTUUR
+opt.board_hint	HOE SNEL DE VOORZITTER JE ONTSLAAT
+opt.board_patient	GEDULDIG
+opt.board_normal	NORMAAL
+opt.board_ruthless	MEEDOGENLOOS
+chair.verdict0.1	GOED GEDAAN %a, JE HEBT UITSTEKEND WERK
+chair.verdict0.2	GELEVERD DIT SEIZOEN EN WIJ WAARDEREN DAT
+chair.verdict1.1	EEN GOED SEIZOEN %a, WIJ ZIJN ALLEMAAL ZEER
+chair.verdict1.2	TEVREDEN, GA ZO DOOR
+chair.verdict2.1	EEN WISSELVALLIG SEIZOEN %a, WIJ HOPEN
+chair.verdict2.2	OP SNELLE VERBETERING
+chair.verdict3.1	GEEN BEST SEIZOEN %a, WIJ HOPEN DAT JE
+chair.verdict3.2	ONZE PRESTATIES VOLGEND SEIZOEN VERBETERT
+chair.verdict4.1	EEN ZEER TELEURSTELLEND SEIZOEN %a, WIJ EISEN
+chair.verdict4.2	VOLGEND SEIZOEN VEEL MEER VAN JE
+chair.sacked_league.1	MET GROTE SPIJT HEBBEN HET BESTUUR EN IK
+chair.sacked_league.2	BESLOTEN JE VAN JE TAKEN TE ONTHEFFEN
+chair.not_renewed.1	MET GROTE SPIJT HEBBEN WIJ BESLOTEN JE
+chair.not_renewed.2	CONTRACT NIET TE VERLENGEN - SUCCES
+chair.not_renewed.3	EN WIJ HOPEN JE SNEL WEER TE ZIEN
+chair.league_note.1	LET OP ONZE HUIDIGE STAND IN DE COMPETITIE EN
+chair.league_note.2	ZORG DAT DIE ZO SNEL MOGELIJK VERBETERT
+chair.league_warn.1	DENK ERAAN, ALS ONZE STAND NIET VERBETERT
+chair.league_warn.2	MOETEN WIJ JE POSITIE HEROVERWEGEN
+chair.league_crisis.1	NA EEN VERTROUWENSSTEMMING HEB JE HOOGSTENS
+chair.league_crisis.2	3 WEDSTRIJDEN OM HET TIJ TE KEREN OF JE LIGT ERUIT
+chair.money_note.1	LET OP ONS HUIDIGE BANKSALDO EN
+chair.money_note.2	ZORG DAT HET TEKORT SNEL WORDT WEGGEWERKT
+chair.money_warn.1	EEN HERINNERING OVER HET TEKORT
+chair.money_warn.2	ANDERS MOETEN WIJ JE POSITIE HEROVERWEGEN
+chair.money_crisis.1	NA EEN CRISISVERGADERING EISEN WIJ DAT JE
+chair.money_crisis.2	HET TEKORT NU WEGWERKT OF JE LIGT ERUIT
+chair.new_season.1	EEN NOTITIE OM JE VEEL SUCCES TE WENSEN IN HET
+chair.new_season.2	NIEUWE SEIZOEN
+chair.embargo_buy.1	SORRY %a, DE CLUB IS NIET BEREID OM
+chair.embargo_buy.2	DIT SEIZOEN NOG SPELERS TE KOPEN
+chair.embargo_sell.1	LET OP %a, WIJ STAAN GEEN
+chair.embargo_sell.2	VERDERE SPELERSVERKOPEN TOE DIT SEIZOEN
+chair.sacked_money.1	MET GROTE SPIJT HEBBEN HET BESTUUR EN IK
+chair.sacked_money.2	BESLOTEN JE VAN JE TAKEN TE ONTHEFFEN
+# JOB OFFERS (career depth plan feature #3)
+job.title	BAANAANBIEDINGEN
+job.none	GEEN AANBIEDINGEN
+job.offer	AANBOD
+job.accept	ACCEPTEREN
+job.decline	AFWIJZEN
+job.declined	AANBOD AFGEWEZEN
+job.not_available	AANBOD NIET BESCHIKBAAR
+job.signed_prefix	AKKOORD MET
+job.new_job	NIEUWE BAAN
+job.reputation	REPUTATIE
+job.rep_world	WERELDKLASSE
+job.rep_high	HOOG AANGESCHREVEN
+job.rep_good	GEWAARDEERD
+job.rep_known	BEKEND
+job.rep_unproven	ONBEWEZEN
+job.rep_unwanted	ONGEWENST
+job.division	DIVISIE
+job.squad	SELECTIE
+job.letter_header	BAANAANBOD VAN %a
+job.letter.1	GEACHTE HEER/MEVROUW
+job.letter.2	WIJ VAN %a WILLEN U GRAAG DE
+job.letter.3	TRAINERSPOST AANBIEDEN VOOR VOLGEND SEIZOEN
+job.letter.4	WIJ BIEDEN U EEN ZEER GOED SALARIS EN
+job.letter.5	WIJ HOPEN MIDDELEN VRIJ TE MAKEN
+job.letter.6	IN DE ORDE VAN %b VOOR VERSTERKINGEN
+job.letter.7	WIJ ZIEN UW ANTWOORD GRAAG TEGEMOET
+job.accepted_note	U HEEFT GETEKEND - DE OVERSTAP IS VOLGEND SEIZOEN
+job.waiting_prefix	ZIJ WACHTEN NOG
+job.waiting_suffix	WEDSTRIJDEN
+job.accepted.1	WIJ VAN %a ZIJN VERHEUGD DAT U
+job.accepted.2	DE TRAINERSPOST BIJ ONS HEEFT AANVAARD
+job.accepted.3	VANAF HET BEGIN VAN VOLGEND SEIZOEN
+job.farewell.1	BEDANKT VOOR ALLES %a, WIJ WENSEN
+job.farewell.2	U VEEL SUCCES IN UW NIEUWE BAAN
+job.welcome.1	WELKOM %a, WIJ VERWACHTEN VEEL
+job.welcome.2	SUCCES VAN ONZE NIEUWE SAMENWERKING
+job.withdrawn.1	BAANAANBOD VAN %a INGETROKKEN
+# board expectation line (feature #2 follow-up)
+chair.expected	BESTUUR VERWACHTTE
+chair.of	VAN
+chair.finished	GEEINDIGD
+chair.expects	BESTUUR VERWACHT
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	NATIONAAL ELFTAL
+natjob.entry_offer	INTERNATIONAAL BAANAANBOD
+natjob.title	NATIONAAL ELFTAL
+natjob.title_offer	INTERNATIONAAL BAANAANBOD
+natjob.player	SPELER
+natjob.add	SPELER TOEVOEGEN
+natjob.remove	SPELER VERWIJDEREN
+natjob.auto	AUTO-SELECTIE
+natjob.resign	AFTREDEN
+natjob.full	SELECTIE VOL
+natjob.appointed	BONDSCOACH VAN
+natjob.none	GEEN INTERNATIONALE BAAN
+natjob.no_players	GEEN SPELERS BESCHIKBAAR
+natjob.squad_word	SELECTIE
+natjob.rating	WAARDERING
+natjob.home	THUIS
+natjob.abroad	BUITENLAND
+natjob.col_name	NAAM
+natjob.col_pos	POS
+natjob.col_ovr	ALG
+natjob.col_where	WAAR
+natjob.col_club	CLUB
+natjob.letter_header	INTERNATIONAAL BAANAANBOD VAN %a
+natjob.offer.1	DE LEDEN VAN DE VOETBALCOMMISSIE
+natjob.offer.2	VAN %a WILLEN U DE FUNCTIE
+natjob.offer.3	VAN BONDSCOACH AANBIEDEN
+natjob.offer.4	WIJ BELOVEN U EEN UITSTEKEND SALARIS EN
+natjob.offer.5	EEN JAARLIJKS HERZIENBAAR CONTRACT
+natjob.offer.6	WIJ ZIEN UW ANTWOORD GRAAG TEGEMOET
+natjob.accepted.1	DE LEDEN VAN DE VOETBALCOMMISSIE
+natjob.accepted.2	VAN %a ZIJN VERHEUGD DAT U DE
+natjob.accepted.3	FUNCTIE VAN BONDSCOACH HEEFT AANVAARD
+natjob.ended.1	DE LEDEN VAN DE VOETBALCOMMISSIE
+natjob.ended.2	VAN %a VERLENGEN UW JAARLIJKS
+natjob.ended.3	HERZIENBARE CONTRACT NIET
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	EVEN GEDULD
+busy.new_career	WERELD WORDT GEBOUWD
+busy.next_season	DE ZOMER LOOPT
+dash.scorers	TOPSCORERS
+scorer.title	TOPSCORERS
+scorer.view	LIJST
+scorer.page	PAGINA
+scorer.view_comp	COMPETITIE
+scorer.view_club	MIJN CLUB
+scorer.view_history	SEIZOEN PER SEIZOEN
+scorer.leading	TOPSCORERS VAN DE COMPETITIE
+scorer.goals	DOELPUNTEN
+scorer.own_goals	EIGEN DOELPUNTEN
+scorer.ex_player	DOELPUNTEN OUD SPELERS
+scorer.career_total	TOTAAL CARRIERE
+scorer.season	SEIZOEN
+scorer.season_top	TOPSCORER VAN HET SEIZOEN
+scorer.season_top_plural	TOPSCORERS VAN HET SEIZOEN
+scorer.no_goals	NOG GEEN DOELPUNTEN DIT SEIZOEN
+scorer.no_seasons	NOG GEEN SEIZOEN AFGEROND
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	WEDSTRIJD
+dash.sec_team	TEAM
+dash.sec_club	CLUB
+dash.sec_game	SPEL
+nav.hint_cols	OMHOOG/OMLAAG KIEZEN   LINKS/RECHTS KOLOM   VUUR OK   ESC TERUG

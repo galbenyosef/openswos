@@ -43,6 +43,171 @@ public static class PlayerActions
     // the old glued-ball behaviour if the un-pinned chase regresses.
     public static bool FaithfulBallControl = true;
 
+    // ---- shot telemetry (task #242) -----------------------------------------
+    // Pure counters, no behaviour. They exist because "the AI never scores" was
+    // impossible to argue about without numbers: the shot pipeline is fully
+    // ported and every constant matches the reference, so the open question is
+    // the GEOMETRY of the shots being taken. Printed by --swos-smoke.
+    private static int s_shotsFinishing, s_shotsLong;
+    private static readonly int[] s_shotDistBuckets = new int[6];   // <30,<45,<60,<80,<120,>=120 px
+
+    public static int ShotsFinishing => s_shotsFinishing;
+    public static int ShotsLong => s_shotsLong;
+    public static int[] ShotDistanceBuckets => s_shotDistBuckets;
+
+    public static void ResetShotCounters()
+    {
+        s_shotsFinishing = s_shotsLong = 0;
+        System.Array.Clear(s_shotDistBuckets);
+        s_curveTicks = -1;
+        s_curveToward = s_curveAway = s_curveFlat = 0;
+        s_curveErrStart = 0;
+        s_onTargetTicks = -1;
+        s_shotsOnTarget = s_shotsOffTarget = 0;
+        s_finOnTarget = s_finOffTarget = 0;
+        s_finMissWide = s_finMissHigh = s_finMissShort = 0;
+        System.Array.Clear(s_finCrossOffset);
+    }
+
+    // ---- shot CURVE tracker (task #242) -------------------------------------
+    // The user's report is "the CPU curves the ball AWAY from the goal instead
+    // of toward it". The AI's after-touch is a signed spin picked from the sign
+    // of D2 = (playerDirection << 5) - D5, where D5 is the ball->opponent-goal
+    // angle (updatePlayers.cpp:16149-16164 / 18488-18501). If our angle
+    // convention were mirrored, every AI shot would bend the wrong way.
+    //
+    // Measurement: at each recorded shot, snapshot the signed byte error
+    // between the ball's own heading and the angle to the goal centre; sample
+    // it again kCurveSampleTicks later and compare magnitudes.
+    //   |err| shrinks  -> the shot bent TOWARD goal
+    //   |err| grows    -> it bent AWAY
+    // Pure telemetry: nothing here writes VM memory.
+    private const int kCurveSampleTicks = 18;
+    private static int s_curveTicks = -1;     // countdown; -1 = idle
+    private static int s_curveGoalY;
+    private static int s_curveErrStart;
+    private static int s_curveHeadingStart;
+    // Shot-accuracy tracker: after a shot, follow the ball for up to
+    // kOnTargetTicks and see whether it reaches the attacked goal mouth
+    // (x in (295, 372], ball.cpp:880-891) at net height (z <= 19).
+    private const int kOnTargetTicks = 120;
+    private static int s_onTargetTicks = -1;
+    private static int s_onTargetGoalY;
+    private static int s_shotsOnTarget, s_shotsOffTarget;
+    private static int s_finOnTarget, s_finOffTarget;
+    private static bool s_onTargetIsFinishing;
+    // Why a finishing shot missed: wide (x outside the posts), high (z > 19),
+    // or it never reached the goal line inside kOnTargetTicks.
+    private static int s_finMissWide, s_finMissHigh, s_finMissShort;
+    private static readonly int[] s_finCrossOffset = new int[4];  // |x-333|: <20,<40,<70,>=70
+    public static int FinMissWide  => s_finMissWide;
+    public static int FinMissHigh  => s_finMissHigh;
+    public static int FinMissShort => s_finMissShort;
+    public static int[] FinCrossOffset => s_finCrossOffset;
+    public static int ShotsOnTarget  => s_shotsOnTarget;
+    public static int ShotsOffTarget => s_shotsOffTarget;
+    public static int FinishingOnTarget  => s_finOnTarget;
+    public static int FinishingOffTarget => s_finOffTarget;
+    private static int s_curveToward, s_curveAway, s_curveFlat;
+    private static int s_curveErrStartSum, s_curveErrEndSum;
+
+    public static int CurveToward => s_curveToward;
+    public static int CurveAway   => s_curveAway;
+    public static int CurveFlat   => s_curveFlat;
+    public static int CurveErrStartAvg => (s_curveToward + s_curveAway + s_curveFlat) == 0
+        ? 0 : s_curveErrStartSum / (s_curveToward + s_curveAway + s_curveFlat);
+    public static int CurveErrEndAvg => (s_curveToward + s_curveAway + s_curveFlat) == 0
+        ? 0 : s_curveErrEndSum / (s_curveToward + s_curveAway + s_curveFlat);
+
+    // Signed byte difference between the ball's heading and the angle from the
+    // ball to the goal centre, in SWOS 0..255 angle units.
+    private static int CurveErrorNow()
+    {
+        int bx = BallSprite.XPixels, by = BallSprite.YPixels;
+        var toGoal = SpriteUpdate.CalculateDeltaXAndY(256, (short)bx, (short)by, 336, (short)s_curveGoalY);
+        if (toGoal.Direction < 0) return 0;
+        int heading = BallSprite.FullDirection & 0xFF;
+        return (sbyte)((heading - toGoal.Direction) & 0xFF);
+    }
+
+    /// <summary>Call once per tick from a harness. Pure telemetry.</summary>
+    ///
+    /// Measures the BALL'S OWN HEADING ROTATION, not the raw error against the
+    /// goal: the angle to the goal swings fast as the ball travels, so an
+    /// error-only metric scores a dead-straight shot as "curving away". Here we
+    /// take the rotation the spin would have to apply at kick time to reduce
+    /// the error, then compare it with the rotation the ball actually made.
+    public static void TickShotCurveTracker()
+    {
+        TickOnTargetTracker();
+        if (s_curveTicks < 0) return;
+        if (s_curveTicks == 0)
+        {
+            int headingEnd = BallSprite.FullDirection & 0xFF;
+            int rotated = (sbyte)((headingEnd - s_curveHeadingStart) & 0xFF);
+            int needed = -System.Math.Sign(s_curveErrStart);   // toward-goal rotation sign
+            s_curveErrStartSum += System.Math.Abs(s_curveErrStart);
+            s_curveErrEndSum   += System.Math.Abs(rotated);
+            if (needed == 0 || System.Math.Abs(rotated) <= 2) s_curveFlat++;
+            else if (System.Math.Sign(rotated) == needed)     s_curveToward++;
+            else                                              s_curveAway++;
+            s_curveTicks = -1;
+            return;
+        }
+        s_curveTicks--;
+    }
+
+    private static void TickOnTargetTracker()
+    {
+        if (s_onTargetTicks < 0) return;
+        int bx = BallSprite.XPixels, by = BallSprite.YPixels, bz = BallSprite.ZPixels;
+        bool reachedLine = s_onTargetGoalY > 400 ? by >= 769 : by <= 129;
+        if (reachedLine)
+        {
+            bool on = bx > 295 && bx <= 372 && bz <= 19;
+            if (on) s_shotsOnTarget++; else s_shotsOffTarget++;
+            if (s_onTargetIsFinishing)
+            {
+                if (on) s_finOnTarget++;
+                else
+                {
+                    s_finOffTarget++;
+                    if (bx <= 295 || bx > 372) s_finMissWide++; else s_finMissHigh++;
+                }
+                int off = System.Math.Abs(bx - 333);
+                s_finCrossOffset[off < 20 ? 0 : off < 40 ? 1 : off < 70 ? 2 : 3]++;
+            }
+            s_onTargetTicks = -1;
+            return;
+        }
+        if (--s_onTargetTicks <= 0) { s_shotsOffTarget++; if (s_onTargetIsFinishing) { s_finOffTarget++; s_finMissShort++; } s_onTargetTicks = -1; }
+    }
+
+    /// <summary>
+    /// Buckets the straight-line distance from the ball to the CENTRE OF THE GOAL
+    /// the shooting team attacks. Top team (TeamData.TopBase) attacks Y=769, the
+    /// bottom team attacks Y=129 (Kickoff.cs:77-78); goal centre X is 336.
+    /// </summary>
+    private static void RecordShot(bool finishing, int a6TeamBase)
+    {
+        if (finishing) s_shotsFinishing++; else s_shotsLong++;
+        int goalY = (a6TeamBase == TeamData.TopBase) ? 769 : 129;
+        int dx = BallSprite.XPixels - 336;
+        int dy = BallSprite.YPixels - goalY;
+        int d = (int)System.Math.Sqrt(dx * (double)dx + dy * (double)dy);
+        int b = d < 30 ? 0 : d < 45 ? 1 : d < 60 ? 2 : d < 80 ? 3 : d < 120 ? 4 : 5;
+        s_shotDistBuckets[b]++;
+
+        // Arm the curve tracker for this shot (see TickShotCurveTracker).
+        s_curveGoalY = goalY;
+        s_curveErrStart = CurveErrorNow();
+        s_curveHeadingStart = BallSprite.FullDirection & 0xFF;
+        s_curveTicks = kCurveSampleTicks;
+        s_onTargetGoalY = goalY;
+        s_onTargetIsFinishing = finishing;
+        s_onTargetTicks = kOnTargetTicks;
+    }
+
     // TeamGeneralInfo.wonTheBallTimer — swos.asm struct offset +138
     // (swos.h:399 names it `unkTimer`). "Team may not control the ball while
     // != 0" — the anti-re-steal lockout (duel loser 12 ticks, turn-dribble
@@ -897,6 +1062,14 @@ public static class PlayerActions
         // Else → finishing.
 
     l_its_a_finishing_shot:;
+        // Diagnostic (task #242): AI-vs-AI matches finish 0-0 while every ported
+        // constant matches the reference. The decisive unknown is WHERE shots are
+        // taken from: a plain kick apexes at 15.6 px after ~70 px of travel, and
+        // the goal net window is z <= 15 (ball.cpp:952) / z <= 10 near the posts
+        // (ball.cpp:937). So a shot from ~70 px arrives exactly at bar height and
+        // can never score. Recording the distance-to-goal at every shot turns that
+        // from an inference into a measurement.
+        RecordShot(true, a6TeamBase);
         // player.cpp:1019-1047 — speed += kBallSpeedFinishing[finishing*2].
         // Asm at player.cpp:1023 reads [esi+75] = PlayerGameHeader.finishing
         // (= PlayerInfo +33, see TeamDataLoader.OffFinishing).
@@ -914,6 +1087,7 @@ public static class PlayerActions
         goto l_not_a_shot_on_goal;
 
     l_its_a_long_shot:;
+        RecordShot(false, a6TeamBase);
         // player.cpp:1049-1073 — speed += kBallSpeedKicking[shooting*2].
         // Asm at player.cpp:1054 reads [esi+70] = PlayerGameHeader.shooting
         // (= PlayerInfo +28, see TeamDataLoader.OffShooting).

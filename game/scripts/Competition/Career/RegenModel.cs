@@ -37,25 +37,28 @@ public static class RegenModel
             CareerClub club = world.Clubs[clubId];
             MoveSquadSurplusToFreeAgents(club, world.FreeAgents);
 
-            // First repair retirement holes through the desired core of 16.
-            // A club at or below that mark may then receive one new intake
-            // player, settling normal squads at 17 rather than growing forever.
-            int youthCount = Math.Max(0, SquadTarget - club.Squad.Count);
-            if (club.Squad.Count <= SquadTarget)
-                youthCount++;
+            // First repair retirement holes through the desired core of 16, and
+            // then produce at least ONE more player whatever the squad size.
+            //
+            // The "at least one" is the point (career depth plan feature #6, the
+            // youth intake screen): before it, a club that had reached
+            // SquadTarget produced a single youth and a club at SquadCap
+            // produced none at all, so once squads settled — which takes about
+            // three seasons — the academy fell permanently silent. An intake day
+            // that says "nobody, again" every summer is not a feature.
+            int youthCount = Math.Max(1, SquadTarget - club.Squad.Count);
+            var intake = new List<CareerPlayer>(youthCount);
             for (int i = 0; i < youthCount; i++)
             {
                 CareerPlayer youth = GenerateYouth(world, clubId, NextYouthSeed(world), used);
-                if (club.Squad.Count < SquadCap)
-                {
-                    club.Squad.Add(youth);
-                }
-                else
-                {
-                    youth.ClubId = 0;
-                    world.FreeAgents.Add(youth);
-                }
+                club.Squad.Add(youth);
+                intake.Add(youth);
             }
+            // A full squad makes room for its own academy rather than turning it
+            // away: the club lets its weakest senior go. Never one of THIS
+            // summer's intake, or the youth would arrive and leave in the same
+            // breath and nothing would ever change.
+            MakeRoomForIntake(club, world.FreeAgents, intake);
         }
 
         // A small independent intake means the market remains useful even if
@@ -464,6 +467,37 @@ public static class RegenModel
             return left.Id.CompareTo(right.Id);
         });
         freeAgents.RemoveRange(0, freeAgents.Count - FreeAgentCap);
+    }
+
+    /// <summary>
+    /// Trims a club back to <see cref="SquadCap"/> after an intake by releasing
+    /// its weakest player — oldest first among equals, and never one of this
+    /// summer's arrivals. Deterministic: no RNG, so an equivalent world always
+    /// releases the same man.
+    /// </summary>
+    private static void MakeRoomForIntake(
+        CareerClub club, List<CareerPlayer> freeAgents, List<CareerPlayer> intake)
+    {
+        while (club.Squad.Count > SquadCap)
+        {
+            CareerPlayer? worst = null;
+            foreach (CareerPlayer candidate in club.Squad)
+            {
+                if (candidate is null || intake.Contains(candidate)) continue;
+                if (worst is null) { worst = candidate; continue; }
+                double a = PotentialModel.OverallOf(candidate), b = PotentialModel.OverallOf(worst);
+                if (a < b || (a == b && candidate.Age > worst.Age)
+                          || (a == b && candidate.Age == worst.Age && candidate.Id < worst.Id))
+                    worst = candidate;
+            }
+            // Nothing but new arrivals left to cut: fall back to the old
+            // tail-trim so the cap is still respected.
+            if (worst is null) { MoveSquadSurplusToFreeAgents(club, freeAgents); return; }
+            club.Squad.Remove(worst);
+            worst.ClubId = 0;
+            worst.ShirtNumber = 0;
+            freeAgents.Add(worst);
+        }
     }
 
     private static void MoveSquadSurplusToFreeAgents(CareerClub club, List<CareerPlayer> freeAgents)

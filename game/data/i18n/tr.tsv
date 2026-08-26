@@ -559,3 +559,188 @@ staff.spec_attack	HUCUM
 staff.spec_defence	SAVUNMA
 staff.spec_general	GENEL
 staff.spec_youth	GENCLIK
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANS
+fin.title	FINANS
+fin.show_history	SEZON SEZON
+fin.show_sheet	BU SEZON
+fin.no_season	TAMAMLANMIS SEZON YOK
+fin.drawn_up	HESAPLAR SEZON SONUNDA CIKARILIR
+fin.col_season	SEZON
+fin.col_league	LIG
+fin.col_cup	KUPA
+fin.col_income	GELIR
+fin.col_wages	MAASLAR
+fin.col_balance	BAKIYE
+fin.season	SEZON
+fin.league	LIG
+fin.cup	KUPA
+fin.home_games	IC SAHA MACLARI
+fin.crowd	SEYIRCI
+fin.row.opening	SEZON BASI BAKIYE:
+fin.row.gate	BILET GELIRLERI:
+fin.row.bonuses	PRIMLER + TV HAKLARI:
+fin.row.sponsor	SENSISOFT PLC SPONSORLUGU:
+fin.row.invest	BASKANDAN EK YATIRIM:
+fin.row.invest_new	YENI BASKANDAN EK YATIRIM:
+fin.row.wages	OYUNCU MAASLARI:
+fin.row.profit	TOPLAM KAR:
+fin.row.loss	TOPLAM ZARAR:
+fin.row.closing	YENI BAKIYE:
+fin.row.sales	OYUNCU SATISLARI:
+fin.row.purchases	OYUNCU ALIMLARI:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	BASKAN
+dash.status_sacked	GOREVDEN ALINDI
+chair.title	BASKAN
+chair.memo	NOT
+chair.none	NOT YOK
+chair.memo_header	KULUP BASKANINDAN NOT
+chair.memo_sign	BASKANINIZ
+chair.earlier	ONCEKI NOTLAR
+opt.board	YONETIM
+opt.board_hint	BASKAN SENI NE KADAR CABUK GONDERIR
+opt.board_patient	SABIRLI
+opt.board_normal	NORMAL
+opt.board_ruthless	ACIMASIZ
+chair.verdict0.1	AFERIN %a, BU SEZON MUKEMMEL BIR IS
+chair.verdict0.2	CIKARDIN VE HEPIMIZ BUNU TAKDIR EDIYORUZ
+chair.verdict1.1	IYI BIR SEZON %a, HEPIMIZ COK
+chair.verdict1.2	MEMNUNUZ, BOYLE DEVAM ET
+chair.verdict2.1	INISLI CIKISLI BIR SEZON %a, HEPIMIZ
+chair.verdict2.2	YAKINDA DUZELMESINI UMUYORUZ
+chair.verdict3.1	PEK IYI BIR SEZON DEGILDI %a, GELECEK
+chair.verdict3.2	SEZON PERFORMANSI ARTIRMANI UMUYORUZ
+chair.verdict4.1	COK HAYAL KIRIKLIGI BIR SEZON %a, GELECEK
+chair.verdict4.2	SEZON SENDEN COK DAHA FAZLASINI BEKLIYORUZ
+chair.sacked_league.1	BUYUK UZUNTUYLE YONETIM KURULU VE BEN
+chair.sacked_league.2	SENI GOREVINDEN ALMAYA KARAR VERDIK
+chair.not_renewed.1	BUYUK UZUNTUYLE SOZLESMENI YENILEMEME
+chair.not_renewed.2	KARARI ALDIK - BOL SANS
+chair.not_renewed.3	VE SENI YAKINDA GORMEYI UMUYORUZ
+chair.league_note.1	LIGDEKI MEVCUT SIRAMIZA DIKKAT ET VE
+chair.league_note.2	EN KISA SUREDE DUZELTMESINI SAGLA
+chair.league_warn.1	UNUTMA, SIRAMIZ YAKINDA DUZELMEZSE
+chair.league_warn.2	GOREVINI YENIDEN DEGERLENDIRMEK ZORUNDA KALIRIZ
+chair.league_crisis.1	GUVENOYUNDAN SONRA EN FAZLA
+chair.league_crisis.2	3 MACIN VAR YOKSA GOREVDEN ALINIRSIN
+chair.money_note.1	BANKA BAKIYEMIZE DIKKAT ET VE
+chair.money_note.2	ACIGI EN KISA SUREDE KAPATMASINI SAGLA
+chair.money_warn.1	ACIK KONUSUNDA SADECE BIR HATIRLATMA
+chair.money_warn.2	YOKSA GOREVINI YENIDEN DEGERLENDIRIRIZ
+chair.money_crisis.1	KRIZ TOPLANTISINDAN SONRA ISRAR EDIYORUZ
+chair.money_crisis.2	ACIGI DERHAL KAPAT YOKSA GOREVDEN ALINIRSIN
+chair.new_season.1	YENI SEZONDA BASARILAR DILEYEN
+chair.new_season.2	KISA BIR NOT
+chair.embargo_buy.1	UZGUNUM %a, KULUP BU SEZON DAHA FAZLA
+chair.embargo_buy.2	OYUNCU ALMAYA NIYETLI DEGIL
+chair.embargo_sell.1	DIKKAT ET %a, BU SEZON DAHA FAZLA
+chair.embargo_sell.2	OYUNCU SATISINA IZIN VERMEYECEGIZ
+chair.sacked_money.1	BUYUK UZUNTUYLE YONETIM KURULU VE BEN
+chair.sacked_money.2	SENI GOREVINDEN ALMAYA KARAR VERDIK
+# JOB OFFERS (career depth plan feature #3)
+job.title	IS TEKLIFLERI
+job.none	TEKLIF YOK
+job.offer	TEKLIF
+job.accept	KABUL ET
+job.decline	REDDET
+job.declined	TEKLIF REDDEDILDI
+job.not_available	TEKLIF MEVCUT DEGIL
+job.signed_prefix	ANLASMA
+job.new_job	YENI GOREV
+job.reputation	ITIBAR
+job.rep_world	DUNYA CAPINDA
+job.rep_high	COK DEGERLI
+job.rep_good	SAYGIN
+job.rep_known	TANINAN
+job.rep_unproven	KANITLANMAMIS
+job.rep_unwanted	ISTENMEYEN
+job.division	LIG
+job.squad	KADRO
+job.letter_header	%a KULUBUNDEN IS TEKLIFI
+job.letter.1	SAYIN YETKILI
+job.letter.2	BIZ %a OLARAK SIZE
+job.letter.3	GELECEK SEZON TEKNIK DIREKTORLUK TEKLIF EDIYORUZ
+job.letter.4	SIZE COK IYI BIR MAAS SUNABILIRIZ VE
+job.letter.5	KAYNAK AYIRABILECEGIMIZI UMUYORUZ
+job.letter.6	TAKIMI GUCLENDIRMEK ICIN YAKLASIK %b
+job.letter.7	CEVABINIZI BEKLIYORUZ
+job.accepted_note	KABUL ETTINIZ - TRANSFER GELECEK SEZON
+job.waiting_prefix	DAHA
+job.waiting_suffix	MAC BEKLEYECEKLER
+job.accepted.1	BIZ %a OLARAK KABUL ETMENIZDEN
+job.accepted.2	KULUBUMUZUN TEKNIK DIREKTORU OLARAK MUTLUYUZ
+job.accepted.3	GELECEK SEZON BASINDAN ITIBAREN
+job.farewell.1	HER SEY ICIN TESEKKURLER %a, YENI
+job.farewell.2	GOREVINIZDE BASARILAR DILERIZ
+job.welcome.1	HOS GELDINIZ %a, YENI IS BIRLIGIMIZDEN
+job.welcome.2	COK BASARI BEKLIYORUZ
+job.withdrawn.1	%a KULUBUNDEN GELEN IS TEKLIFI GERI CEKILDI
+# board expectation line (feature #2 follow-up)
+chair.expected	YONETIM BEKLIYORDU
+chair.of	ICINDE
+chair.finished	BITIRDINIZ
+chair.expects	YONETIM BEKLIYOR
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	MILLI TAKIM
+natjob.entry_offer	ULUSLARARASI IS TEKLIFI
+natjob.title	MILLI TAKIM
+natjob.title_offer	ULUSLARARASI IS TEKLIFI
+natjob.player	OYUNCU
+natjob.add	OYUNCU EKLE
+natjob.remove	OYUNCU CIKAR
+natjob.auto	OTOMATIK SECIM
+natjob.resign	ISTIFA ET
+natjob.full	KADRO DOLU
+natjob.appointed	MILLI TAKIM TEKNIK DIREKTORU
+natjob.none	MILLI TAKIM GOREVI YOK
+natjob.no_players	OYUNCU YOK
+natjob.squad_word	KADRO
+natjob.rating	PUAN
+natjob.home	YURT ICI
+natjob.abroad	YURT DISI
+natjob.col_name	ISIM
+natjob.col_pos	MEV
+natjob.col_ovr	GEN
+natjob.col_where	NEREDE
+natjob.col_club	KULUP
+natjob.letter_header	%a MILLI TAKIMINDAN IS TEKLIFI
+natjob.offer.1	FUTBOL KOMITESI UYELERI
+natjob.offer.2	%a SIZE MILLI TAKIM TEKNIK
+natjob.offer.3	DIREKTORLUGUNU TEKLIF ETMEK ISTIYOR
+natjob.offer.4	SIZE MUKEMMEL BIR MAAS VE
+natjob.offer.5	HER YIL YENILENEN BIR SOZLESME SOZ VERIYORUZ
+natjob.offer.6	CEVABINIZI BEKLIYORUZ
+natjob.accepted.1	FUTBOL KOMITESI UYELERI
+natjob.accepted.2	%a MILLI TAKIM GOREVINI KABUL
+natjob.accepted.3	ETMENIZDEN COK MEMNUN
+natjob.ended.1	FUTBOL KOMITESI UYELERI
+natjob.ended.2	%a YILLIK SOZLESMENIZI
+natjob.ended.3	YENILEMEME KARARI ALDI
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	LUTFEN BEKLEYIN
+busy.new_career	DUNYA KURULUYOR
+busy.next_season	YAZ OYNANIYOR
+dash.scorers	GOL KRALLIGI
+scorer.title	GOL KRALLIGI
+scorer.view	LISTE
+scorer.page	SAYFA
+scorer.view_comp	TURNUVA
+scorer.view_club	KULUBUM
+scorer.view_history	SEZON SEZON
+scorer.leading	TURNUVANIN GOL KRALLARI
+scorer.goals	GOL
+scorer.own_goals	KENDI KALESINE
+scorer.ex_player	ESKI OYUNCU GOLLERI
+scorer.career_total	KARIYER TOPLAMI
+scorer.season	SEZON
+scorer.season_top	SEZONUN GOL KRALI
+scorer.season_top_plural	SEZONUN GOL KRALLARI
+scorer.no_goals	BU SEZON HENUZ GOL YOK
+scorer.no_seasons	HENUZ SEZON TAMAMLANMADI
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	MAC
+dash.sec_team	TAKIM
+dash.sec_club	KULUP
+dash.sec_game	OYUN
+nav.hint_cols	YUKARI/ASAGI SEC   SOL/SAG SUTUN   ATES TAMAM   ESC GERI

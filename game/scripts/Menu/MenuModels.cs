@@ -92,6 +92,13 @@ public interface IMenuHost
     // and were NOT substituted off (UpdatePlayerInjuries, swos.asm:35651-35701).
     // Null/empty when none. Cleared by the call. See Main.cs FullTime.
     System.Collections.Generic.List<(int slot, int severity)>? TakeLastMatchInjuries();
+    // Companion to TakeLastCompetitionResult: who actually scored (career depth
+    // plan feature #5). playerTeam = the human's club (always the sim's TOP
+    // slots), slot = that club's in-game PlayerInfo index, ownGoal = the
+    // original's shirt+1000 entries. Null when the last match produced none.
+    // Cleared by the call. See Main.CaptureMatchOutcome.
+    System.Collections.Generic.List<(bool playerTeam, int slot, int goals, bool ownGoal)>?
+        TakeLastMatchScorers();
     int TeamStrength(int idx);          // avg per-stat skill 1..7
     int TeamDivision(int idx);
     int TeamNation(int idx);
@@ -128,6 +135,9 @@ public interface IMenuHost
     void StepSoundSource(int delta);
     string CommentatorLabel { get; }
     void StepCommentator(int delta);
+    // Career depth plan feature #2: how quickly the board sacks you.
+    string BoardPatienceLabel { get; }
+    void StepBoardPatience(int delta);
 
     // Front-end MUSIC source (AMIGA / PC / CUSTOM / OFF); unavailable sources
     // render as "X (N/A)" and are skipped when cycling.

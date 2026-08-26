@@ -559,3 +559,188 @@ staff.spec_attack	ANFALL
 staff.spec_defence	FORSVAR
 staff.spec_general	ALLMAN
 staff.spec_youth	UNGDOM
+# FINANCES (career depth plan feature 1)
+dash.finances	EKONOMI
+fin.title	EKONOMI
+fin.show_history	SAESONG FOER SAESONG
+fin.show_sheet	DENNA SAESONG
+fin.no_season	INGEN AVSLUTAD SAESONG
+fin.drawn_up	BOKSLUTET GOERS VID SAESONGENS SLUT
+fin.col_season	SAESONG
+fin.col_league	LIGA
+fin.col_cup	CUP
+fin.col_income	INTAEKTER
+fin.col_wages	LOENER
+fin.col_balance	SALDO
+fin.season	SAESONG
+fin.league	LIGA
+fin.cup	CUP
+fin.home_games	HEMMAMATCHER
+fin.crowd	ASKADARE
+fin.row.opening	SALDO VID SAESONGSSTART:
+fin.row.gate	BILJETTINTAEKTER:
+fin.row.bonuses	PREMIER + TV-RAETTIGHETER:
+fin.row.sponsor	SPONSRING FRAN SENSISOFT PLC:
+fin.row.invest	EXTRA INVESTERING FRAN ORDFOERANDEN:
+fin.row.invest_new	EXTRA INVESTERING FRAN NYE ORDFOERANDEN:
+fin.row.wages	SPELARLOENER:
+fin.row.profit	TOTAL VINST:
+fin.row.loss	TOTAL FOERLUST:
+fin.row.closing	NYTT SALDO:
+fin.row.sales	SPELARFOERSAELJNINGAR:
+fin.row.purchases	SPELARKOEP:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	ORDFOERANDE
+dash.status_sacked	SPARKAD
+chair.title	ORDFOERANDE
+chair.memo	PM
+chair.none	INGA PM
+chair.memo_header	PM FRAN KLUBBENS ORDFOERANDE
+chair.memo_sign	DIN ORDFOERANDE
+chair.earlier	TIDIGARE PM
+opt.board	STYRELSE
+opt.board_hint	HUR SNABBT ORDFOERANDEN SPARKAR DIG
+opt.board_patient	TAALMODIG
+opt.board_normal	NORMAL
+opt.board_ruthless	HAARD
+chair.verdict0.1	BRA JOBBAT %a, DU GJORDE ETT UTMAERKT
+chair.verdict0.2	JOBB DENNA SAESONG OCH VI UPPSKATTAR DET
+chair.verdict1.1	EN BRA SAESONG %a, VI AER ALLA MYCKET
+chair.verdict1.2	NOEJDA, FORTSAETT SAA
+chair.verdict2.1	EN OJAEMN SAESONG %a, VI HOPPAS ALLA
+chair.verdict2.2	PAA EN SNAR FOERBAETTRING
+chair.verdict3.1	INGEN SAERSKILT BRA SAESONG %a, VI HOPPAS
+chair.verdict3.2	DU FOERBAETTRAR RESULTATEN NAESTA SAESONG
+chair.verdict4.1	EN MYCKET BESVIKANDE SAESONG %a, VI KRAEVER
+chair.verdict4.2	MYCKET MER AV DIG NAESTA SAESONG
+chair.sacked_league.1	DET AER MED STOR SORG SOM STYRELSEN OCH JAG
+chair.sacked_league.2	HAR BESLUTAT ATT SKILJA DIG FRAN UPPDRAGET
+chair.not_renewed.1	DET AER MED STOR SORG SOM VI HAR BESLUTAT
+chair.not_renewed.2	ATT INTE FOERLAENGA DITT KONTRAKT - LYCKA TILL
+chair.not_renewed.3	OCH VI SES FOERHOPPNINGSVIS SNART IGEN
+chair.league_note.1	NOTERA VAAR NUVARANDE TABELLPLACERING OCH
+chair.league_note.2	SE TILL ATT DEN FOERBAETTRAS SNARAST
+chair.league_warn.1	KOM IHAAG, OM PLACERINGEN INTE SNART BAETTRAS
+chair.league_warn.2	MAASTE VI OMPROEVA DIN POSITION
+chair.league_crisis.1	EFTER EN FOERTROENDEOMROESTNING HAR DU HOEGST
+chair.league_crisis.2	3 MATCHER ATT VAENDA DET ELLER SAA FAAR DU GAA
+chair.money_note.1	NOTERA VAART BANKSALDO OCH
+chair.money_note.2	SE TILL ATT TAECKA UNDERSKOTTET SNARAST
+chair.money_warn.1	BARA EN PAAMINNELSE OM UNDERSKOTTET
+chair.money_warn.2	ANNARS MAASTE VI OMPROEVA DIN POSITION
+chair.money_crisis.1	EFTER ETT KRISMOETE KRAEVER VI ATT DU
+chair.money_crisis.2	TAECKER UNDERSKOTTET GENAST ELLER SAA FAAR DU GAA
+chair.new_season.1	NAAGRA RADER MED LYCKA TILL I DEN
+chair.new_season.2	NYA SAESONGEN
+chair.embargo_buy.1	TYVAERR %a, KLUBBEN AER INTE BEREDD ATT
+chair.embargo_buy.2	KOEPA FLER SPELARE DENNA SAESONG
+chair.embargo_sell.1	NOTERA %a ATT VI INTE TILLAATER
+chair.embargo_sell.2	FLER SPELARFOERSAELJNINGAR DENNA SAESONG
+chair.sacked_money.1	DET AER MED STOR SORG SOM STYRELSEN OCH JAG
+chair.sacked_money.2	HAR BESLUTAT ATT SKILJA DIG FRAN UPPDRAGET
+# JOB OFFERS (career depth plan feature #3)
+job.title	JOBBERBJUDANDEN
+job.none	INGA ERBJUDANDEN
+job.offer	ERBJUDANDE
+job.accept	ACCEPTERA
+job.decline	AVBOJ
+job.declined	ERBJUDANDE AVBOJT
+job.not_available	ERBJUDANDE EJ TILLGANGLIGT
+job.signed_prefix	OVERENS MED
+job.new_job	NYTT JOBB
+job.reputation	ANSEENDE
+job.rep_world	VARLDSKLASS
+job.rep_high	HOGT AKTAD
+job.rep_good	VALANSEDD
+job.rep_known	KAND
+job.rep_unproven	OPROVAD
+job.rep_unwanted	OONSKAD
+job.division	DIVISION
+job.squad	TRUPP
+job.letter_header	JOBBERBJUDANDE FRAN %a
+job.letter.1	BASTE HERR/FRU
+job.letter.2	VI HAR I %a VILL GARNA ERBJUDA DIG
+job.letter.3	TRANARJOBBET I VAR KLUBB NASTA SASONG
+job.letter.4	VI KAN ERBJUDA EN MYCKET BRA LON OCH
+job.letter.5	VI HOPPAS KUNNA STALLA MEDEL TILL FORFOGANDE
+job.letter.6	OMKRING %b FOR ATT FORSTARKA LAGET
+job.letter.7	VI SER FRAM EMOT DITT SVAR
+job.accepted_note	DU HAR ACCEPTERAT - FLYTTEN SKER NASTA SASONG
+job.waiting_prefix	DE VANTAR YTTERLIGARE
+job.waiting_suffix	MATCHER
+job.accepted.1	VI HAR I %a AR GLADA ATT DU
+job.accepted.2	HAR ACCEPTERAT TRANARJOBBET HOS OSS
+job.accepted.3	FRAN BORJAN AV NASTA SASONG
+job.farewell.1	TACK FOR ALLT %a, VI ONSKAR DIG
+job.farewell.2	LYCKA TILL I DITT NYA JOBB
+job.welcome.1	VALKOMMEN %a, VI SER FRAM EMOT MYCKET
+job.welcome.2	FRAMGANG AV VART NYA SAMARBETE
+job.withdrawn.1	JOBBERBJUDANDE FRAN %a INDRAGET
+# board expectation line (feature #2 follow-up)
+chair.expected	STYRELSEN VANTADE
+chair.of	AV
+chair.finished	SLUTADE
+chair.expects	STYRELSEN VANTAR
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	LANDSLAG
+natjob.entry_offer	INTERNATIONELLT JOBBERBJUDANDE
+natjob.title	LANDSLAG
+natjob.title_offer	INTERNATIONELLT JOBBERBJUDANDE
+natjob.player	SPELARE
+natjob.add	LAGG TILL SPELARE
+natjob.remove	TA BORT SPELARE
+natjob.auto	AUTOVAL
+natjob.resign	AVGA
+natjob.full	TRUPPEN AR FULL
+natjob.appointed	FORBUNDSKAPTEN FOR
+natjob.none	INGET LANDSLAGSJOBB
+natjob.no_players	INGA SPELARE TILLGANGLIGA
+natjob.squad_word	TRUPP
+natjob.rating	BETYG
+natjob.home	HEMMA
+natjob.abroad	UTLANDET
+natjob.col_name	NAMN
+natjob.col_pos	POS
+natjob.col_ovr	TOT
+natjob.col_where	VAR
+natjob.col_club	KLUBB
+natjob.letter_header	INTERNATIONELLT JOBBERBJUDANDE FRAN %a
+natjob.offer.1	MEDLEMMARNA I FOTBOLLSKOMMITTEN
+natjob.offer.2	I %a VILL GARNA ERBJUDA DIG JOBBET
+natjob.offer.3	SOM FORBUNDSKAPTEN
+natjob.offer.4	VI LOVAR DIG EN UTMARKT LON OCH
+natjob.offer.5	ETT ARLIGEN OMFORHANDLAT KONTRAKT
+natjob.offer.6	VI SER FRAM EMOT DITT SVAR
+natjob.accepted.1	MEDLEMMARNA I FOTBOLLSKOMMITTEN
+natjob.accepted.2	I %a AR GLADA ATT DU HAR
+natjob.accepted.3	ACCEPTERAT JOBBET SOM FORBUNDSKAPTEN
+natjob.ended.1	MEDLEMMARNA I FOTBOLLSKOMMITTEN
+natjob.ended.2	I %a HAR BESLUTAT ATT INTE FORLANGA
+natjob.ended.3	DITT ARLIGA KONTRAKT
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	VAR VANLIG VANTA
+busy.new_career	BYGGER VARLDEN
+busy.next_season	SOMMAREN SPELAS
+dash.scorers	SKYTTELIGA
+scorer.title	SKYTTELIGA
+scorer.view	LISTA
+scorer.page	SIDA
+scorer.view_comp	TAVLING
+scorer.view_club	MIN KLUBB
+scorer.view_history	SASONG FOR SASONG
+scorer.leading	TAVLINGENS BASTA MALSKYTTAR
+scorer.goals	MAL
+scorer.own_goals	SJALVMAL
+scorer.ex_player	MAL AV TIDIGARE SPELARE
+scorer.career_total	TOTALT I KARRIAREN
+scorer.season	SASONG
+scorer.season_top	SASONGENS SKYTTEKUNG
+scorer.season_top_plural	SASONGENS SKYTTEKUNGAR
+scorer.no_goals	INGA MAL AN DENNA SASONG
+scorer.no_seasons	INGEN SASONG AVSLUTAD AN
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	MATCH
+dash.sec_team	LAG
+dash.sec_club	KLUBB
+dash.sec_game	SPEL
+nav.hint_cols	UPP/NER VALJ   VANSTER/HOGER KOLUMN   ELD OK   ESC TILLBAKA

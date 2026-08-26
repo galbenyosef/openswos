@@ -559,3 +559,188 @@ staff.spec_attack	HYOKKAYS
 staff.spec_defence	PUOLUSTUS
 staff.spec_general	YLEINEN
 staff.spec_youth	NUORISO
+# FINANCES (career depth plan feature 1)
+dash.finances	TALOUS
+fin.title	TALOUS
+fin.show_history	KAUSI KERRALLAAN
+fin.show_sheet	TAMA KAUSI
+fin.no_season	EI PAATTYNEITA KAUSIA
+fin.drawn_up	TILINPAATOS TEHDAAN KAUDEN LOPUSSA
+fin.col_season	KAUSI
+fin.col_league	LIIGA
+fin.col_cup	CUP
+fin.col_income	TULOT
+fin.col_wages	PALKAT
+fin.col_balance	SALDO
+fin.season	KAUSI
+fin.league	LIIGA
+fin.cup	CUP
+fin.home_games	KOTIOTTELUT
+fin.crowd	KATSOJAA
+fin.row.opening	SALDO KAUDEN ALUSSA:
+fin.row.gate	LIPPUTULOT:
+fin.row.bonuses	PALKKIOT + TV-OIKEUDET:
+fin.row.sponsor	SPONSOROINTI SENSISOFT PLC:
+fin.row.invest	PUHEENJOHTAJAN LISASIJOITUS:
+fin.row.invest_new	UUDEN PUHEENJOHTAJAN LISASIJOITUS:
+fin.row.wages	PELAAJIEN PALKAT:
+fin.row.profit	KOKONAISVOITTO:
+fin.row.loss	KOKONAISTAPPIO:
+fin.row.closing	UUSI SALDO:
+fin.row.sales	PELAAJAMYYNNIT:
+fin.row.purchases	PELAAJAOSTOT:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PUHEENJOHTAJA
+dash.status_sacked	EROTETTU
+chair.title	PUHEENJOHTAJA
+chair.memo	KIRJE
+chair.none	EI KIRJEITA
+chair.memo_header	KIRJE SEURAN PUHEENJOHTAJALTA
+chair.memo_sign	PUHEENJOHTAJASI
+chair.earlier	AIEMMAT KIRJEET
+opt.board	JOHTOKUNTA
+opt.board_hint	KUINKA NOPEASTI PUHEENJOHTAJA EROTTAA SINUT
+opt.board_patient	KARSIVALLINEN
+opt.board_normal	NORMAALI
+opt.board_ruthless	ARMOTON
+chair.verdict0.1	HYVIN TEHTY %a, TEIT ERINOMAISTA TYOTA
+chair.verdict0.2	TALLA KAUDELLA JA ARVOSTAMME SITA
+chair.verdict1.1	HYVA KAUSI %a, OLEMME KAIKKI HYVIN
+chair.verdict1.2	TYYTYVAISIA, JATKA SAMAAN MALLIIN
+chair.verdict2.1	VAIHTELEVA KAUSI %a, TOIVOMME KAIKKI
+chair.verdict2.2	PIKAISTA PARANNUSTA
+chair.verdict3.1	EI KOVIN HYVA KAUSI %a, TOIVOMME ETTA
+chair.verdict3.2	PARANNAT TULOKSIA ENSI KAUDELLA
+chair.verdict4.1	ERITTAIN PETTYMYS KAUSI %a, VAADIMME
+chair.verdict4.2	PALJON ENEMMAN ENSI KAUDELLA
+chair.sacked_league.1	SUUREKSI SURUKSEMME JOHTOKUNTA JA MINA
+chair.sacked_league.2	OLEMME PAATTANEET VAPAUTTAA SINUT TEHTAVISTASI
+chair.not_renewed.1	SUUREKSI SURUKSEMME OLEMME PAATTANEET
+chair.not_renewed.2	OLLA JATKAMATTA SOPIMUSTASI - ONNEA MATKAAN
+chair.not_renewed.3	JA TOIVOMME NAKEVAMME SINUT PIAN
+chair.league_note.1	HUOMIOI NYKYINEN SARJASIJAMME JA
+chair.league_note.2	HUOLEHDI SEN PARANTAMISESTA PIKAISESTI
+chair.league_warn.1	MUISTA, ELLEI SIJOITUS PIAN PARANE
+chair.league_warn.2	JOUDUMME HARKITSEMAAN ASEMAASI UUDELLEEN
+chair.league_crisis.1	LUOTTAMUSAANESTYKSEN JALKEEN SINULLA ON ENINTAAN
+chair.league_crisis.2	3 OTTELUA KAANTAA SUUNTA TAI SINUT EROTETAAN
+chair.money_note.1	HUOMIOI PANKKITILIMME SALDO JA
+chair.money_note.2	HUOLEHDI TILINYLITYKSEN KATTAMISESTA PIKAISESTI
+chair.money_warn.1	MUISTUTUS TILINYLITYKSESTA
+chair.money_warn.2	MUUTEN JOUDUMME HARKITSEMAAN ASEMAASI UUDELLEEN
+chair.money_crisis.1	KRIISIKOKOUKSEN JALKEEN VAADIMME ETTA
+chair.money_crisis.2	KATAT TILINYLITYKSEN HETI TAI SINUT EROTETAAN
+chair.new_season.1	MUUTAMA SANA ONNEA TOIVOTTAEN
+chair.new_season.2	UUTEEN KAUTEEN
+chair.embargo_buy.1	PAHOITTELEN %a, SEURA EI OLE HALUKAS
+chair.embargo_buy.2	OSTAMAAN LISAA PELAAJIA TALLA KAUDELLA
+chair.embargo_sell.1	HUOMAA %a ETTA EMME SALLI
+chair.embargo_sell.2	LISAA PELAAJAMYYNTEJA TALLA KAUDELLA
+chair.sacked_money.1	SUUREKSI SURUKSEMME JOHTOKUNTA JA MINA
+chair.sacked_money.2	OLEMME PAATTANEET VAPAUTTAA SINUT TEHTAVISTASI
+# JOB OFFERS (career depth plan feature #3)
+job.title	TYOTARJOUKSET
+job.none	EI TYOTARJOUKSIA
+job.offer	TARJOUS
+job.accept	HYVAKSY
+job.decline	HYLKAA
+job.declined	TARJOUS HYLATTY
+job.not_available	TARJOUS EI SAATAVILLA
+job.signed_prefix	SOVITTU SEURAN
+job.new_job	UUSI TYO
+job.reputation	MAINE
+job.rep_world	MAAILMANLUOKKAA
+job.rep_high	ARVOSTETTU
+job.rep_good	HYVASSA MAINEESSA
+job.rep_known	TUNNETTU
+job.rep_unproven	NAYTTOJA VAILLA
+job.rep_unwanted	EI HALUTTU
+job.division	SARJA
+job.squad	KOKOONPANO
+job.letter_header	TYOTARJOUS SEURALTA %a
+job.letter.1	HYVA VASTAANOTTAJA
+job.letter.2	ME TAALLA %a HALUAISIMME TARJOTA
+job.letter.3	VALMENTAJAN PAIKKAA ENSI KAUDEKSI
+job.letter.4	VOIMME TARJOTA HYVAN PALKAN JA
+job.letter.5	TOIVOMME VOIVAMME JARJESTAA VAROJA
+job.letter.6	NOIN %b JOUKKUEEN VAHVISTAMISEEN
+job.letter.7	ODOTAMME VASTAUSTASI
+job.accepted_note	OLET HYVAKSYNYT - SIIRTO TAPAHTUU ENSI KAUDELLA
+job.waiting_prefix	HE ODOTTAVAT VIELA
+job.waiting_suffix	OTTELUA
+job.accepted.1	ME TAALLA %a OLEMME ILOISIA ETTA
+job.accepted.2	OTIT VASTAAN VALMENTAJAN PAIKAN
+job.accepted.3	ENSI KAUDEN ALUSTA
+job.farewell.1	KIITOS KAIKESTA %a, TOIVOTAMME
+job.farewell.2	SINULLE MENESTYSTA UUDESSA TYOSSA
+job.welcome.1	TERVETULOA %a, ODOTAMME PALJON
+job.welcome.2	MENESTYSTA UUDESTA YHTEISTYOSTA
+job.withdrawn.1	TYOTARJOUS SEURALTA %a PERUTTU
+# board expectation line (feature #2 follow-up)
+chair.expected	JOHTO ODOTTI
+chair.of	/
+chair.finished	SIJOITUS
+chair.expects	JOHTO ODOTTAA
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	MAAJOUKKUE
+natjob.entry_offer	KANSAINVALINEN TYOTARJOUS
+natjob.title	MAAJOUKKUE
+natjob.title_offer	KANSAINVALINEN TYOTARJOUS
+natjob.player	PELAAJA
+natjob.add	LISAA PELAAJA
+natjob.remove	POISTA PELAAJA
+natjob.auto	AUTOMAATTIVALINTA
+natjob.resign	EROA
+natjob.full	RYHMA TAYNNA
+natjob.appointed	PAAVALMENTAJA
+natjob.none	EI MAAJOUKKUEPESTIA
+natjob.no_players	EI PELAAJIA
+natjob.squad_word	RYHMA
+natjob.rating	ARVIO
+natjob.home	KOTIMAA
+natjob.abroad	ULKOMAAT
+natjob.col_name	NIMI
+natjob.col_pos	PEL
+natjob.col_ovr	TASO
+natjob.col_where	MISSA
+natjob.col_club	SEURA
+natjob.letter_header	KANSAINVALINEN TYOTARJOUS MAALTA %a
+natjob.offer.1	JALKAPALLOLIITON JASENET
+natjob.offer.2	MAASTA %a TARJOAVAT SINULLE
+natjob.offer.3	MAAJOUKKUEEN PAAVALMENTAJAN PAIKKAA
+natjob.offer.4	LUPAAMME ERINOMAISEN PALKAN JA
+natjob.offer.5	VUOSITTAIN TARKISTETTAVAN SOPIMUKSEN
+natjob.offer.6	ODOTAMME VASTAUSTASI
+natjob.accepted.1	JALKAPALLOLIITON JASENET
+natjob.accepted.2	MAASTA %a OVAT ILOISIA ETTA
+natjob.accepted.3	OTIT VASTAAN MAAJOUKKUEEN PAIKAN
+natjob.ended.1	JALKAPALLOLIITON JASENET
+natjob.ended.2	MAASTA %a EIVAT JATKA VUOSITTAIN
+natjob.ended.3	TARKISTETTAVAA SOPIMUSTASI
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	ODOTA HETKI
+busy.new_career	LUODAAN MAAILMAA
+busy.next_season	KESA KAYNNISSA
+dash.scorers	MAALIPORSSI
+scorer.title	MAALIPORSSI
+scorer.view	LISTA
+scorer.page	SIVU
+scorer.view_comp	KILPAILU
+scorer.view_club	OMA SEURA
+scorer.view_history	KAUSI KERRALLAAN
+scorer.leading	KILPAILUN PARHAAT MAALINTEKIJAT
+scorer.goals	MAALIT
+scorer.own_goals	OMAT MAALIT
+scorer.ex_player	ENTISTEN PELAAJIEN MAALIT
+scorer.career_total	URAN YHTEENSA
+scorer.season	KAUSI
+scorer.season_top	KAUDEN MAALIKUNINGAS
+scorer.season_top_plural	KAUDEN MAALIKUNINKAAT
+scorer.no_goals	EI VIELA MAALEJA TALLA KAUDELLA
+scorer.no_seasons	YHTAAN KAUTTA EI OLE PELATTU LOPPUUN
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	OTTELU
+dash.sec_team	JOUKKUE
+dash.sec_club	SEURA
+dash.sec_game	PELI
+nav.hint_cols	YLOS/ALAS VALINTA   VASEN/OIKEA SARAKE   TULI OK   ESC TAKAISIN

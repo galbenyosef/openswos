@@ -40,6 +40,44 @@ public sealed class CareerPlayer
     public double[] GrowthCarry { get; set; } = new double[7];
     public int Form { get; set; }                // -3..+3 simple form
     public int FatigueCarry { get; set; }        // 0..100 tiredness carried between matches
+    /// <summary>
+    /// Goals scored across the whole career, never reset — the original's
+    /// "CAREER TOTAL" (asm:283055). The per-SEASON count lives on the
+    /// competition (CompetitionState.Scorers), which is rebuilt every season.
+    /// </summary>
+    public int CareerGoals { get; set; }
+
+    // ---- CAREER COUNTERS (career depth plan feature #8) --------------------
+    // Two integers are what turn an anonymous striker into YOUR striker, and
+    // what makes selling him hurt. Credited by CareerRecords from the XI of
+    // EVERY fixture in the competition (played or simulated), so a club legend
+    // is built the same way whether or not the manager watched the match.
+    /// <summary>Matches started, across the whole career, never reset.</summary>
+    public int Appearances { get; set; }
+    /// <summary>
+    /// Appearances and goals for the CURRENT club only. Reset lazily when
+    /// <see cref="ClubStatsClubId"/> stops matching <see cref="ClubId"/>, so a
+    /// transfer needs no hook at any of the four places a club changes hands.
+    /// </summary>
+    public int ClubAppearances { get; set; }
+    public int ClubGoals { get; set; }
+    public ushort ClubStatsClubId { get; set; }
+    /// <summary>Appearances in the season now being played; reset at rollover.</summary>
+    public int SeasonAppearances { get; set; }
+
+    // ---- TRAINING (user directive 2026-08-26) ------------------------------
+    /// <summary>
+    /// Training sessions this player has completed, career-long. Purely
+    /// informational — the development itself lands in GrowthCarry/skills.
+    /// </summary>
+    public int TrainingSessions { get; set; }
+    /// <summary>
+    /// Sharpness 0..100, the FIFA-18-style "match fitness" a player builds by
+    /// training and by playing. It is a small match-time nudge on top of Form
+    /// and it decays when he neither trains nor plays, which is what stops
+    /// "pick the same XI for ever" from being free.
+    /// </summary>
+    public int Sharpness { get; set; } = 50;
 
     // Persistent post-match injury severity, 0..7 — the original's per-player
     // cardsInjuries bits 5-7 (struct swos.asm:387-408; IsPlayerInjured
@@ -120,6 +158,21 @@ public sealed class CareerPlayer
         => Math.Clamp((int)Math.Round(v, MidpointRounding.AwayFromZero), 0, 7);
 }
 
+/// <summary>
+/// One club's all-time record for one player — career depth plan feature #8.
+/// Survives the player leaving, which is the whole point of a legends list.
+/// </summary>
+public sealed class LegendRow
+{
+    public int PlayerId { get; set; }
+    public string Name { get; set; } = "";
+    public string Position { get; set; } = "";
+    public int Appearances { get; set; }
+    public int Goals { get; set; }
+    /// <summary>Season the row was last touched, so "still here" can be shown.</summary>
+    public int LastSeason { get; set; }
+}
+
 public sealed class Coach
 {
     public int Id { get; set; }
@@ -149,7 +202,29 @@ public sealed class CareerClub
     public long Budget { get; set; }
     public System.Collections.Generic.List<Coach> Coaches { get; set; } = new();
     public System.Collections.Generic.List<int> TrainingFocusIds { get; set; } = new();
+
+    // ---- CLUB LEGENDS (career depth plan feature #8) -----------------------
+    // Kept ONLY for clubs the manager has actually worked at (writing a row for
+    // each of ~29 000 players in 1730 clubs would bloat every save for a screen
+    // nobody can open). Upserted at the season rollover, so a player who is
+    // sold keeps the record he built here.
+    public System.Collections.Generic.List<LegendRow> Legends { get; set; } = new();
     public ScoutingState Scouting { get; set; } = new();
+
+    // ---- SEASON LEDGER (career depth plan feature #1) ---------------------
+    // Money that moved during the current season, so the end-of-season
+    // statement can print the ORIGINAL game's 'PLAYER SALES:' and
+    // 'PLAYER PURCHASES:' lines and reconcile exactly against the balance.
+    // Reset for every club when the season rolls over (Finance).
+    // SeasonLedgerActive distinguishes "nothing happened" from "old save with
+    // no ledger", so pre-feature careers fall back to the live budget instead
+    // of claiming they started the season at zero.
+    public bool SeasonLedgerActive { get; set; }
+    public long SeasonOpeningBalance { get; set; }
+    public long SeasonPlayerSales { get; set; }
+    public long SeasonPlayerPurchases { get; set; }
+    /// <summary>Coach signing fees, coach wages paid mid-season, scouting upgrades.</summary>
+    public long SeasonStaffSpend { get; set; }
 }
 
 public sealed class CareerWorld

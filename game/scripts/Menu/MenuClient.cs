@@ -30,6 +30,16 @@ public sealed class MenuScreen
     // 16 slot rows are the default focus (lineup editor) instead of the entry
     // column. The entries stay reachable by scrolling UP out of the table.
     public bool AutoTableSelect;
+    /// <summary>
+    /// Lay the entries out in this many side-by-side columns instead of one
+    /// tall list (1 = the old single column, the default everywhere else).
+    ///
+    /// A Label entry starts a SECTION: the label and every entry after it up to
+    /// the next Label are one block, and a block is never split across columns.
+    /// The career dashboard uses it — sixteen buttons stacked vertically ran off
+    /// the bottom and read as an undifferentiated list.
+    /// </summary>
+    public int Columns = 1;
 }
 
 // Binds a table-showing screen's body highlight to inline row navigation. The
@@ -159,6 +169,32 @@ public sealed partial class MenuClient
     public MenuClient(Node uiLayer, SwosFont? font, IMenuHost host, int viewportW, int viewportH)
     {
         _font = font; _host = host; _vw = viewportW; _vh = viewportH;
+        // Career depth plan feature #3: other clubs need to be able to look at
+        // the master team list before they can come for the manager. The
+        // delegates are evaluated lazily, so installing them here is safe even
+        // though the roster has not finished loading yet.
+        OpenSwos.Competition.Career.JobMarket.Source =
+            OpenSwos.Competition.Career.JobMarketSource.FromHost(
+                (count, exclude) => _host.RandomTeams(count, exclude),
+                m => _host.TeamName(m),
+                m => _host.TeamGlobalId(m),
+                m => _host.TeamNation(m),
+                m => _host.TeamDivision(m),
+                m => _host.TeamStrength(m),
+                OpenSwos.Assets.NationNames.Name);
+        // Feature #4: the same list, seen from the national-team side.
+        OpenSwos.Competition.Career.NationalJob.Source =
+            OpenSwos.Competition.Career.NationalSource.FromHost(
+                (nation, division, max) => _host.TeamsByNationDivision(nation, division, max),
+                m => _host.TeamName(m),
+                m => _host.TeamGlobalId(m),
+                m => _host.TeamNation(m),
+                m => _host.TeamDivision(m),
+                m => _host.TeamStrength(m));
+        // Feature #5: attributing a simulated goal needs the scoring club's XI,
+        // and outside a career there is no CareerWorld to read it from.
+        OpenSwos.Competition.Career.ScorerModel.Source =
+            OpenSwos.Competition.Career.ScorerSource.FromHost(m => _host.Team(m));
         _optionsPages = new System.Action<MenuScreen>[] { AddOptionsPageGameplay, AddOptionsPageAudioDisplay };
         _root = new Node2D { Name = "MenuClient" };
         uiLayer.AddChild(_root);
@@ -353,8 +389,48 @@ public sealed partial class MenuClient
 
     // One layout pass at the given metrics tier; true if the column's bottom
     // edge stays above `limit` (footer top minus any body reservation).
+    /// <summary>
+    /// Moves the selection one column left or right on a multi-column screen,
+    /// landing on the selectable entry whose Y is nearest the current one — the
+    /// cursor keeps its height instead of snapping to the top of the column.
+    /// Does nothing at the outer edges (no wrap: wrapping across a wide board
+    /// feels like the cursor teleported).
+    /// </summary>
+    private void MoveColumn(MenuScreen s, int dir)
+    {
+        if (s.Selected < 0 || s.Selected >= s.Entries.Count) return;
+        var cur = s.Entries[s.Selected];
+        int curY = cur.Y + cur.H / 2;
+
+        // Columns are identified by X, so no layout state has to be stored.
+        int bestX = int.MaxValue, target = -1;
+        foreach (var e in s.Entries)
+        {
+            if (!e.Selectable) continue;
+            bool onSide = dir < 0 ? e.X < cur.X : e.X > cur.X;
+            if (!onSide) continue;
+            int dx = System.Math.Abs(e.X - cur.X);
+            if (dx < bestX) { bestX = dx; }
+        }
+        if (bestX == int.MaxValue) return;                 // already the outer column
+
+        int bestDy = int.MaxValue;
+        for (int i = 0; i < s.Entries.Count; i++)
+        {
+            var e = s.Entries[i];
+            if (!e.Selectable) continue;
+            if (System.Math.Abs(e.X - cur.X) != bestX) continue;
+            bool onSide = dir < 0 ? e.X < cur.X : e.X > cur.X;
+            if (!onSide) continue;
+            int dy = System.Math.Abs((e.Y + e.H / 2) - curY);
+            if (dy < bestDy) { bestDy = dy; target = i; }
+        }
+        if (target >= 0) s.Selected = target;
+    }
+
     private bool TryLayoutEntries(MenuScreen s, int top, bool compact, int limit)
     {
+        if (s.Columns > 1) return TryLayoutColumns(s, top, compact, limit);
         int gap = compact ? 2 : 5;
         int y = top;
         foreach (var e in s.Entries)
@@ -379,6 +455,111 @@ public sealed partial class MenuClient
             e.X = (_vw - e.W) / 2; e.Y = y; y += e.H + gap;
         }
         return y - gap <= limit;
+    }
+
+    /// <summary>
+    /// Multi-column entry layout. Blocks (a section Label plus the entries
+    /// under it) are packed left to right, balanced by height, and never split.
+    ///
+    /// Entry ORDER is untouched, so UP/DOWN still walks the list exactly as it
+    /// reads — down the first column, then on to the top of the next. LEFT and
+    /// RIGHT jump between columns (see MoveColumn), which is what makes a wide
+    /// board navigable with a d-pad.
+    /// </summary>
+    private bool TryLayoutColumns(MenuScreen s, int top, bool compact, int limit)
+    {
+        int cols = System.Math.Clamp(s.Columns, 1, 4);
+        int gap = compact ? 2 : 4;
+        int sideMargin = 10;
+        int colGap = 8;
+        int colW = (_vw - sideMargin * 2 - colGap * (cols - 1)) / cols;
+
+        // Size every entry first: widths come from the column, not the screen.
+        foreach (var e in s.Entries)
+        {
+            switch (e.Kind)
+            {
+                case EntryKind.Label:
+                    e.W = colW; e.H = compact ? 11 : 13;
+                    break;
+                case EntryKind.Button:
+                    e.W = colW; e.H = e.Big ? (compact ? 14 : 17) : (compact ? 12 : 15);
+                    break;
+                case EntryKind.Option:
+                    e.W = colW; e.H = compact ? 12 : 15;
+                    break;
+            }
+        }
+
+        // A LEADING Label is a full-width banner, not a section heading: it is
+        // the screen's status line (the dashboard's "LEAGUE - ROUND 3/30 YOU
+        // ARE 4TH"), and squeezing it into one column would both truncate it
+        // and read as a heading for that column only.
+        int first0 = 0;
+        if (s.Entries.Count > 1 && s.Entries[0].Kind == EntryKind.Label
+            && s.Entries[1].Kind == EntryKind.Label)
+        {
+            var banner = s.Entries[0];
+            banner.W = _vw - sideMargin * 2;
+            banner.X = sideMargin;
+            banner.Y = top;
+            top += banner.H + gap;
+            first0 = 1;
+        }
+
+        // Blocks: a Label opens one; anything before the first Label is its own.
+        var blocks = new System.Collections.Generic.List<(int First, int Count, int Height)>();
+        int start = first0;
+        for (int i = first0; i < s.Entries.Count; i++)
+        {
+            if (i > start && s.Entries[i].Kind == EntryKind.Label)
+            {
+                blocks.Add((start, i - start, BlockHeight(s, start, i - start, gap)));
+                start = i;
+            }
+        }
+        if (s.Entries.Count > start)
+            blocks.Add((start, s.Entries.Count - start, BlockHeight(s, start, s.Entries.Count - start, gap)));
+        if (blocks.Count == 0) return true;
+
+        // Balance by height, but never leave a later column with more blocks
+        // than it can hold: keep at least one block per remaining column.
+        int total = 0;
+        foreach (var bl in blocks) total += bl.Height;
+        int target = total / cols;
+
+        int col = 0, y = top, colTop = top, tallest = top;
+        for (int b = 0; b < blocks.Count; b++)
+        {
+            int blocksLeft = blocks.Count - b;
+            int colsLeft = cols - col;
+            bool mustBreak = blocksLeft <= colsLeft - 1;                 // save a block per column
+            bool wantBreak = col < cols - 1 && y > colTop
+                             && (y - colTop) + blocks[b].Height > target + blocks[b].Height / 2;
+            bool overflow = col < cols - 1 && y > colTop
+                            && y + blocks[b].Height > limit;
+            if (mustBreak || wantBreak || overflow)
+            {
+                col++;
+                y = colTop = top;
+            }
+            int x = sideMargin + col * (colW + colGap);
+            for (int k = 0; k < blocks[b].Count; k++)
+            {
+                var e = s.Entries[blocks[b].First + k];
+                e.X = x; e.Y = y; y += e.H + gap;
+            }
+            y += gap;                                                    // breathing room between sections
+            if (y > tallest) tallest = y;
+        }
+        return tallest - gap * 2 <= limit;
+    }
+
+    private static int BlockHeight(MenuScreen s, int first, int count, int gap)
+    {
+        int h = 0;
+        for (int i = 0; i < count; i++) h += s.Entries[first + i].H + gap;
+        return h;
     }
 
     private const int OptLabelW = 225;   // option row: label box | value box (×1.5 for 576 space)
@@ -623,10 +804,19 @@ public sealed partial class MenuClient
                 bool hasStepper = s.Entries.Exists(e => e.Kind == EntryKind.Option && e.OnActivate is null);
                 hint = hasStepper
                     ? Loc.Tr("nav.hint_stepper", "UP/DOWN SELECT   LEFT/RIGHT CHANGE   FIRE OK   ESC BACK")
-                    : Loc.Tr("nav.hint_menu", "UP/DOWN SELECT   FIRE OK   ESC BACK");
+                    : s.Columns > 1
+                        // The column jump is not discoverable on a d-pad unless
+                        // the footer says it is there.
+                        ? Loc.Tr("nav.hint_cols", "UP/DOWN SELECT   LEFT/RIGHT COLUMN   FIRE OK   ESC BACK")
+                        : Loc.Tr("nav.hint_menu", "UP/DOWN SELECT   FIRE OK   ESC BACK");
             }
             SetText(_footerSpr, hint, false, Align.Center, 0, _vh - 11, _vw, 10, new Color(0.55f, 0.6f, 0.72f));
         }
+
+        // Version stamp, bottom-left, on every screen. Dimmer than the footer
+        // legend so it reads as a build marker rather than as a control hint.
+        SetText(_versionSpr, "V" + AppVersion, false, Align.Left,
+            3, _vh - 11, 120, 10, new Color(0.38f, 0.43f, 0.55f));
 
         // Touch BACK affordance: only visible on touchscreens. A tap inside it
         // (checked first in HandleTouch) maps to ui_cancel/ESC for the current
@@ -641,7 +831,24 @@ public sealed partial class MenuClient
         }
     }
 
-    private Sprite2D? _titleBar, _titleSpr, _footerSpr;
+    private Sprite2D? _titleBar, _titleSpr, _footerSpr, _versionSpr;
+
+    /// <summary>
+    /// The build's version, read from Godot's own `application/config/version`
+    /// so there is exactly ONE place to bump it and an export carries the same
+    /// string. Shown in the bottom-left corner of every menu screen (user ask,
+    /// 2026-08-26) — without it there is no way to tell, while playing, whether
+    /// the running build is the current one.
+    /// </summary>
+    public static string AppVersion
+    {
+        get
+        {
+            var v = ProjectSettings.GetSetting("application/config/version", "");
+            string text = v.AsString();
+            return string.IsNullOrEmpty(text) ? "DEV" : text;
+        }
+    }
 
     private void EnsureTitleNodes()
     {
@@ -652,6 +859,8 @@ public sealed partial class MenuClient
             _titleSpr!.ZIndex = 21;
             _footerSpr = MakeText();
             _footerSpr!.ZIndex = 21;
+            _versionSpr = MakeText();
+            _versionSpr!.ZIndex = 21;
             // Persistent BACK affordance (shown/hidden by TouchEnabled in
             // Refresh). Sits above the buttons/text but below the flash cursor.
             _backBox = MakeSprite(MenuTheme.Button((int)kBackRect.Size.X, (int)kBackRect.Size.Y, MenuTheme.Style.Plain),
@@ -704,8 +913,58 @@ public sealed partial class MenuClient
 
     // ---- input ---------------------------------------------------------------
     // Called once per physics tick by Main while AppState==Menu.
+    // ---- PLEASE WAIT ----------------------------------------------------
+    // Some career work genuinely takes time and there is nothing to optimise
+    // away: MEASURED 2026-08-24, a season rollover is ~1.7 s of regen, growth,
+    // staff and scouting across 1730 clubs, and creating a career builds a
+    // world of ~29 000 players. Run inline it froze the menu with no
+    // explanation, which is what the user reported.
+    //
+    // Godot cannot paint from inside a synchronous call, so the work is
+    // DEFERRED: push a PLEASE WAIT screen, let it actually render for a couple
+    // of frames, then pop it and do the work. Input is ignored in between, so
+    // the wait cannot be double-fired.
+    private System.Action? _busyWork;
+    private string _busyLabel = "";
+    private int _busyFrames;
+
+    /// <summary>Runs <paramref name="work"/> behind a PLEASE WAIT screen.</summary>
+    private void RunBusy(string label, System.Action work)
+    {
+        // Already waiting: never stack two, the second click is the user
+        // wondering whether the first one registered.
+        if (_busyWork is not null) return;
+        _busyLabel = label;
+        Push(BuildBusyScreen());
+        _busyWork = work;
+        _busyFrames = 2;               // one to lay out, one to be on screen
+    }
+
+    private MenuScreen BuildBusyScreen()
+    {
+        var s = new MenuScreen { Title = Loc.Tr("busy.title", "PLEASE WAIT") };
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = true, Label = () => _busyLabel });
+        return s;
+    }
+
     public void Tick()
     {
+        // The deferred half of RunBusy. Ahead of everything else, including the
+        // result poll, so nothing can run against a half-finished world.
+        if (_busyWork is not null)
+        {
+            EnsureTitleNodes();
+            _cursorFrame++;
+            UpdateCursor();
+            if (_dirty) { Refresh(); _dirty = false; }
+            if (--_busyFrames > 0) return;
+            var work = _busyWork;
+            _busyWork = null;
+            Pop();                      // drop PLEASE WAIT, back where we were
+            work();                     // ... and let the work navigate from there
+            return;
+        }
+
         // Competition result hand-back — polled before the Active check and
         // before any input handling so a finished competition match is recorded
         // the moment the menu layer runs again (the Active setter's ResetToHome
@@ -811,6 +1070,17 @@ public sealed partial class MenuClient
         // responds to LEFT/RIGHT — value-stepping is reserved for true option
         // toggles (OPTIONS screen, match length, sizes, ...).
         bool selIsPicker = sel is { Kind: EntryKind.Option } && sel.OnActivate is not null;
+
+        // Multi-column screens: LEFT/RIGHT walk between columns. Nothing on such
+        // a screen steps a value (they are all buttons), so the axis is free —
+        // and without it a three-column board is unusable on a d-pad, because
+        // UP/DOWN alone would make the player scroll through a whole column to
+        // reach the one next to it.
+        if (s.Columns > 1 && sel is not null && sel.Kind != EntryKind.Option)
+        {
+            if (JP("ui_left")) { MoveColumn(s, -1); _dirty = true; }
+            else if (JP("ui_right")) { MoveColumn(s, +1); _dirty = true; }
+        }
 
         // LEFT/RIGHT — step a value-cycling Option (with optional accelerated
         // hold). Picker options are deliberately excluded.
@@ -1093,6 +1363,8 @@ public sealed partial class MenuClient
 
     // ---- debug / screenshot-driver hooks ------------------------------------
     public string DebugTitle => Current.Title;
+    /// <summary>Harness probe: how many chairman memos are still unread.</summary>
+    public int DebugUnreadMemos => _comp?.Career?.UnreadMemos ?? -1;
     public int DebugEntryCount => Current.Entries.Count;
     public int DebugSelected => Current.Selected;
     public void DebugSelect(int i)
@@ -1139,6 +1411,58 @@ public sealed partial class MenuClient
         if (sel.Kind == EntryKind.Option && sel.OnActivate is null) sel.OnStep?.Invoke(d);
         _dirty = true; Refresh();
     }
+    /// <summary>
+    /// One-line job-market state for the screenshot harness (feature #3), so a
+    /// run says plainly whether any club actually wrote — a JOB OFFERS shot that
+    /// silently photographs an empty screen proves nothing.
+    /// </summary>
+    public string DebugJobSummary()
+    {
+        var career = _comp?.Career;
+        if (career is null) return "no career";
+        var live = OpenSwos.Competition.Career.JobMarket.LiveOffers(career);
+        string names = "";
+        foreach (var o in live) names += (names.Length > 0 ? ", " : "") + o.ClubName;
+        return $"{career.ClubName} S{career.Season} rep={career.Reputation} offers={live.Count}"
+             + (names.Length > 0 ? " [" + names + "]" : "")
+             + (OpenSwos.Competition.Career.JobMarket.HasAcceptedOffer(career) ? " AGREED" : "");
+    }
+
+    /// <summary>
+    /// One-line national-team state for the screenshot harness (feature #4), so
+    /// a run says plainly whether a committee has called — a NATIONAL TEAM shot
+    /// of an empty screen proves nothing.
+    /// </summary>
+    public string DebugNationalSummary()
+    {
+        var career = _comp?.Career;
+        if (career is null) return "no career";
+        if (OpenSwos.Competition.Career.NationalJob.HasOffer(career))
+            return "OFFER FROM " + career.NationalOffer!.Country;
+        if (OpenSwos.Competition.Career.NationalJob.HasJob(career))
+            return career.NationalCountry + " coach, squad "
+                 + (career.NationalSquad?.Count ?? 0) + "/"
+                 + OpenSwos.Competition.Career.NationalJob.SquadSize;
+        return $"none (rep {career.Reputation}, trophies {career.Trophies.Count}, "
+             + $"gate {OpenSwos.Competition.Career.NationalJob.ReputationGate})";
+    }
+
+    /// <summary>
+    /// Plays whole seasons until a federation calls, or the budget of seasons
+    /// runs out. Screenshot harness only: the national job is EARNED, so the
+    /// only honest way to photograph it is to earn it.
+    /// </summary>
+    public bool DebugPlayUntilNationalOffer(int maxSeasons)
+    {
+        for (int i = 0; i < maxSeasons; i++)
+        {
+            if (OpenSwos.Competition.Career.NationalJob.HasOffer(_comp?.Career)) return true;
+            if (_comp?.Career is null || _comp.Career.Retired) return false;
+            DebugFastForwardSeason();
+        }
+        return OpenSwos.Competition.Career.NationalJob.HasOffer(_comp?.Career);
+    }
+
     // One-line competition state for the orchestrator's screenshot harness.
     public string DebugCompSummary()
         => $"{_comp?.Name}|{(_comp is null ? "none" : OpenSwos.Competition.CompetitionEngine.RoundLabel(_comp))}|fixtures={_comp?.Fixtures.Count ?? 0}";
@@ -1999,6 +2323,11 @@ public sealed partial class MenuClient
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
             Label = () => Loc.Tr("opt.commentator_hint", "SPOKEN COMMENTARY (PC SOUND ONLY)") });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
+            Label = () => Loc.Tr("opt.board", "BOARD"), Value = () => _host.BoardPatienceLabel,
+            OnStep = d => _host.StepBoardPatience(d) });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+            Label = () => Loc.Tr("opt.board_hint", "HOW SOON THE CHAIRMAN SACKS YOU IN CAREER") });
+        s.Entries.Add(new MenuEntry { Kind = EntryKind.Option, Style = MenuTheme.Style.Value,
             Label = () => Loc.Tr("opt.display", "DISPLAY"), Value = () => _host.DisplayModeLabel,
             OnStep = _ => _host.CycleDisplayMode() });
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
@@ -2060,9 +2389,20 @@ public sealed partial class MenuClient
     // lazily for saves written before the world existed.
     private void EnsureCareerWorld(CompetitionState? c)
     {
-        if (c?.Career is null || c.Career.World is not null) return;
+        if (c?.Career is null) return;
         int n = _host.TeamCount;
         if (n <= 0) return;
+        if (c.Career.World is not null)
+        {
+            // The world exists, but a save written before a national side was
+            // recognised carries a short NationalTeamIds list — which leaves
+            // those squads on the transfer market. Refreshing is additive and
+            // cheap, so do it every time the world is touched.
+            var known = new System.Collections.Generic.List<OpenSwos.Assets.TeamRecord>(n);
+            for (int i = 0; i < n; i++) known.Add(_host.Team(i));
+            OpenSwos.Competition.Career.CareerWorldBuilder.RefreshNationalTeamIds(c.Career.World, known);
+            return;
+        }
         var master = new System.Collections.Generic.List<OpenSwos.Assets.TeamRecord>(n);
         for (int i = 0; i < n; i++) master.Add(_host.Team(i));
         var world = OpenSwos.Competition.Career.CareerWorldBuilder.BuildWorld(c, master);
@@ -2147,8 +2487,12 @@ public sealed partial class MenuClient
         // BEFORE ApplyFixtureResult mutates the world (recovery would shuffle
         // availability). Persisted, OR-max, AFTER recovery inside the pipeline.
         var resolvedInjuries = ResolveMatchInjuries(_host.TakeLastMatchInjuries(), humanClubId);
+        // Feature #5: who scored, resolved against the SAME lineup for the same
+        // reason — before ApplyFixtureResult moves anybody.
+        var resolvedScorers = OpenSwos.Competition.Career.ScorerModel.ResolveCredits(
+            _comp, fx, _host.TakeLastMatchScorers(), m => _host.Team(m));
         ApplyFixtureResult(fx, homeGoals, awayGoals, playedStage, humanClubId, realDist ?? -1,
-            resolvedInjuries);
+            resolvedInjuries, resolvedScorers);
     }
 
     // Maps captured (in-game slot, severity) pairs onto stable CareerPlayer ids
@@ -2178,10 +2522,11 @@ public sealed partial class MenuClient
     // (HOME -> DASHBOARD, plus any freshly drawn knockout ceremony on top).
     private void ApplyFixtureResult(Fixture fx, int homeGoals, int awayGoals, string playedStage,
         ushort realDrainClubId = 0, int realDrainDistance = -1,
-        System.Collections.Generic.List<(int playerId, int severity)>? matchInjuries = null)
+        System.Collections.Generic.List<(int playerId, int severity)>? matchInjuries = null,
+        System.Collections.Generic.List<OpenSwos.Competition.Career.GoalCredit>? scorers = null)
     {
         if (_comp is null) return;
-        CompetitionEngine.RecordResult(_comp, fx, homeGoals, awayGoals);
+        CompetitionEngine.RecordResult(_comp, fx, homeGoals, awayGoals, scorers);
         _pendingFixture = null;
         // Career: the match moves form / growth / fatigue for both clubs.
         if (_comp.Career?.World is not null && fx.Played)
@@ -2217,7 +2562,20 @@ public sealed partial class MenuClient
         // Cup/tournament: a freshly drawn knockout round gets its ceremony on
         // top of the dashboard (original: ChooseTeamsMenu "NEXT ROUND DRAW").
         MaybePushDrawCeremony(playedStage);
+        // Career depth plan feature #2: the chairman writes after matches too.
+        // Push his memo so a warning — or a dismissal — cannot be missed. When
+        // the caller also shows a FULL TIME notice it lands ON TOP, so the
+        // player reads the result first and the board's reaction second.
+        MaybePushChairmanMemo();
         _dirty = true;
+    }
+
+    /// Shows the chairman's inbox when an unread memo is waiting. Used after a
+    /// match and after a season rollover; a no-op otherwise.
+    private void MaybePushChairmanMemo()
+    {
+        if ((_comp?.Career?.UnreadMemos ?? 0) <= 0) return;
+        Push(BuildChairmanScreen());
     }
 
     // Friendly (non-competition) full-time hand-back: offer an immediate
@@ -2259,7 +2617,10 @@ public sealed partial class MenuClient
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
                 Label = ContinueLabel, OnActivate = OpenSavedCompetition });
         }
-        if (CompetitionStore.ListSlots().Count > 0)
+        // AnySlotExists, not ListSlots().Count: this runs while a SCREEN is being
+        // BUILT, and ListSlots used to read every save file on disk to answer it
+        // — several seconds with real careers. See CompetitionStore.ListSlots.
+        if (CompetitionStore.AnySlotExists())
         {
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
                 Label = () => Loc.Tr("comp.load_game", "LOAD GAME"), OnActivate = () => { _slotDeleteMode = false; Push(BuildLoadGame()); } });
@@ -2719,46 +3080,28 @@ public sealed partial class MenuClient
         return s;
     }
 
-    // League pool for a career season: same nation+division as the club, up to
-    // 16 incl. the club; fewer than 8 available -> same nation, any division.
-    // Random-fills to at least 8 and an even count for clean round-robins.
-    private System.Collections.Generic.List<int> BuildCareerLeaguePool(int you, int nation, int division)
+    // Career pool construction lives in CareerFactory so the web career client
+    // (scripts/Web/) builds a career from exactly the same rules — a second copy
+    // of "fewer than 8 same-division clubs -> fall back to any division" would
+    // drift the moment either side changed.
+    private OpenSwos.Competition.TeamSource CareerTeamSource() => new()
     {
-        var pool = new System.Collections.Generic.List<int> { you };
-        foreach (int idx in _host.TeamsByNationDivision(nation, division, 24))
+        ByNationDivision = (nation, division, max) => _host.TeamsByNationDivision(nation, division, max),
+        Random = (count, exclude) => _host.RandomTeams(count, exclude),
+        MakeRef = m => new TeamRef
         {
-            if (pool.Count >= 16) break;
-            if (idx == you || pool.Contains(idx)) continue;
-            pool.Add(idx);
-        }
-        if (pool.Count < 8)
-        {
-            pool = new System.Collections.Generic.List<int> { you };
-            foreach (int idx in _host.TeamsByNationDivision(nation, -1, 24))
-            {
-                if (pool.Count >= 16) break;
-                if (idx == you || pool.Contains(idx)) continue;
-                pool.Add(idx);
-            }
-        }
-        while (pool.Count < 8 || (pool.Count & 1) == 1) AddRandomDistinct(pool);
-        return pool;
-    }
+            MasterIndex = m,
+            GlobalId = _host.TeamGlobalId(m),
+            Name = (_host.TeamName(m) ?? "").Trim().ToUpperInvariant(),
+            Strength = _host.TeamStrength(m),
+        },
+    };
 
-    // Cup pool for a career season: 16 same-nation teams incl. the club,
-    // random-nation fill if the nation is short.
+    private System.Collections.Generic.List<int> BuildCareerLeaguePool(int you, int nation, int division)
+        => OpenSwos.Competition.CareerFactory.BuildLeaguePool(CareerTeamSource(), you, nation, division);
+
     private System.Collections.Generic.List<int> BuildCareerCupPool(int you, int nation)
-    {
-        var pool = new System.Collections.Generic.List<int> { you };
-        foreach (int idx in _host.TeamsByNationDivision(nation, -1, 32))
-        {
-            if (pool.Count >= 16) break;
-            if (idx == you || pool.Contains(idx)) continue;
-            pool.Add(idx);
-        }
-        while (pool.Count < 16) AddRandomDistinct(pool);
-        return pool;
-    }
+        => OpenSwos.Competition.CareerFactory.BuildCupPool(CareerTeamSource(), you, nation);
 
     // START CAREER first asks who the manager is (original career flow greets
     // the manager by name — ManagementRecordMenu "%a %b", swos.asm:44076).
@@ -2767,7 +3110,9 @@ public sealed partial class MenuClient
     {
         PushNameEntry(Loc.Tr("mgr.title", "MANAGER NAME"), Loc.Tr("mgr.default_name", "PLAYER"), 14,
             Loc.Tr("mgr.hint", "TYPE NAME   LEFT/RIGHT TITLE   ENTER OK   ESC CANCEL"),
-            name => CreateCareerNow(name.Length == 0 ? Loc.Tr("mgr.default_name", "PLAYER") : name, kManagerTitles[_mgrTitleIdx]),
+            name => RunBusy(Loc.Tr("busy.new_career", "BUILDING THE WORLD"),
+                () => CreateCareerNow(name.Length == 0 ? Loc.Tr("mgr.default_name", "PLAYER") : name,
+                                      kManagerTitles[_mgrTitleIdx])),
             sideRow: () => Loc.Tr("mgr.title_row", "TITLE") + "  " + Loc.Tr(_mgrTitleIdx == 0 ? "career.title_mr" : "career.title_ms", kManagerTitles[_mgrTitleIdx]),
             onSide: _ => { _mgrTitleIdx ^= 1; _dirty = true; });
     }
@@ -2775,21 +3120,11 @@ public sealed partial class MenuClient
     private void CreateCareerNow(string managerName, string managerTitle)
     {
         int you = _setupTeamIdx;
-        int nation = _host.TeamNation(you);
-        int division = _host.TeamDivision(you);
-        var leaguePool = BuildCareerLeaguePool(you, nation, division);
-        var cupPool = BuildCareerCupPool(you, nation);
-        int seed = SeedFrom(leaguePool, 900 + you);
-        // Club sits first in leaguePool, so playerTeam = 0.
-        var comp = CompetitionEngine.CreateCareer(
-            "CAREER", MakeTeamRefs(leaguePool), MakeTeamRefs(cupPool), 0, nation, division, seed);
-        // Create first, then stamp the manager identity — OpenNewCompetition
-        // saves the state, so the name/title land in the very first autosave.
-        if (comp.Career is not null)
-        {
-            comp.Career.ManagerName = managerName;
-            comp.Career.ManagerTitle = managerTitle;
-        }
+        // Pools, seed and manager identity all come from CareerFactory, shared
+        // with the web career client. The club sits first in the league pool, so
+        // playerTeam = 0.
+        var comp = OpenSwos.Competition.CareerFactory.Create(CareerTeamSource(), you,
+            _host.TeamNation(you), _host.TeamDivision(you), managerName, managerTitle);
         // Materialize the persistent career world BEFORE the first autosave, so
         // ages / potential / stamina exist and the season systems actually run.
         EnsureCareerWorld(comp);
@@ -2813,7 +3148,19 @@ public sealed partial class MenuClient
         // Reserve the mini-table / round-fixtures block below the buttons. An
         // active career carries RECORD / SQUAD / SAVE AS / RETIRE, so leave
         // enough room for the taller compact entry column before the body.
-        var s = new MenuScreen { Title = CompTitle(c), BodyReserve = c.Career is not null && !retired ? 60 : 84 };
+        // A CAREER dashboard carries sixteen-odd entries. Stacked in one column
+        // they ran off the bottom into the compact tier and read as an
+        // undifferentiated list, so a career lays out in THREE columns grouped
+        // into sections (user ask, 2026-08-25). Everything else — a plain
+        // league, cup or tournament — has a handful of entries and stays a
+        // single centred column, which is what those screens want.
+        bool careerBoard = c.Career is not null && !retired;
+        var s = new MenuScreen
+        {
+            Title = CompTitle(c),
+            BodyReserve = careerBoard ? 60 : 84,
+            Columns = careerBoard ? 3 : 1,
+        };
         // Single status line: round + summary, with CHAMPIONS / ELIMINATED
         // merged in so the entry column never stacks two status labels.
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false, Label = DashboardStatusLine });
@@ -2822,8 +3169,27 @@ public sealed partial class MenuClient
         {
             // Retired career: management record + abandon only — no fixtures
             // are playable (original retire flow: swos.asm:381,44509).
+            //
+            // A SACKED manager is a different case since career depth plan
+            // feature #3: he is out of work, not out of the game. While a club
+            // is still interested he can read the letters and take the job,
+            // which starts next season somewhere new.
+            if (c.Career?.Sacked == true && JobOffersWaiting())
+                s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
+                    Label = JobOffersEntryLabel, OnActivate = () => Push(BuildJobOffersScreen()) });
+            if (OpenSwos.Competition.Career.JobMarket.HasAcceptedOffer(c.Career))
+                s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = false,
+                    Label = () => Loc.Tr("job.new_job", "NEW JOB"), OnActivate = AdvanceSeasonBusy });
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
                 Label = () => Loc.Tr("dash.management_record", "MANAGEMENT RECORD"), OnActivate = () => Push(BuildManagementRecord(careerOver: true)) });
+            // Feature #5: a finished career still has a scorer list worth
+            // reading — it is the last thing the season left behind.
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => Loc.Tr("dash.scorers", "TOP SCORERS"), OnActivate = () => Push(BuildScorersScreen()) });
+            // A finished career still has a diary and a records board — they are
+            // the two screens a player actually wants at the end of one.
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => Loc.Tr("dash.chronicle", "CLUB DIARY"), OnActivate = () => Push(BuildChronicleScreen()) });
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Danger, Big = false,
                 Label = () => Loc.Tr("dash.abandon", "ABANDON"), OnActivate = AbandonCompetition });
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Plain, Big = false,
@@ -2837,6 +3203,17 @@ public sealed partial class MenuClient
         bool aiOnlyNext = anyNext is not null && anyNext.HomeTeam != c.PlayerTeam && anyNext.AwayTeam != c.PlayerTeam;
         bool rollover = c.Career is not null && (CompetitionEngine.PendingSeasonRollover(c) || c.Finished);
 
+        // Section headings. They only mean anything in the three-column career
+        // layout (a Label opens a block there), so a plain competition gets
+        // none — an extra caption above four buttons would be noise.
+        void Section(string key, string text)
+        {
+            if (!careerBoard) return;
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Label, Big = false,
+                Style = MenuTheme.Style.Header, Label = () => Loc.Tr(key, text) });
+        }
+
+        Section("dash.sec_match", "MATCH");
         if (playerNext is not null)
         {
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlayPrimary, Big = false,
@@ -2850,7 +3227,7 @@ public sealed partial class MenuClient
         if (rollover)
         {
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.PlaySecondary, Big = false,
-                Label = () => Loc.Tr("dash.next_season", "NEXT SEASON"), OnActivate = AdvanceSeason });
+                Label = () => Loc.Tr("dash.next_season", "NEXT SEASON"), OnActivate = AdvanceSeasonBusy });
         }
         if (c.Kind != CompetitionKind.Cup)
         {
@@ -2861,6 +3238,7 @@ public sealed partial class MenuClient
             Label = () => Loc.Tr("dash.fixtures", "FIXTURES"), OnActivate = () => Push(BuildFixturesScreen()) });
         if (c.Career is not null)
         {
+            Section("dash.sec_team", "TEAM");
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
                 Label = () => Loc.Tr("dash.squad", "SQUAD"), OnActivate = () => Push(BuildSquadScreen()) });
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
@@ -2871,13 +3249,49 @@ public sealed partial class MenuClient
             // while any bid is unseen (original SWOS: the entry flashes).
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
                 Label = OffersEntryLabel, OnActivate = () => Push(BuildOffersScreen()) });
+            // TRAINING: the weekly session (user directive, 2026-08-26). Sits in
+            // TEAM next to the squad because that is what it changes.
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
+                Label = TrainingEntryLabel, OnActivate = () => Push(BuildTrainingScreen()) });
+            // YOUTH INTAKE: only in the summer it happened (feature #6). An empty
+            // entry every week would be noise.
+            if (c.Career.YouthIntakeIds is { Count: > 0 }
+                && c.Career.YouthIntakeSeason == c.Career.Season)
+                s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
+                    Label = YouthEntryLabel, OnActivate = () => Push(BuildYouthIntakeScreen()) });
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
                 Label = () => Loc.Tr("dash.staff", "STAFF"), OnActivate = () => Push(BuildStaffScreen()) });
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
                 Label = () => Loc.Tr("dash.scouting", "SCOUTING"), OnActivate = () => Push(BuildScoutingScreen()) });
+            Section("dash.sec_club", "CLUB");
+            // CHAIRMAN: flashes a "!" while a memo is unread, like OFFERS.
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
+                Label = ChairmanEntryLabel, OnActivate = () => Push(BuildChairmanScreen()) });
+            // JOB OFFERS: only once somebody has actually written (career depth
+            // plan feature #3). An empty entry every season would be noise.
+            if (JobOffersWaiting())
+                s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
+                    Label = JobOffersEntryLabel, OnActivate = () => Push(BuildJobOffersScreen()) });
+            // NATIONAL TEAM: only once a committee has called (feature #4).
+            if (NationalEntryVisible())
+                s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Accent, Big = false,
+                    Label = NationalEntryLabel, OnActivate = () => Push(BuildNationalScreen()) });
+            // Career depth plan feature #5 — the original's STATS entry
+            // (asm:295076 "TOP GOAL SCORERS").
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => Loc.Tr("dash.scorers", "TOP SCORERS"), OnActivate = () => Push(BuildScorersScreen()) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => Loc.Tr("dash.finances", "FINANCES"), OnActivate = () => Push(BuildFinancesScreen()) });
             s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
                 Label = () => Loc.Tr("dash.record", "RECORD"), OnActivate = () => Push(BuildManagementRecord(careerOver: false)) });
+            // Feature #7: the club's own diary, and feature #8: its all-time
+            // appearance and goal records.
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => Loc.Tr("dash.chronicle", "CLUB DIARY"), OnActivate = () => Push(BuildChronicleScreen()) });
+            s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
+                Label = () => Loc.Tr("dash.legends", "CLUB RECORDS"), OnActivate = () => Push(BuildLegendsScreen()) });
         }
+        Section("dash.sec_game", "GAME");
         s.Entries.Add(new MenuEntry { Kind = EntryKind.Button, Style = MenuTheme.Style.Tool, Big = false,
             Label = () => Loc.Tr("dash.save_as", "SAVE AS"), OnActivate = OpenSaveAsEntry });
         if (c.Career is not null)
@@ -2902,7 +3316,17 @@ public sealed partial class MenuClient
         if (c is null) return "";
         if (_saveNotice is not null) return _saveNotice;   // one-shot SAVE AS confirmation
         if (c.Career?.Retired == true)
-            return Loc.Tr("dash.status_retired", "RETIRED") + "  " + CompetitionEngine.PlayerSummary(c);
+        {
+            // Feature #3: a sacked manager with letters on the table is between
+            // jobs, and the header says which — 'JOB OFFERS BEING CONSIDERED',
+            // 'NEW JOB: <club>' or the original's flat 'NO JOB OFFERS'.
+            string job = c.Career!.Sacked
+                ? OpenSwos.Competition.Career.JobMarket.StatusLine(c.Career) : "";
+            return (c.Career!.Sacked
+                        ? Loc.Tr("dash.status_sacked", "SACKED")
+                        : Loc.Tr("dash.status_retired", "RETIRED"))
+                   + "  " + (job.Length > 0 ? job : CompetitionEngine.PlayerSummary(c));
+        }
         if (c.Finished && c.Champion >= 0)
             return CompetitionEngine.RoundLabel(c) + "  " + Loc.Tr("dash.status_champions", "CHAMPIONS:") + " " + TeamShort(c, c.Champion, 18);
         string line = CompetitionEngine.RoundLabel(c) + "  " + CompetitionEngine.PlayerSummary(c);
@@ -3003,6 +3427,39 @@ public sealed partial class MenuClient
         return OpenSwos.Competition.Career.CareerMatchTeam.Build(_host.Team(masterIndex), club);
     }
 
+    /// <summary>
+    /// SCREENSHOT-HARNESS ONLY (--menu-shot). Plays out the rest of the career
+    /// season with VIEW RESULT semantics and rolls into the next season, so the
+    /// harness can photograph screens that only exist AFTER a season completes —
+    /// the FINANCES statement (career depth plan feature #1) above all. Uses the
+    /// same engine calls the player's own buttons use; it adds no rules.
+    /// Returns true when a rollover happened.
+    /// </summary>
+    /// <param name="advance">
+    /// false stops with the season played but NOT rolled over, so the harness
+    /// can photograph what only exists inside a season — the JOB OFFERS on the
+    /// table (feature #3), which lapse the moment the next season starts.
+    /// </param>
+    public bool DebugFastForwardSeason(bool advance = true)
+    {
+        var c = _comp;
+        if (c is null || c.Career is null) return false;
+        // Bounded: a career season is league + cup, a few hundred fixtures at most.
+        for (int guard = 0; guard < 4000 && !c.Finished; guard++)
+        {
+            CompetitionEngine.FastForwardAiOnly(c);
+            var fx = CompetitionEngine.NextPlayerFixture(c);
+            if (fx is null) break;
+            var (h, a) = CompetitionEngine.SimulateResult(c, fx);
+            _pendingFixture = fx;
+            ApplyFixtureResult(fx, h, a, fx.Stage);
+        }
+        if (!advance) { CompetitionStore.Save(c); ReplaceTop(BuildCompetitionDashboard()); return false; }
+        if (!CompetitionEngine.PendingSeasonRollover(c)) return false;
+        AdvanceSeason();
+        return true;
+    }
+
     private void FastForwardAi()
     {
         var c = _comp;
@@ -3023,18 +3480,34 @@ public sealed partial class MenuClient
 
     // Career season rollover: champion of the top table gets promoted (until
     // division 0), bottom club drops if a lower division exists in the nation.
+    /// <summary>
+    /// NEXT SEASON behind a PLEASE WAIT screen. The rollover ages, grows,
+    /// regenerates, staffs and scouts 1730 clubs — MEASURED at ~1.7 s — so it
+    /// is the one place in the menu the player would otherwise sit and wonder
+    /// whether the button worked. The debug/harness callers keep using
+    /// AdvanceSeason directly: they have no frames to wait for.
+    /// </summary>
+    private void AdvanceSeasonBusy()
+        => RunBusy(Loc.Tr("busy.next_season", "PLAYING THE SUMMER"), AdvanceSeason);
+
     private void AdvanceSeason()
     {
         var c = _comp;
         if (c is null || c.Career is null) return;
-        int you = c.Teams[c.PlayerTeam].MasterIndex;
-        int nation = c.Career.Nation;
+        // Career depth plan feature #3: a manager who accepted a job elsewhere
+        // takes it now, so next season's league and cup are built around the NEW
+        // club — its master index, its nation, its division. Promotion and
+        // relegation belong to the club he is leaving and no longer apply.
+        var move = OpenSwos.Competition.Career.JobMarket.AcceptedOffer(c.Career);
+        int you = move?.ClubMasterIndex ?? c.Teams[c.PlayerTeam].MasterIndex;
+        int nation = move?.Nation ?? c.Career.Nation;
         var table = CompetitionEngine.Table(c, "LEAGUE");
         int pos = 0;
         for (int i = 0; i < table.Count; i++)
             if (table[i].Team == c.PlayerTeam) { pos = i + 1; break; }
         int newDivision = c.Career.Division;
-        if (pos == 1 && c.Career.Division > 0) newDivision = c.Career.Division - 1;
+        if (move is not null) newDivision = move.Division;
+        else if (pos == 1 && c.Career.Division > 0) newDivision = c.Career.Division - 1;
         else if (pos > 0 && pos == table.Count
                  && _host.TeamsByNationDivision(nation, c.Career.Division + 1, 1).Count > 0)
             newDivision = c.Career.Division + 1;
@@ -3064,6 +3537,9 @@ public sealed partial class MenuClient
         CompetitionStore.Save(c);
         _pendingFixture = null;
         ReplaceTop(BuildCompetitionDashboard());
+        // The end-of-season verdict is the moment of the season — never leave it
+        // sitting unread behind a menu entry.
+        MaybePushChairmanMemo();
     }
 
     // ---- management record (original: ManagementRecordMenu swos.asm:44076,
@@ -3134,10 +3610,35 @@ public sealed partial class MenuClient
             if (y + 8 <= bottom) BodyText(s, Loc.Tr("mrec.first_season", "FIRST SEASON IN PROGRESS"), false, x, y, normal);
             return;
         }
+        // Feature #5: the original prints the club's leading scorer under each
+        // season (asm:283007 "SEASON'S TOP SCORER", asm:283027 plural on a tie,
+        // asm:283048 "%a  %0"). Indexed by season number, not by list position,
+        // so a season that produced no goals simply has no line.
+        var tops = new System.Collections.Generic.Dictionary<int, OpenSwos.Competition.Career.SeasonTopScorer>();
+        foreach (var t in career.SeasonTopScorers ?? new System.Collections.Generic.List<OpenSwos.Competition.Career.SeasonTopScorer>())
+            tops[t.Season] = t;
         for (int i = career.History.Count - 1; i >= 0; i--)
         {
             if (y + 8 > bottom) break;
             BodyText(s, career.History[i], false, x, y, normal); y += 8;
+            // "S3: LEAGUE ..." -> season 3. A season can leave MORE than one
+            // history line (taking a new job writes "S2: LEFT X FOR Y"), so
+            // only the season-summary line carries the scorer — otherwise the
+            // same striker is printed twice under the same season.
+            string line = career.History[i] ?? "";
+            int season = 0;
+            int k = 1;
+            if (line.Length > 1 && line[0] == 'S')
+                while (k < line.Length && char.IsDigit(line[k])) { season = season * 10 + (line[k] - '0'); k++; }
+            bool summaryLine = season > 0 && line.IndexOf("LEAGUE", k, System.StringComparison.Ordinal) >= 0;
+            if (!summaryLine || !tops.TryGetValue(season, out var top) || top.Goals <= 0) continue;
+            if (y + 8 > bottom) break;
+            string label = top.Names.Count > 1
+                ? Loc.Tr("scorer.season_top_plural", "SEASON'S TOP SCORERS")
+                : Loc.Tr("scorer.season_top", "SEASON'S TOP SCORER");
+            BodyText(s, FitText("  " + label + ": " + AsciiText(string.Join(" / ", top.Names))
+                                + "  " + top.Goals, false, 290), false, x, y, gold);
+            y += 8;
         }
     }
 

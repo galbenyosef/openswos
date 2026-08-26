@@ -193,6 +193,63 @@ public static class PlayerNationNames
     public static int Count => kNations.Length;
 
     // 3-letter code for a player-nation index ("NAT n" for out-of-range).
+    /// <summary>
+    /// Player-nationality byte for a COUNTRY NAME as the TEAM.* roster spells
+    /// it, or -1. This is the bridge between the two numbering systems: a
+    /// national side is a team in the 80..85 files, but the players eligible for
+    /// it are found by their nationality byte, which is indexed differently.
+    ///
+    /// The two tables spell a handful of countries differently, so the match is
+    /// canonical (letters and digits only), then by prefix — TEAM.* names are
+    /// capped at 16 characters, which is why UNITED ARAB EMIRATES arrives as
+    /// UNITED ARAB EMIS — and finally through a short alias list for the four
+    /// that are genuinely different words. Measured against the 143 national
+    /// sides in the 96/97 data: 139 resolve; LIBERIA, NIGER, HONG KONG and
+    /// INDONESIA have no nationality slot at all because no player in the data
+    /// carries them.
+    /// </summary>
+    public static int IndexOfCountry(string? teamName)
+    {
+        if (string.IsNullOrWhiteSpace(teamName)) return -1;
+        string want = Canonical(teamName);
+        if (want.Length == 0) return -1;
+
+        for (int i = 0; i < kNations.Length; i++)
+            if (Canonical(kNations[i].FullName) == want) return i;
+
+        // TEAM.* truncates to 16 characters, so a shorter roster name may be the
+        // start of the full one (UNITED ARAB EMIS -> UNITED ARAB EMIRATES).
+        if (want.Length >= 6)
+            for (int i = 0; i < kNations.Length; i++)
+            {
+                string have = Canonical(kNations[i].FullName);
+                if (have.Length >= 6 && (have.StartsWith(want, System.StringComparison.Ordinal)
+                                         || want.StartsWith(have, System.StringComparison.Ordinal)))
+                    return i;
+            }
+
+        // Genuinely different words for the same country.
+        for (int i = 0; i < kAliases.Length; i++)
+            if (Canonical(kAliases[i].RosterName) == want)
+                return kAliases[i].Index;
+        return -1;
+    }
+
+    private static readonly (string RosterName, int Index)[] kAliases =
+    {
+        ("FAROE ISLES", 10),        // player table: FAROE ISLANDS
+        ("UNITED STATES", 58),      // player table: U.S.A.
+    };
+
+    private static string Canonical(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return "";
+        var sb = new System.Text.StringBuilder(name.Length);
+        foreach (char c in name)
+            if (char.IsLetterOrDigit(c)) sb.Append(char.ToUpperInvariant(c));
+        return sb.ToString();
+    }
+
     public static string Code(int nation)
         => nation >= 0 && nation < kNations.Length ? kNations[nation].Code : $"NAT {nation}";
 

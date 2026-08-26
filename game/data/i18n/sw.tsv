@@ -559,3 +559,188 @@ staff.spec_attack	MASHAMBULIZI
 staff.spec_defence	ULINZI
 staff.spec_general	UJUMLA
 staff.spec_youth	VIJANA
+# FINANCES (career depth plan feature 1)
+dash.finances	FEDHA
+fin.title	FEDHA
+fin.show_history	MSIMU KWA MSIMU
+fin.show_sheet	MSIMU HUU
+fin.no_season	HAKUNA MSIMU ULIOKAMILIKA
+fin.drawn_up	HESABU HUFANYWA MWISHO WA MSIMU
+fin.col_season	MSIMU
+fin.col_league	LIGI
+fin.col_cup	KOMBE
+fin.col_income	MAPATO
+fin.col_wages	MISHAHARA
+fin.col_balance	SALIO
+fin.season	MSIMU
+fin.league	LIGI
+fin.cup	KOMBE
+fin.home_games	MECHI ZA NYUMBANI
+fin.crowd	MASHABIKI
+fin.row.opening	SALIO MWANZO WA MSIMU:
+fin.row.gate	MAPATO YA TIKETI:
+fin.row.bonuses	ZAWADI + HAKI ZA TV:
+fin.row.sponsor	UDHAMINI WA SENSISOFT PLC:
+fin.row.invest	UWEKEZAJI WA ZIADA WA MWENYEKITI:
+fin.row.invest_new	UWEKEZAJI WA MWENYEKITI MPYA:
+fin.row.wages	MISHAHARA YA WACHEZAJI:
+fin.row.profit	FAIDA JUMLA:
+fin.row.loss	HASARA JUMLA:
+fin.row.closing	SALIO JIPYA:
+fin.row.sales	MAUZO YA WACHEZAJI:
+fin.row.purchases	MANUNUZI YA WACHEZAJI:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	RAIS
+dash.status_sacked	AMEFUKUZWA
+chair.title	RAIS
+chair.memo	BARUA
+chair.none	HAKUNA BARUA
+chair.memo_header	BARUA KUTOKA KWA RAIS WA KLABU
+chair.memo_sign	RAIS WAKO
+chair.earlier	BARUA ZA AWALI
+opt.board	BODI
+opt.board_hint	KWA HARAKA GANI RAIS ANAKUFUKUZA
+opt.board_patient	MVUMILIVU
+opt.board_normal	KAWAIDA
+opt.board_ruthless	MKALI
+chair.verdict0.1	HONGERA %a, ULIFANYA KAZI NZURI SANA
+chair.verdict0.2	MSIMU HUU NA SOTE TUNAITHAMINI
+chair.verdict1.1	MSIMU MZURI %a, SOTE TUMERIDHIKA
+chair.verdict1.2	SANA, ENDELEA HIVYO
+chair.verdict2.1	MSIMU WA KUPANDA NA KUSHUKA %a, TUNATUMAINI
+chair.verdict2.2	KUTAKUWA NA MAENDELEO KARIBUNI
+chair.verdict3.1	MSIMU SI MZURI SANA %a, TUNATUMAINI
+chair.verdict3.2	UTABORESHA MATOKEO MSIMU UJAO
+chair.verdict4.1	MSIMU WA KUKATISHA TAMAA %a, TUNADAI
+chair.verdict4.2	MENGI ZAIDI KUTOKA KWAKO MSIMU UJAO
+chair.sacked_league.1	KWA MASIKITIKO MAKUBWA BODI NA MIMI
+chair.sacked_league.2	TUMEAMUA KUKUONDOA KATIKA WADHIFA WAKO
+chair.not_renewed.1	KWA MASIKITIKO MAKUBWA TUMEAMUA
+chair.not_renewed.2	KUTOONGEZA MKATABA WAKO - KILA LA HERI
+chair.not_renewed.3	NA TUNATARAJIA KUKUONA TENA HIVI KARIBUNI
+chair.league_note.1	ZINGATIA NAFASI YETU KATIKA LIGI NA
+chair.league_note.2	HAKIKISHA INABORESHWA HARAKA IWEZEKANAVYO
+chair.league_warn.1	KUMBUKA, NAFASI ISIPOBORESHWA HIVI KARIBUNI
+chair.league_warn.2	TUTALAZIMIKA KUPITIA UPYA WADHIFA WAKO
+chair.league_crisis.1	BAADA YA KURA YA IMANI, UNA ZAIDI YA
+chair.league_crisis.2	MECHI 3 KUBADILI HALI AU UTAFUKUZWA
+chair.money_note.1	ZINGATIA SALIO LETU LA BENKI NA
+chair.money_note.2	HAKIKISHA DENI LINALIPWA HARAKA IWEZEKANAVYO
+chair.money_warn.1	UKUMBUSHO TU KUHUSU DENI LA BENKI
+chair.money_warn.2	VINGINEVYO TUTAPITIA UPYA WADHIFA WAKO
+chair.money_crisis.1	BAADA YA KIKAO CHA DHARURA, TUNASISITIZA
+chair.money_crisis.2	ULIPE DENI SASA AU UTAFUKUZWA
+chair.new_season.1	MANENO MACHACHE KUKUTAKIA KILA LA HERI
+chair.new_season.2	MSIMU MPYA
+chair.embargo_buy.1	SAMAHANI %a, KLABU HAIKO TAYARI
+chair.embargo_buy.2	KUNUNUA WACHEZAJI ZAIDI MSIMU HUU
+chair.embargo_sell.1	ZINGATIA %a KWAMBA HATUTARUHUSU
+chair.embargo_sell.2	MAUZO ZAIDI YA WACHEZAJI MSIMU HUU
+chair.sacked_money.1	KWA MASIKITIKO MAKUBWA BODI NA MIMI
+chair.sacked_money.2	TUMEAMUA KUKUONDOA KATIKA WADHIFA WAKO
+# JOB OFFERS (career depth plan feature #3)
+job.title	OFA ZA KAZI
+job.none	HAKUNA OFA ZA KAZI
+job.offer	OFA
+job.accept	KUBALI
+job.decline	KATAA
+job.declined	OFA IMEKATALIWA
+job.not_available	OFA HAIPATIKANI
+job.signed_prefix	MAKUBALIANO NA
+job.new_job	KAZI MPYA
+job.reputation	SIFA
+job.rep_world	DARAJA LA DUNIA
+job.rep_high	ANAYETHAMINIWA SANA
+job.rep_good	ANAYEHESHIMIWA
+job.rep_known	ANAYEJULIKANA
+job.rep_unproven	HAJATHIBITISHWA
+job.rep_unwanted	HAHITAJIKI
+job.division	DARAJA
+job.squad	KIKOSI
+job.letter_header	OFA YA KAZI KUTOKA %a
+job.letter.1	NDUGU BWANA/BIBI
+job.letter.2	SISI HAPA %a TUNGEPENDA KUKUPA
+job.letter.3	NAFASI YA KOCHA KWA MSIMU UJAO
+job.letter.4	TUNAWEZA KUKUPA MSHAHARA MZURI SANA NA
+job.letter.5	TUNATUMAINI KUTOA FEDHA
+job.letter.6	KARIBU %b KWA KUIMARISHA TIMU
+job.letter.7	TUNASUBIRI JIBU LAKO
+job.accepted_note	UMEKUBALI - UHAMISHO NI MSIMU UJAO
+job.waiting_prefix	WATASUBIRI MICHEZO
+job.waiting_suffix	ZAIDI
+job.accepted.1	SISI HAPA %a TUNAFURAHI KWAMBA
+job.accepted.2	UMEKUBALI NAFASI YA KOCHA KLABU YETU
+job.accepted.3	KUANZIA MWANZO WA MSIMU UJAO
+job.farewell.1	ASANTE KWA YOTE %a, TUNAKUTAKIA
+job.farewell.2	KILA LA KHERI KAZINI KWAKO KIPYA
+job.welcome.1	KARIBU %a, TUNATARAJIA MAFANIKIO
+job.welcome.2	MENGI KUTOKA USHIRIKIANO WETU MPYA
+job.withdrawn.1	OFA YA KAZI KUTOKA %a IMEONDOLEWA
+# board expectation line (feature #2 follow-up)
+chair.expected	BODI ILITARAJIA
+chair.of	KATI YA
+chair.finished	ULIMALIZA
+chair.expects	BODI INATARAJIA
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	TIMU YA TAIFA
+natjob.entry_offer	OFA YA KAZI YA KIMATAIFA
+natjob.title	TIMU YA TAIFA
+natjob.title_offer	OFA YA KAZI YA KIMATAIFA
+natjob.player	MCHEZAJI
+natjob.add	ONGEZA MCHEZAJI
+natjob.remove	ONDOA MCHEZAJI
+natjob.auto	CHAGUA KIOTOMATIKI
+natjob.resign	JIUZULU
+natjob.full	KIKOSI KIMEJAA
+natjob.appointed	KOCHA WA
+natjob.none	HAKUNA KAZI YA TAIFA
+natjob.no_players	HAKUNA WACHEZAJI
+natjob.squad_word	KIKOSI
+natjob.rating	KIWANGO
+natjob.home	NYUMBANI
+natjob.abroad	NJE
+natjob.col_name	JINA
+natjob.col_pos	NAF
+natjob.col_ovr	JML
+natjob.col_where	WAPI
+natjob.col_club	KLABU
+natjob.letter_header	OFA YA KAZI YA KIMATAIFA KUTOKA %a
+natjob.offer.1	WAJUMBE WA KAMATI YA SOKA
+natjob.offer.2	YA %a WANGEPENDA KUKUPA NAFASI
+natjob.offer.3	YA KOCHA WA TIMU YA TAIFA
+natjob.offer.4	TUNAAHIDI MSHAHARA BORA NA
+natjob.offer.5	MKATABA UNAOPITIWA UPYA KILA MWAKA
+natjob.offer.6	TUNASUBIRI JIBU LAKO
+natjob.accepted.1	WAJUMBE WA KAMATI YA SOKA
+natjob.accepted.2	YA %a WANAFURAHI KWAMBA UMEKUBALI
+natjob.accepted.3	NAFASI YA KOCHA WA TIMU YA TAIFA
+natjob.ended.1	WAJUMBE WA KAMATI YA SOKA
+natjob.ended.2	YA %a WAMEAMUA KUTOENDELEZA
+natjob.ended.3	MKATABA WAKO WA MWAKA
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	TAFADHALI SUBIRI
+busy.new_career	KUJENGA ULIMWENGU
+busy.next_season	MSIMU WA KIANGAZI
+dash.scorers	WAFUNGAJI BORA
+scorer.title	ORODHA YA WAFUNGAJI
+scorer.view	ORODHA
+scorer.page	UKURASA
+scorer.view_comp	MASHINDANO
+scorer.view_club	KLABU YANGU
+scorer.view_history	MSIMU KWA MSIMU
+scorer.leading	WAFUNGAJI BORA WA MASHINDANO
+scorer.goals	MABAO
+scorer.own_goals	MABAO YA KUJIFUNGA
+scorer.ex_player	MABAO YA WACHEZAJI WA ZAMANI
+scorer.career_total	JUMLA YA KAZI
+scorer.season	MSIMU
+scorer.season_top	MFUNGAJI BORA WA MSIMU
+scorer.season_top_plural	WAFUNGAJI BORA WA MSIMU
+scorer.no_goals	HAKUNA MABAO MSIMU HUU
+scorer.no_seasons	HAKUNA MSIMU ULIOKAMILIKA
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	MECHI
+dash.sec_team	TIMU
+dash.sec_club	KLABU
+dash.sec_game	MCHEZO
+nav.hint_cols	JUU/CHINI CHAGUA   KUSHOTO/KULIA SAFU   PIGA SAWA   ESC RUDI

@@ -69,11 +69,52 @@ public static class Finance
         if (world is null) throw new System.ArgumentNullException(nameof(world));
 
         foreach (CareerClub club in world.Clubs.Values)
+        {
             club.Budget = Math.Clamp(ClubValue(club) / 5L, 0L, MaximumBudget);
+            // Open the first season's books (career depth plan feature #1).
+            club.SeasonLedgerActive = true;
+            club.SeasonOpeningBalance = club.Budget;
+            club.SeasonPlayerSales = 0L;
+            club.SeasonPlayerPurchases = 0L;
+            club.SeasonStaffSpend = 0L;
+        }
     }
 
-    /// <summary>Applies one deterministic year of income and expenses to all clubs.</summary>
+    /// <summary>
+    /// Applies one deterministic year of income and expenses to all clubs.
+    /// Legacy entry point: no club played an accounted competition, so nobody
+    /// earns prize money. Kept so callers that have no season results (and old
+    /// saves reloaded mid-rollover) behave exactly as before this seam existed.
+    /// </summary>
     public static void ApplySeasonFinances(CareerWorld world)
+        => ApplySeasonFinances(world, null, 0, 0);
+
+    /// <summary>
+    /// Applies one deterministic year of income and expenses to all clubs,
+    /// crediting league-position and cup-run prize money to the clubs that
+    /// played the season described by <paramref name="results"/>.
+    ///
+    /// Career depth plan feature #1. The per-club statement is built by
+    /// <see cref="SeasonFinances"/> and follows the ORIGINAL game's line items
+    /// (see the fidelity note at the top of that file). Every club still pays
+    /// wages and staff, so a club that wins nothing genuinely falls behind —
+    /// which is the point.
+    /// </summary>
+    /// <param name="results">
+    /// Per-club season outcome, keyed by club GlobalId. Clubs absent from the
+    /// map are accounted as unattached (crowd and wages, no prize money).
+    /// </param>
+    /// <param name="season">The season that has just finished.</param>
+    /// <param name="playerClubId">
+    /// The managed club; only this club may receive the "NEW CHAIRMAN" opening
+    /// investment, and only in season 1.
+    /// </param>
+    /// <returns>The managed club's statement, or null when it has none.</returns>
+    public static SeasonAccount? ApplySeasonFinances(
+        CareerWorld world,
+        System.Collections.Generic.IReadOnlyDictionary<ushort, SeasonResultInput>? results,
+        int season,
+        ushort playerClubId)
     {
         if (world is null) throw new System.ArgumentNullException(nameof(world));
 
@@ -81,23 +122,77 @@ public static class Finance
         var clubIds = new System.Collections.Generic.List<ushort>(world.Clubs.Keys);
         clubIds.Sort();
 
+        SeasonAccount? playerAccount = null;
+
         foreach (ushort clubId in clubIds)
         {
             CareerClub club = world.Clubs[clubId];
-            long clubValue = ClubValue(club);
-            long income = BaseSeasonIncome + clubValue / 25L;
-            long wages = SquadWageBill(club);
+            // The books open at the balance the club STARTED the season with,
+            // not the balance left after a season of trading — otherwise the
+            // 'BALANCE AT START OF SEASON' line is a lie and the sheet cannot
+            // reconcile. Careers saved before the ledger existed fall back to
+            // the live budget (SeasonLedgerActive == false).
+            long liveBudget = Math.Clamp(club.Budget, MinimumBudget, MaximumBudget);
+            long openingBalance = club.SeasonLedgerActive
+                ? Math.Clamp(club.SeasonOpeningBalance, MinimumBudget, MaximumBudget)
+                : liveBudget;
+
+            SeasonAccount account;
+            if (results is not null && results.TryGetValue(clubId, out SeasonResultInput result))
+            {
+                bool newChairman = clubId == playerClubId && season <= 1;
+                account = SeasonFinances.Compute(club, result, season, openingBalance, newChairman);
+            }
+            else
+            {
+                account = SeasonFinances.ComputeUnattached(club, season, openingBalance);
+            }
+
+            // The original had no coaching staff, so its statement has no line
+            // for it. Coach annual wages, coach signing fees and scouting
+            // upgrades are all folded into PLAYER WAGES BILL — the nearest
+            // truthful home — rather than inventing a line item the original
+            // never had.
             long coachWages = 0L;
             foreach (Coach coach in club.Coaches)
                 coachWages += Math.Max(0L, coach.Wage);
+            long staffSpend = Math.Max(0L, club.SeasonStaffSpend);
+            account.WageBill += coachWages + staffSpend;
 
-            // TODO: Add league-position and cup-run prize money from the completed
-            // career-season results when that result data is supplied to this seam.
-            long staffAndScoutingCosts = coachWages;
-            long currentBudget = Math.Clamp(club.Budget, MinimumBudget, MaximumBudget);
-            long nextBudget = currentBudget + income - wages - staffAndScoutingCosts;
-            club.Budget = Math.Clamp(nextBudget, MinimumBudget, MaximumBudget);
+            // TWO independent figures, deliberately:
+            //
+            //   statementClosing — what the printed sheet adds up to, starting
+            //     from the balance the club had at the START of the season.
+            //   actualClosing    — what the club really has: its LIVE budget
+            //     (which already reflects the season's transfers and staff
+            //     spending) plus this rollover's income, minus the wages
+            //     charged now.
+            //
+            // They agree only if every path that moved money reported to the
+            // season ledger. The club is credited with the ACTUAL figure — never
+            // with a number derived from the sheet, or a forgotten hook would
+            // quietly mint money. The difference is recorded and asserted.
+            long incomeArrivingNow = account.GateReceipts + account.CompetitionBonuses
+                + account.Sponsorship + account.ChairmanInvestment;
+            long statementClosing = openingBalance + account.TotalIncome - account.TotalExpenditure;
+            long actualClosing = liveBudget + incomeArrivingNow - Finance.SquadWageBill(club) - coachWages;
+
+            club.Budget = Math.Clamp(actualClosing, MinimumBudget, MaximumBudget);
+            account.ClosingBalance = club.Budget;
+            account.Unreconciled = statementClosing - account.ClosingBalance;
+
+            // Open the next season's books.
+            club.SeasonLedgerActive = true;
+            club.SeasonOpeningBalance = club.Budget;
+            club.SeasonPlayerSales = 0L;
+            club.SeasonPlayerPurchases = 0L;
+            club.SeasonStaffSpend = 0L;
+
+            if (clubId == playerClubId && playerClubId != 0)
+                playerAccount = account;
         }
+
+        return playerAccount;
     }
 
     // Age curve anchored on the inflated ladder base. Prime players hold a

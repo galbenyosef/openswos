@@ -82,6 +82,7 @@ public static class StaffModel
             Quality = candidate.Quality,
             Wage = candidate.Wage,
         });
+        club.SeasonStaffSpend += club.Budget - remainingBudget;   // season ledger
         club.Budget = remainingBudget;
         refusal = "";
         return true;
@@ -103,6 +104,7 @@ public static class StaffModel
         catch (OverflowException) { refusal = Loc.Tr("staff.notice_no_money", "NOT ENOUGH MONEY"); return false; }
 
         club.Coaches.Remove(coach);
+        club.SeasonStaffSpend += club.Budget - remainingBudget;   // season ledger
         club.Budget = remainingBudget;
         refusal = "";
         return true;
@@ -225,6 +227,7 @@ public static class StaffModel
             Wage = wage,
         });
         club.Budget -= signingCost;
+        club.SeasonStaffSpend += signingCost;                     // season ledger
     }
 
     private static int QualityFor(CareerClub club, ref CareerRng rng)

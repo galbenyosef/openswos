@@ -559,3 +559,188 @@ staff.spec_attack	NAPAD
 staff.spec_defence	OBRANA
 staff.spec_general	OPCENITO
 staff.spec_youth	MLADI
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANCIJE
+fin.title	FINANCIJE
+fin.show_history	SEZONA PO SEZONA
+fin.show_sheet	OVA SEZONA
+fin.no_season	NEMA ZAVRSENE SEZONE
+fin.drawn_up	OBRACUN SE RADI NA KRAJU SEZONE
+fin.col_season	SEZONA
+fin.col_league	LIGA
+fin.col_cup	KUP
+fin.col_income	PRIHODI
+fin.col_wages	PLACE
+fin.col_balance	STANJE
+fin.season	SEZONA
+fin.league	LIGA
+fin.cup	KUP
+fin.home_games	DOMACE UTAKMICE
+fin.crowd	GLEDATELJA
+fin.row.opening	STANJE NA POCETKU SEZONE:
+fin.row.gate	PRIHOD OD ULAZNICA:
+fin.row.bonuses	PREMIJE + TV PRAVA:
+fin.row.sponsor	SPONZORSTVO SENSISOFT PLC:
+fin.row.invest	DODATNO ULAGANJE PREDSJEDNIKA:
+fin.row.invest_new	DODATNO ULAGANJE NOVOG PREDSJEDNIKA:
+fin.row.wages	PLACE IGRACA:
+fin.row.profit	UKUPNA DOBIT:
+fin.row.loss	UKUPNI GUBITAK:
+fin.row.closing	NOVO STANJE:
+fin.row.sales	PRODAJA IGRACA:
+fin.row.purchases	KUPNJA IGRACA:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PREDSJEDNIK
+dash.status_sacked	SMIJENJEN
+chair.title	PREDSJEDNIK
+chair.memo	DOPIS
+chair.none	NEMA DOPISA
+chair.memo_header	DOPIS PREDSJEDNIKA KLUBA
+chair.memo_sign	VAS PREDSJEDNIK
+chair.earlier	RANIJI DOPISI
+opt.board	UPRAVA
+opt.board_hint	KOLIKO BRZO TE PREDSJEDNIK SMIJENI
+opt.board_patient	STRPLJIVA
+opt.board_normal	NORMALNA
+opt.board_ruthless	NEMILOSRDNA
+chair.verdict0.1	BRAVO %a, ODRADIO SI IZVRSTAN POSAO
+chair.verdict0.2	OVE SEZONE I SVI TO CIJENIMO
+chair.verdict1.1	DOBRA SEZONA %a, SVI SMO VRLO
+chair.verdict1.2	ZADOVOLJNI, SAMO NASTAVI TAKO
+chair.verdict2.1	PROMJENJIVA SEZONA %a, SVI SE NADAMO
+chair.verdict2.2	SKOROM POBOLJSANJU
+chair.verdict3.1	NE BAS DOBRA SEZONA %a, NADAMO SE DA
+chair.verdict3.2	IDUCE SEZONE POPRAVIS REZULTATE
+chair.verdict4.1	VRLO RAZOCARAVAJUCA SEZONA %a, TRAZIMO
+chair.verdict4.2	PUNO VISE OD TEBE IDUCE SEZONE
+chair.sacked_league.1	S VELIKIM ZALJENJEM UPRAVA I JA
+chair.sacked_league.2	ODLUCILI SMO TE RAZRIJESITI DUZNOSTI
+chair.not_renewed.1	S VELIKIM ZALJENJEM ODLUCILI SMO
+chair.not_renewed.2	NE PRODULJITI TVOJ UGOVOR - SRETNO
+chair.not_renewed.3	I VESELIMO SE SKOROM SUSRETU
+chair.league_note.1	OBRATI POZORNOST NA NAS POLOZAJ NA TABLICI I
+chair.league_note.2	POBRINI SE DA SE STO PRIJE POPRAVI
+chair.league_warn.1	ZAPAMTI, AKO SE POLOZAJ USKORO NE POPRAVI
+chair.league_warn.2	MORAT CEMO PREISPITATI TVOJ POLOZAJ
+chair.league_crisis.1	NAKON GLASOVANJA O POVJERENJU IMAS NAJVISE
+chair.league_crisis.2	3 UTAKMICE ZA PREOKRET ILI SI SMIJENJEN
+chair.money_note.1	OBRATI POZORNOST NA STANJE NA RACUNU I
+chair.money_note.2	POBRINI SE DA SE MINUS STO PRIJE POKRIJE
+chair.money_warn.1	SAMO PODSJETNIK O MINUSU NA RACUNU
+chair.money_warn.2	INACE CEMO MORATI PREISPITATI TVOJ POLOZAJ
+chair.money_crisis.1	NAKON KRIZNOG SASTANKA UPRAVE TRAZIMO
+chair.money_crisis.2	HITNO POKRIVANJE MINUSA ILI SI SMIJENJEN
+chair.new_season.1	SAMO NEKOLIKO RIJECI ZA SVAKO DOBRO U
+chair.new_season.2	NOVOJ SEZONI
+chair.embargo_buy.1	ZAO MI JE %a, KLUB NIJE SPREMAN
+chair.embargo_buy.2	KUPOVATI JOS IGRACA OVE SEZONE
+chair.embargo_sell.1	IMAJ NA UMU %a DA NECEMO DOPUSTITI
+chair.embargo_sell.2	DALJNJE PRODAJE IGRACA OVE SEZONE
+chair.sacked_money.1	S VELIKIM ZALJENJEM UPRAVA I JA
+chair.sacked_money.2	ODLUCILI SMO TE RAZRIJESITI DUZNOSTI
+# JOB OFFERS (career depth plan feature #3)
+job.title	PONUDE ZA POSAO
+job.none	NEMA PONUDA
+job.offer	PONUDA
+job.accept	PRIHVATI
+job.decline	ODBIJ
+job.declined	PONUDA ODBIJENA
+job.not_available	PONUDA NIJE DOSTUPNA
+job.signed_prefix	DOGOVORENO S
+job.new_job	NOVI POSAO
+job.reputation	UGLED
+job.rep_world	SVJETSKA KLASA
+job.rep_high	VISOKO CIJENJEN
+job.rep_good	CIJENJEN
+job.rep_known	POZNAT
+job.rep_unproven	NEDOKAZAN
+job.rep_unwanted	NEZELJEN
+job.division	LIGA
+job.squad	SASTAV
+job.letter_header	PONUDA ZA POSAO OD %a
+job.letter.1	POSTOVANI
+job.letter.2	MI U %a ZELIMO VAM PONUDITI
+job.letter.3	MJESTO TRENERA ZA SLJEDECU SEZONU
+job.letter.4	NUDIMO VAM VRLO DOBRU PLACU I
+job.letter.5	NADAMO SE DA CEMO OSIGURATI SREDSTVA
+job.letter.6	OKO %b ZA POJACANJA
+job.letter.7	RADUJEMO SE VASEM ODGOVORU
+job.accepted_note	PRIHVATILI STE - ODLAZAK JE SLJEDECE SEZONE
+job.waiting_prefix	CEKAT CE JOS
+job.waiting_suffix	UTAKMICA
+job.accepted.1	MI U %a ODUSEVLJENI SMO STO STE
+job.accepted.2	PRIHVATILI MJESTO TRENERA U NASEM KLUBU
+job.accepted.3	OD POCETKA SLJEDECE SEZONE
+job.farewell.1	HVALA NA SVEMU %a, ZELIMO VAM
+job.farewell.2	SVE NAJBOLJE NA NOVOM POSLU
+job.welcome.1	DOBRODOSLI %a, RADUJEMO SE MNOGIM
+job.welcome.2	USPJESIMA NASE NOVE SURADNJE
+job.withdrawn.1	PONUDA ZA POSAO OD %a POVUCENA
+# board expectation line (feature #2 follow-up)
+chair.expected	UPRAVA JE OCEKIVALA
+chair.of	OD
+chair.finished	ZAVRSILI STE
+chair.expects	UPRAVA OCEKUJE
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	REPREZENTACIJA
+natjob.entry_offer	MEDUNARODNA PONUDA ZA POSAO
+natjob.title	REPREZENTACIJA
+natjob.title_offer	MEDUNARODNA PONUDA ZA POSAO
+natjob.player	IGRAC
+natjob.add	DODAJ IGRACA
+natjob.remove	MAKNI IGRACA
+natjob.auto	AUTOMATSKI ODABIR
+natjob.resign	DAJ OSTAVKU
+natjob.full	SASTAV JE PUN
+natjob.appointed	IZBORNIK
+natjob.none	NEMA REPREZENTATIVNOG POSLA
+natjob.no_players	NEMA DOSTUPNIH IGRACA
+natjob.squad_word	SASTAV
+natjob.rating	OCJENA
+natjob.home	DOMA
+natjob.abroad	INOZEMSTVO
+natjob.col_name	IME
+natjob.col_pos	POZ
+natjob.col_ovr	UKU
+natjob.col_where	GDJE
+natjob.col_club	KLUB
+natjob.letter_header	MEDUNARODNA PONUDA ZA POSAO OD %a
+natjob.offer.1	CLANOVI NOGOMETNOG ODBORA
+natjob.offer.2	%a ZELE VAM PONUDITI POSAO
+natjob.offer.3	IZBORNIKA REPREZENTACIJE
+natjob.offer.4	OBECAVAMO VAM ODLICNU PLACU I
+natjob.offer.5	UGOVOR KOJI SE OBNAVLJA SVAKE GODINE
+natjob.offer.6	RADUJEMO SE VASEM ODGOVORU
+natjob.accepted.1	CLANOVI NOGOMETNOG ODBORA
+natjob.accepted.2	%a ODUSEVLJENI SU STO STE
+natjob.accepted.3	PRIHVATILI MJESTO IZBORNIKA
+natjob.ended.1	CLANOVI NOGOMETNOG ODBORA
+natjob.ended.2	%a ODLUCILI SU NE OBNOVITI VAS
+natjob.ended.3	GODISNJI UGOVOR
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	MOLIMO PRICEKAJTE
+busy.new_career	STVARAM SVIJET
+busy.next_season	TRAJE LJETO
+dash.scorers	NAJBOLJI STRIJELCI
+scorer.title	NAJBOLJI STRIJELCI
+scorer.view	POPIS
+scorer.page	STRANICA
+scorer.view_comp	NATJECANJE
+scorer.view_club	MOJ KLUB
+scorer.view_history	SEZONA PO SEZONA
+scorer.leading	NAJBOLJI STRIJELCI NATJECANJA
+scorer.goals	GOLOVI
+scorer.own_goals	AUTOGOLOVI
+scorer.ex_player	GOLOVI BIVSIH IGRACA
+scorer.career_total	UKUPNO U KARIJERI
+scorer.season	SEZONA
+scorer.season_top	NAJBOLJI STRIJELAC SEZONE
+scorer.season_top_plural	NAJBOLJI STRIJELCI SEZONE
+scorer.no_goals	JOS NEMA GOLOVA OVE SEZONE
+scorer.no_seasons	NIJEDNA SEZONA NIJE ZAVRSENA
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	UTAKMICA
+dash.sec_team	MOMCAD
+dash.sec_club	KLUB
+dash.sec_game	IGRA
+nav.hint_cols	GORE/DOLJE ODABIR   LIJEVO/DESNO STUPAC   PUCAJ OK   ESC NATRAG

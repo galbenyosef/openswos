@@ -124,6 +124,22 @@ public static class NationNames
         ("OCEANIA", 5),            // 85
     };
 
+    /// <summary>
+    /// True when this is the name of a COUNTRY in the TEAM.* nation table, i.e.
+    /// a national side rather than a club. Used to spot national squads that do
+    /// not live in the 80..85 continental files (see CareerWorldBuilder).
+    /// </summary>
+    public static bool IsNationName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        string want = name.Trim();
+        for (int i = 0; i < kNations.Length; i++)
+            if (kNations[i].Name is string n
+                && string.Equals(n, want, System.StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
     // Country name for a TEAM.* nation index ("NATION n" for empty/unknown slots).
     public static string Name(int nation)
         => nation >= 0 && nation < kNations.Length && kNations[nation].Name is string s

@@ -559,3 +559,285 @@ staff.spec_attack	ATTAQUE
 staff.spec_defence	DEFENSE
 staff.spec_general	GENERAL
 staff.spec_youth	JEUNES
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANCES
+fin.title	FINANCES
+fin.show_history	SAISON PAR SAISON
+fin.show_sheet	CETTE SAISON
+fin.no_season	AUCUNE SAISON TERMINEE
+fin.drawn_up	LES COMPTES SONT FAITS EN FIN DE SAISON
+fin.col_season	SAISON
+fin.col_league	LIGUE
+fin.col_cup	COUPE
+fin.col_income	RECETTES
+fin.col_wages	SALAIRES
+fin.col_balance	SOLDE
+fin.season	SAISON
+fin.league	LIGUE
+fin.cup	COUPE
+fin.home_games	MATCHS A DOMICILE
+fin.crowd	SPECTATEURS
+fin.row.opening	SOLDE EN DEBUT DE SAISON:
+fin.row.gate	RECETTES BILLETTERIE:
+fin.row.bonuses	PRIMES + DROITS TV:
+fin.row.sponsor	SPONSORING DE SENSISOFT PLC:
+fin.row.invest	INVESTISSEMENT DU PRESIDENT:
+fin.row.invest_new	INVESTISSEMENT DU NOUVEAU PRESIDENT:
+fin.row.wages	SALAIRES DES JOUEURS:
+fin.row.profit	BENEFICE TOTAL:
+fin.row.loss	PERTE TOTALE:
+fin.row.closing	NOUVEAU SOLDE:
+fin.row.sales	VENTES DE JOUEURS:
+fin.row.purchases	ACHATS DE JOUEURS:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PRESIDENT
+dash.status_sacked	LIMOGE
+chair.title	PRESIDENT
+chair.memo	NOTE
+chair.none	AUCUNE NOTE
+chair.memo_header	NOTE DU PRESIDENT DU CLUB
+chair.memo_sign	VOTRE PRESIDENT
+chair.earlier	NOTES PRECEDENTES
+opt.board	DIRECTION
+opt.board_hint	A QUELLE VITESSE LE PRESIDENT VOUS LIMOGE
+opt.board_patient	PATIENTE
+opt.board_normal	NORMALE
+opt.board_ruthless	IMPITOYABLE
+chair.verdict0.1	BRAVO %a, VOUS AVEZ FAIT UN EXCELLENT TRAVAIL
+chair.verdict0.2	CETTE SAISON ET NOUS L'APPRECIONS TOUS
+chair.verdict1.1	UNE BONNE SAISON %a, NOUS SOMMES TOUS TRES
+chair.verdict1.2	SATISFAITS, CONTINUEZ AINSI
+chair.verdict2.1	UNE SAISON EN DENTS DE SCIE %a, NOUS ESPERONS
+chair.verdict2.2	UNE AMELIORATION DANS UN PROCHE AVENIR
+chair.verdict3.1	SAISON PEU CONVAINCANTE %a, NOUS ESPERONS
+chair.verdict3.2	MIEUX LA SAISON PROCHAINE
+chair.verdict4.1	SAISON TRES DECEVANTE %a, NOUS EXIGEONS
+chair.verdict4.2	BEAUCOUP MIEUX LA SAISON PROCHAINE
+chair.sacked_league.1	C'EST AVEC REGRET QUE LE CONSEIL ET MOI AVONS
+chair.sacked_league.2	DECIDE DE VOUS RELEVER DE VOS FONCTIONS
+chair.not_renewed.1	C'EST AVEC REGRET QUE NOUS AVONS DECIDE DE NE PAS
+chair.not_renewed.2	RENOUVELER VOTRE CONTRAT - BONNE CHANCE
+chair.not_renewed.3	ET NOUS ESPERONS VOUS REVOIR BIENTOT
+chair.league_note.1	NOTEZ NOTRE CLASSEMENT ACTUEL ET
+chair.league_note.2	VEILLEZ A L'AMELIORER AU PLUS VITE
+chair.league_warn.1	RAPPELEZ-VOUS, SANS AMELIORATION AU CLASSEMENT
+chair.league_warn.2	NOUS DEVRONS RECONSIDERER VOTRE POSTE
+chair.league_crisis.1	APRES UN VOTE DE CONFIANCE, VOUS AVEZ AU PLUS
+chair.league_crisis.2	3 MATCHS POUR REDRESSER LE CLUB OU VOUS PARTEZ
+chair.money_note.1	NOTEZ L'ETAT DE NOTRE COMPTE ET
+chair.money_note.2	VEILLEZ A COMBLER LE DECOUVERT AU PLUS VITE
+chair.money_warn.1	SIMPLE RAPPEL AU SUJET DU DECOUVERT
+chair.money_warn.2	SINON NOUS DEVRONS RECONSIDERER VOTRE POSTE
+chair.money_crisis.1	APRES UNE REUNION DE CRISE, NOUS EXIGEONS
+chair.money_crisis.2	LE COMBLEMENT IMMEDIAT DU DECOUVERT OU VOUS PARTEZ
+chair.new_season.1	UN MOT POUR VOUS SOUHAITER TOUT LE SUCCES
+chair.new_season.2	POUR LA NOUVELLE SAISON
+chair.embargo_buy.1	DESOLE %a, LE CLUB N'EST PAS DISPOSE A
+chair.embargo_buy.2	ACHETER D'AUTRES JOUEURS CETTE SAISON
+chair.embargo_sell.1	NOTEZ BIEN %a QUE NOUS N'AUTORISERONS PAS
+chair.embargo_sell.2	D'AUTRES VENTES DE JOUEURS CETTE SAISON
+chair.sacked_money.1	C'EST AVEC REGRET QUE LE CONSEIL ET MOI AVONS
+chair.sacked_money.2	DECIDE DE VOUS RELEVER DE VOS FONCTIONS
+# JOB OFFERS (career depth plan feature #3)
+job.title	OFFRES D EMPLOI
+job.none	AUCUNE OFFRE
+job.offer	OFFRE
+job.accept	ACCEPTER
+job.decline	REFUSER
+job.declined	OFFRE REFUSEE
+job.not_available	OFFRE INDISPONIBLE
+job.signed_prefix	ACCORD AVEC
+job.new_job	NOUVEAU POSTE
+job.reputation	REPUTATION
+job.rep_world	CLASSE MONDIALE
+job.rep_high	TRES COTE
+job.rep_good	BIEN VU
+job.rep_known	CONNU
+job.rep_unproven	SANS REFERENCES
+job.rep_unwanted	INDESIRABLE
+job.division	DIVISION
+job.squad	EFFECTIF
+job.letter_header	OFFRE D EMPLOI DE %a
+job.letter.1	MADAME, MONSIEUR
+job.letter.2	NOUS A %a AIMERIONS VOUS PROPOSER LE
+job.letter.3	POSTE D ENTRAINEUR POUR LA SAISON PROCHAINE
+job.letter.4	NOUS OFFRONS UN SALAIRE TRES COMPETITIF ET
+job.letter.5	NOUS ESPERONS DEGAGER DES FONDS
+job.letter.6	DE L ORDRE DE %b POUR RENFORCER L EQUIPE
+job.letter.7	DANS L ATTENTE DE VOTRE REPONSE
+job.accepted_note	VOUS AVEZ ACCEPTE - LE DEPART EST POUR LA SAISON PROCHAINE
+job.waiting_prefix	ILS ATTENDRONT ENCORE
+job.waiting_suffix	MATCHS
+job.accepted.1	NOUS A %a SOMMES RAVIS QUE VOUS
+job.accepted.2	AYEZ ACCEPTE LE POSTE D ENTRAINEUR CHEZ NOUS
+job.accepted.3	DES LE DEBUT DE LA SAISON PROCHAINE
+job.farewell.1	MERCI POUR TOUT %a, NOUS VOUS
+job.farewell.2	SOUHAITONS BONNE CHANCE AILLEURS
+job.welcome.1	BIENVENUE %a, NOUS ESPERONS BEAUCOUP
+job.welcome.2	DE SUCCES DE NOTRE NOUVELLE COLLABORATION
+job.withdrawn.1	OFFRE D EMPLOI DE %a RETIREE
+# board expectation line (feature #2 follow-up)
+chair.expected	LE CONSEIL ATTENDAIT
+chair.of	SUR
+chair.finished	TERMINE
+chair.expects	LE CONSEIL ATTEND
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	EQUIPE NATIONALE
+natjob.entry_offer	OFFRE D EMPLOI INTERNATIONALE
+natjob.title	EQUIPE NATIONALE
+natjob.title_offer	OFFRE D EMPLOI INTERNATIONALE
+natjob.player	JOUEUR
+natjob.add	AJOUTER JOUEUR
+natjob.remove	RETIRER JOUEUR
+natjob.auto	SELECTION AUTO
+natjob.resign	DEMISSIONNER
+natjob.full	GROUPE COMPLET
+natjob.appointed	SELECTIONNEUR DE
+natjob.none	AUCUN POSTE INTERNATIONAL
+natjob.no_players	AUCUN JOUEUR DISPONIBLE
+natjob.squad_word	GROUPE
+natjob.rating	NIVEAU
+natjob.home	PAYS
+natjob.abroad	ETRANGER
+natjob.col_name	NOM
+natjob.col_pos	POS
+natjob.col_ovr	GEN
+natjob.col_where	OU
+natjob.col_club	CLUB
+natjob.letter_header	OFFRE D EMPLOI INTERNATIONALE DE %a
+natjob.offer.1	LES MEMBRES DU COMITE DE FOOTBALL
+natjob.offer.2	DE %a AIMERAIENT VOUS OFFRIR LE POSTE
+natjob.offer.3	DE SELECTIONNEUR NATIONAL
+natjob.offer.4	NOUS PROMETTONS UN EXCELLENT SALAIRE ET
+natjob.offer.5	UN CONTRAT REVISABLE CHAQUE ANNEE
+natjob.offer.6	DANS L ATTENTE DE VOTRE REPONSE
+natjob.accepted.1	LES MEMBRES DU COMITE DE FOOTBALL
+natjob.accepted.2	DE %a SONT RAVIS QUE VOUS AYEZ
+natjob.accepted.3	ACCEPTE LE POSTE DE SELECTIONNEUR
+natjob.ended.1	LES MEMBRES DU COMITE DE FOOTBALL
+natjob.ended.2	DE %a ONT DECIDE DE NE PAS RENOUVELER
+natjob.ended.3	VOTRE CONTRAT REVISABLE CHAQUE ANNEE
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	VEUILLEZ PATIENTER
+busy.new_career	CREATION DU MONDE
+busy.next_season	L ETE SE DEROULE
+dash.scorers	MEILLEURS BUTEURS
+scorer.title	MEILLEURS BUTEURS
+scorer.view	LISTE
+scorer.page	PAGE
+scorer.view_comp	COMPETITION
+scorer.view_club	MON CLUB
+scorer.view_history	SAISON PAR SAISON
+scorer.leading	MEILLEURS BUTEURS DE LA COMPETITION
+scorer.goals	BUTS
+scorer.own_goals	BUTS CONTRE SON CAMP
+scorer.ex_player	BUTS D ANCIENS JOUEURS
+scorer.career_total	TOTAL CARRIERE
+scorer.season	SAISON
+scorer.season_top	MEILLEUR BUTEUR DE LA SAISON
+scorer.season_top_plural	MEILLEURS BUTEURS DE LA SAISON
+scorer.no_goals	AUCUN BUT CETTE SAISON
+scorer.no_seasons	AUCUNE SAISON TERMINEE
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	MATCH
+dash.sec_team	EQUIPE
+dash.sec_club	CLUB
+dash.sec_game	PARTIE
+nav.hint_cols	HAUT/BAS CHOIX   GAUCHE/DROITE COLONNE   FEU OK   ESC RETOUR
+# TRAINING / CLUB DIARY / YOUTH INTAKE / CLUB RECORDS (2026-08-26)
+dash.training	ENTRAINEMENT
+dash.chronicle	JOURNAL DU CLUB
+dash.legends	RECORDS DU CLUB
+busy.training	ENTRAINEMENT
+train.title	ENTRAINEMENT
+train.drill	EXERCICE
+train.intensity	INTENSITE
+train.toggle	AJOUTER / RETIRER
+train.auto	CHOIX AUTO
+train.auto_done	GROUPE CHOISI PAR POTENTIEL
+train.run	LANCER LA SEANCE
+train.report	DERNIER RAPPORT
+train.report_title	RAPPORT D'ENTRAINEMENT
+train.ready	SEANCE PRETE
+train.closed	PAS D'ENTRAINEMENT ENTRE LES SAISONS
+train.done_week	DEJA ENTRAINE CETTE SEMAINE - PROCHAINE SEANCE APRES LE MATCH
+train.coach	ENTRAINEUR
+train.trains	TRAVAILLE
+train.trains_fitness	CONDITION
+train.trains_keeper	JEU AU BUT
+train.col_in	IN
+train.col_con	CON
+train.col_shp	FRM
+train.col_room	MARGE
+train.col_grade	SEANCE
+train.col_gain	PROGRES
+train.group_full	GROUPE COMPLET - MAX
+train.no_report	AUCUNE SEANCE N'A ENCORE EU LIEU
+train.injured	BLESSE A L'ENTRAINEMENT
+train.potential_up	PLAFOND RELEVE
+train.int_0	LEGERE
+train.int_1	NORMALE
+train.int_2	INTENSE
+train.grade_0	FAIBLE
+train.grade_1	OK
+train.grade_2	BON
+train.grade_3	EXCELLENT
+train.drill_shooting	TRAVAIL DE FRAPPE
+train.drill_finishing	FINITION
+train.drill_passing	PASSES ET CENTRES
+train.drill_control	PARCOURS DE DRIBBLE
+train.drill_pace	SPRINTS ET NAVETTES
+train.drill_heading	JEU DE TETE
+train.drill_defending	DEFENSE ET TACLE
+train.drill_keeper	GARDIENS
+train.drill_recovery	RECUPERATION ET PHYSIQUE
+skill.passing	PASSE
+skill.shooting	TIR
+skill.heading	TETE
+skill.tackling	TACLE
+skill.control	CONTROLE
+skill.speed	VITESSE
+skill.finishing	FINITION
+chron.title	JOURNAL DU CLUB
+chron.season	SAISON
+chron.all	TOUT
+chron.empty	RIEN NE S'EST ENCORE PASSE
+chron.apps	%a DISPUTE SON MATCH %0 POUR LE CLUB
+chron.goals	%a MARQUE SON BUT %0 POUR LE CLUB
+chron.training	ENTRAINEMENT: %a, INTENSITE %b
+chron.training_break	%0 JOUEUR(S) ONT DEPASSE LEUR PLAFOND
+chron.breakthrough	%a S'ENTRAINE AU-DESSUS DE SON NIVEAU
+chron.train_injury	%a S'EST BLESSE A L'ENTRAINEMENT
+chron.intake	LE CENTRE A FORME %0 JOUEUR(S)
+chron.league_won	%a EST CHAMPION
+chron.league_pos	%a PLACE EN CHAMPIONNAT
+chron.cup_won	%a REMPORTE LA COUPE
+chron.topscorer	MEILLEUR BUTEUR: %a AVEC %0
+chron.signed	%a RECRUTE POUR %b
+chron.sold	%a VENDU POUR %b
+chron.released	%a LIBERE
+chron.sacked	LIMOGE PAR %a
+chron.verdict	LE CONSEIL A JUGE LA SAISON: %a
+chron.big_win	VICTOIRE CONTRE %a %b
+chron.big_loss	DEFAITE %b CONTRE %a
+chron.win_run	%0 VICTOIRES DE SUITE
+chron.unbeaten	%0 MATCHS SANS DEFAITE
+chron.winless	%0 MATCHS SANS VICTOIRE
+youth.entry	JEUNES
+youth.title	CENTRE DE FORMATION
+youth.none	LE CENTRE N'A FORME PERSONNE CET ETE
+youth.header	RAPPORT DU CENTRE - LES RECRUTEURS DONNENT UNE FOURCHETTE
+youth.col_est	AVIS DU RECRUTEUR
+youth.promote	AJOUTER AU GROUPE
+youth.release	LIBERER
+youth.released	LIBERE
+youth.added	AJOUTE A L'ENTRAINEMENT
+youth.already	DEJA DANS LE GROUPE
+youth.cannot_release	EFFECTIF TROP COURT
+legend.title	RECORDS DU CLUB
+legend.header	MATCHS DE TOUS LES TEMPS
+legend.empty	AUCUNE SAISON ACHEVEE DANS CE CLUB
+legend.col_apps	MJ
+legend.col_goals	BUT
+legend.col_last	DER
+legend.still	ICI

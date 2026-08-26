@@ -168,8 +168,11 @@ public static class TransferOffers
     {
         var career = c?.Career;
         if (career is null || world is null || offer is null) return false;
+        // Read the name BEFORE the move — afterwards he is in another squad.
+        string soldName = NameInSquad(world, career.ClubGlobalId, offer.PlayerId);
         if (!TransferModel.SellToClub(world, career.ClubGlobalId, offer.BidderClubId, offer.PlayerId, offer.Amount))
             return false;
+        Chronicle.Sold(career, soldName, offer.Amount, c!.CurrentRound);
         career.PendingOffers?.Remove(offer);
         career.TransferListedPlayerIds?.Remove(offer.PlayerId);
         if (career.TimeToNegotiate > 0) career.TimeToNegotiate--;
@@ -232,11 +235,24 @@ public static class TransferOffers
     {
         var career = c?.Career;
         if (career is null || world is null) return false;
+        string freedName = NameInSquad(world, career.ClubGlobalId, playerId);
         if (!TransferModel.Release(world, career.ClubGlobalId, playerId)) return false;
+        Chronicle.Released(career, freedName, c!.CurrentRound);
         career.TransferListedPlayerIds?.Remove(playerId);
         for (int i = (career.PendingOffers?.Count ?? 0) - 1; i >= 0; i--)
             if (career.PendingOffers![i].PlayerId == playerId) career.PendingOffers.RemoveAt(i);
         return true;
+    }
+
+    /// <summary>A squad player's display name, or "" — for a chronicle line
+    /// that has to be composed before the player leaves the squad.</summary>
+    internal static string NameInSquad(CareerWorld world, ushort clubId, int playerId)
+    {
+        if (world?.Clubs is null || !world.Clubs.TryGetValue(clubId, out var club) || club?.Squad is null)
+            return "";
+        foreach (var p in club.Squad)
+            if (p is not null && p.Id == playerId) return ScorerModel.CleanName(p.Name);
+        return "";
     }
 
     /// <summary>Season reset: clear offers/list and refill the negotiation budget.</summary>

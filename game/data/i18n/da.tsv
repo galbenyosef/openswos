@@ -559,3 +559,188 @@ staff.spec_attack	ANGREB
 staff.spec_defence	FORSVAR
 staff.spec_general	GENEREL
 staff.spec_youth	UNGDOM
+# FINANCES (career depth plan feature 1)
+dash.finances	OEKONOMI
+fin.title	OEKONOMI
+fin.show_history	SAESON FOR SAESON
+fin.show_sheet	DENNE SAESON
+fin.no_season	INGEN AFSLUTTET SAESON
+fin.drawn_up	REGNSKABET GOERES OP VED SAESONSLUT
+fin.col_season	SAESON
+fin.col_league	LIGA
+fin.col_cup	POKAL
+fin.col_income	INDTAEGTER
+fin.col_wages	LOENNINGER
+fin.col_balance	SALDO
+fin.season	SAESON
+fin.league	LIGA
+fin.cup	POKAL
+fin.home_games	HJEMMEKAMPE
+fin.crowd	TILSKUERE
+fin.row.opening	SALDO VED SAESONSTART:
+fin.row.gate	ENTREINDTAEGTER:
+fin.row.bonuses	PRAEMIER + TV-RETTIGHEDER:
+fin.row.sponsor	SPONSORAT FRA SENSISOFT PLC:
+fin.row.invest	EKSTRA INVESTERING FRA FORMANDEN:
+fin.row.invest_new	EKSTRA INVESTERING FRA DEN NYE FORMAND:
+fin.row.wages	SPILLERLOENNINGER:
+fin.row.profit	SAMLET OVERSKUD:
+fin.row.loss	SAMLET UNDERSKUD:
+fin.row.closing	NY SALDO:
+fin.row.sales	SPILLERSALG:
+fin.row.purchases	SPILLERKOEB:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	FORMAND
+dash.status_sacked	FYRET
+chair.title	FORMAND
+chair.memo	NOTAT
+chair.none	INGEN NOTATER
+chair.memo_header	NOTAT FRA KLUBBENS FORMAND
+chair.memo_sign	DIN FORMAND
+chair.earlier	TIDLIGERE NOTATER
+opt.board	BESTYRELSE
+opt.board_hint	HVOR HURTIGT FORMANDEN FYRER DIG
+opt.board_patient	TAALMODIG
+opt.board_normal	NORMAL
+opt.board_ruthless	HAARD
+chair.verdict0.1	GODT GAAET %a, DU GJORDE ET FREMRAGENDE
+chair.verdict0.2	ARBEJDE I DENNE SAESON OG VI PAASKOENNER DET
+chair.verdict1.1	EN GOD SAESON %a, VI ER ALLE MEGET
+chair.verdict1.2	TILFREDSE, BLIV VED MED DET
+chair.verdict2.1	EN SVINGENDE SAESON %a, VI HAABER ALLE
+chair.verdict2.2	PAA EN SNARLIG FORBEDRING
+chair.verdict3.1	IKKE EN SAERLIG GOD SAESON %a, VI HAABER
+chair.verdict3.2	DU FORBEDRER RESULTATERNE NAESTE SAESON
+chair.verdict4.1	EN MEGET SKUFFENDE SAESON %a, VI KRAEVER
+chair.verdict4.2	MEGET MERE AF DIG NAESTE SAESON
+chair.sacked_league.1	DET ER MED STOR BEKLAGELSE AT BESTYRELSEN OG JEG
+chair.sacked_league.2	HAR BESLUTTET AT FRITAGE DIG FOR DINE PLIGTER
+chair.not_renewed.1	DET ER MED STOR BEKLAGELSE AT VI HAR BESLUTTET
+chair.not_renewed.2	IKKE AT FORLAENGE DIN KONTRAKT - HELD OG LYKKE
+chair.not_renewed.3	OG VI GLAEDER OS TIL AT SE DIG SNART
+chair.league_note.1	BEMAERK VORES NUVAERENDE PLACERING OG
+chair.league_note.2	SOERG FOR AT DEN FORBEDRES HURTIGST MULIGT
+chair.league_warn.1	HUSK, HVIS PLACERINGEN IKKE SNART FORBEDRES
+chair.league_warn.2	MAA VI GENOVERVEJE DIN STILLING
+chair.league_crisis.1	EFTER EN TILLIDSAFSTEMNING HAR DU HOEJST
+chair.league_crisis.2	3 KAMPE TIL AT VENDE SKUDEN ELLER DU FYRES
+chair.money_note.1	BEMAERK VORES NUVAERENDE BANKSALDO OG
+chair.money_note.2	SOERG FOR AT DAEKKE OVERTRAEKKET HURTIGST MULIGT
+chair.money_warn.1	BLOT EN PAAMINDELSE OM OVERTRAEKKET
+chair.money_warn.2	ELLERS MAA VI GENOVERVEJE DIN STILLING
+chair.money_crisis.1	EFTER ET KRISEMOEDE KRAEVER VI AT DU
+chair.money_crisis.2	DAEKKER OVERTRAEKKET STRAKS ELLER DU FYRES
+chair.new_season.1	BARE ET PAR ORD MED HELD OG LYKKE I DEN
+chair.new_season.2	NYE SAESON
+chair.embargo_buy.1	BEKLAGER %a, KLUBBEN VIL IKKE
+chair.embargo_buy.2	KOEBE FLERE SPILLERE I DENNE SAESON
+chair.embargo_sell.1	BEMAERK %a AT VI IKKE TILLADER
+chair.embargo_sell.2	FLERE SPILLERSALG I DENNE SAESON
+chair.sacked_money.1	DET ER MED STOR BEKLAGELSE AT BESTYRELSEN OG JEG
+chair.sacked_money.2	HAR BESLUTTET AT FRITAGE DIG FOR DINE PLIGTER
+# JOB OFFERS (career depth plan feature #3)
+job.title	JOBTILBUD
+job.none	INGEN JOBTILBUD
+job.offer	TILBUD
+job.accept	ACCEPTER
+job.decline	AFVIS
+job.declined	TILBUD AFVIST
+job.not_available	TILBUD IKKE TILGAENGELIGT
+job.signed_prefix	AFTALE MED
+job.new_job	NYT JOB
+job.reputation	OMDOMME
+job.rep_world	VERDENSKLASSE
+job.rep_high	HOJT VURDERET
+job.rep_good	VELANSET
+job.rep_known	KENDT
+job.rep_unproven	UPROVET
+job.rep_unwanted	UONSKET
+job.division	DIVISION
+job.squad	TRUP
+job.letter_header	JOBTILBUD FRA %a
+job.letter.1	KAERE HERRE/FRUE
+job.letter.2	VI HER I %a VIL GERNE TILBYDE DIG
+job.letter.3	TRAENERJOBBET I VORES KLUB NAESTE SAESON
+job.letter.4	VI KAN TILBYDE EN MEGET GOD LON OG
+job.letter.5	VI HABER AT KUNNE STILLE MIDLER TIL RADIGHED
+job.letter.6	OMKRING %b TIL AT FORSTAERKE HOLDET
+job.letter.7	VI SER FREM TIL AT HORE FRA DIG
+job.accepted_note	DU HAR ACCEPTERET - SKIFTET SKER NAESTE SAESON
+job.waiting_prefix	DE VENTER ENDNU
+job.waiting_suffix	KAMPE
+job.accepted.1	VI HER I %a ER GLADE FOR AT DU
+job.accepted.2	HAR ACCEPTERET STILLINGEN SOM TRAENER HOS OS
+job.accepted.3	FRA STARTEN AF NAESTE SAESON
+job.farewell.1	TAK FOR ALT %a, VI ONSKER DIG
+job.farewell.2	ALT GODT I DIT NYE JOB
+job.welcome.1	VELKOMMEN %a, VI SER FREM TIL MEGEN
+job.welcome.2	SUCCES I VORES NYE SAMARBEJDE
+job.withdrawn.1	JOBTILBUD FRA %a TRUKKET TILBAGE
+# board expectation line (feature #2 follow-up)
+chair.expected	BESTYRELSEN VENTEDE
+chair.of	AF
+chair.finished	SLUTTEDE
+chair.expects	BESTYRELSEN VENTER
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	LANDSHOLD
+natjob.entry_offer	INTERNATIONALT JOBTILBUD
+natjob.title	LANDSHOLD
+natjob.title_offer	INTERNATIONALT JOBTILBUD
+natjob.player	SPILLER
+natjob.add	TILFOJ SPILLER
+natjob.remove	FJERN SPILLER
+natjob.auto	AUTOVALG
+natjob.resign	TRAED TILBAGE
+natjob.full	TRUPPEN ER FULD
+natjob.appointed	TRAENER FOR
+natjob.none	INTET LANDSHOLDSJOB
+natjob.no_players	INGEN SPILLERE TILGAENGELIGE
+natjob.squad_word	TRUP
+natjob.rating	VURDERING
+natjob.home	HJEMME
+natjob.abroad	UDLAND
+natjob.col_name	NAVN
+natjob.col_pos	POS
+natjob.col_ovr	OVR
+natjob.col_where	HVOR
+natjob.col_club	KLUB
+natjob.letter_header	INTERNATIONALT JOBTILBUD FRA %a
+natjob.offer.1	MEDLEMMERNE AF FODBOLDUDVALGET
+natjob.offer.2	I %a VIL GERNE TILBYDE DIG JOBBET
+natjob.offer.3	SOM LANDSTRAENER
+natjob.offer.4	VI KAN LOVE DIG EN FREMRAGENDE LON OG
+natjob.offer.5	EN ARLIGT GENFORHANDLET KONTRAKT
+natjob.offer.6	VI SER FREM TIL AT HORE FRA DIG
+natjob.accepted.1	MEDLEMMERNE AF FODBOLDUDVALGET
+natjob.accepted.2	I %a ER GLADE FOR AT DU HAR
+natjob.accepted.3	ACCEPTERET STILLINGEN SOM LANDSTRAENER
+natjob.ended.1	MEDLEMMERNE AF FODBOLDUDVALGET
+natjob.ended.2	I %a HAR BESLUTTET IKKE AT FORNY DIN
+natjob.ended.3	ARLIGT GENFORHANDLEDE KONTRAKT
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	VENT VENLIGST
+busy.new_career	BYGGER VERDENEN
+busy.next_season	SOMMEREN SPILLES
+dash.scorers	TOPSCORERE
+scorer.title	TOPSCORERE
+scorer.view	LISTE
+scorer.page	SIDE
+scorer.view_comp	TURNERING
+scorer.view_club	MIN KLUB
+scorer.view_history	SAESON FOR SAESON
+scorer.leading	TURNERINGENS BEDSTE MALSCORERE
+scorer.goals	MAL
+scorer.own_goals	SELVMAL
+scorer.ex_player	MAL AF TIDLIGERE SPILLERE
+scorer.career_total	TOTALT I KARRIEREN
+scorer.season	SAESON
+scorer.season_top	SAESONENS TOPSCORER
+scorer.season_top_plural	SAESONENS TOPSCORERE
+scorer.no_goals	INGEN MAL ENDNU I DENNE SAESON
+scorer.no_seasons	INGEN SAESON AFSLUTTET ENDNU
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	KAMP
+dash.sec_team	HOLD
+dash.sec_club	KLUB
+dash.sec_game	SPIL
+nav.hint_cols	OP/NED VAELG   VENSTRE/HOJRE KOLONNE   SKYD OK   ESC TILBAGE

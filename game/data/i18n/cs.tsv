@@ -559,3 +559,188 @@ staff.spec_attack	UTOK
 staff.spec_defence	OBRANA
 staff.spec_general	OBECNY
 staff.spec_youth	MLADEZ
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANCE
+fin.title	FINANCE
+fin.show_history	SEZONA PO SEZONE
+fin.show_sheet	TATO SEZONA
+fin.no_season	ZADNA DOKONCENA SEZONA
+fin.drawn_up	UCETNICTVI SE UZAVIRA NA KONCI SEZONY
+fin.col_season	SEZONA
+fin.col_league	LIGA
+fin.col_cup	POHAR
+fin.col_income	PRIJMY
+fin.col_wages	MZDY
+fin.col_balance	ZUSTATEK
+fin.season	SEZONA
+fin.league	LIGA
+fin.cup	POHAR
+fin.home_games	DOMACI ZAPASY
+fin.crowd	DIVAKU
+fin.row.opening	ZUSTATEK NA ZACATKU SEZONY:
+fin.row.gate	TRZBY ZE VSTUPNEHO:
+fin.row.bonuses	PREMIE + TV PRAVA:
+fin.row.sponsor	SPONZORING OD SENSISOFT PLC:
+fin.row.invest	DODATECNA INVESTICE PREZIDENTA:
+fin.row.invest_new	DODATECNA INVESTICE NOVEHO PREZIDENTA:
+fin.row.wages	MZDY HRACU:
+fin.row.profit	CELKOVY ZISK:
+fin.row.loss	CELKOVA ZTRATA:
+fin.row.closing	NOVY ZUSTATEK:
+fin.row.sales	PRODEJE HRACU:
+fin.row.purchases	NAKUPY HRACU:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PREZIDENT
+dash.status_sacked	ODVOLAN
+chair.title	PREZIDENT
+chair.memo	DOPIS
+chair.none	ZADNE DOPISY
+chair.memo_header	DOPIS OD PREZIDENTA KLUBU
+chair.memo_sign	VAS PREZIDENT
+chair.earlier	STARSI DOPISY
+opt.board	VEDENI
+opt.board_hint	JAK RYCHLE TE PREZIDENT ODVOLA
+opt.board_patient	TRPELIVE
+opt.board_normal	NORMALNI
+opt.board_ruthless	NELITOSTNE
+chair.verdict0.1	VYBORNE %a, ODVEDL JSI SKVELOU PRACI
+chair.verdict0.2	V TETO SEZONE A VSICHNI SI TOHO VAZIME
+chair.verdict1.1	DOBRA SEZONA %a, VSICHNI JSME VELMI
+chair.verdict1.2	SPOKOJENI, JEN TAK DAL
+chair.verdict2.1	ROZKOLISANA SEZONA %a, VSICHNI DOUFAME
+chair.verdict2.2	V BRZKE ZLEPSENI
+chair.verdict3.1	NEPRILIS DOBRA SEZONA %a, DOUFAME ZE
+chair.verdict3.2	PRISTI SEZONU VYSLEDKY ZLEPSIS
+chair.verdict4.1	VELMI ZKLAMANA SEZONA %a, POZADUJEME
+chair.verdict4.2	PRISTI SEZONU MNOHEM VIC
+chair.sacked_league.1	S VELKOU LITOSTI JSME SE S VEDENIM
+chair.sacked_league.2	ROZHODLI ZBAVIT TE FUNKCE - KONCIS
+chair.not_renewed.1	S VELKOU LITOSTI JSME SE ROZHODLI
+chair.not_renewed.2	NEPRODLOUZIT TVOU SMLOUVU - HODNE STESTI
+chair.not_renewed.3	A TESIME SE NA BRZKE SHLEDANI
+chair.league_note.1	VSIMNI SI NASI POZICE V TABULCE A
+chair.league_note.2	ZAJISTI CO NEJRYCHLEJSI ZLEPSENI
+chair.league_warn.1	PAMATUJ, POKUD SE POZICE BRZY NEZLEPSI
+chair.league_warn.2	BUDEME MUSET ZVAZIT TVE POSTAVENI
+chair.league_crisis.1	PO HLASOVANI O DUVERE MAS NEJVYSE
+chair.league_crisis.2	3 ZAPASY NA OBRAT NEBO BUDES ODVOLAN
+chair.money_note.1	VSIMNI SI STAVU NASEHO UCTU A
+chair.money_note.2	ZAJISTI CO NEJRYCHLEJSI SPLACENI DLUHU
+chair.money_warn.1	JEN PRIPOMINKA OHLEDNE DLUHU NA UCTU
+chair.money_warn.2	JINAK BUDEME MUSET ZVAZIT TVE POSTAVENI
+chair.money_crisis.1	PO KRIZOVEM JEDNANI VEDENI POZADUJEME
+chair.money_crisis.2	OKAMZITE SPLACENI DLUHU NEBO KONCIS
+chair.new_season.1	JEN PAR RADEK S PRANIM USPECHU V
+chair.new_season.2	NOVE SEZONE
+chair.embargo_buy.1	PROMIN %a, ALE KLUB NENI OCHOTEN
+chair.embargo_buy.2	V TETO SEZONE KUPOVAT DALSI HRACE
+chair.embargo_sell.1	VEZMI NA VEDOMI %a, ZE NEPOVOLIME
+chair.embargo_sell.2	DALSI PRODEJE HRACU V TETO SEZONE
+chair.sacked_money.1	S VELKOU LITOSTI JSME SE S VEDENIM
+chair.sacked_money.2	ROZHODLI ZBAVIT TE FUNKCE - KONCIS
+# JOB OFFERS (career depth plan feature #3)
+job.title	NABIDKY PRACE
+job.none	ZADNE NABIDKY PRACE
+job.offer	NABIDKA
+job.accept	PRIJMOUT
+job.decline	ODMITNOUT
+job.declined	NABIDKA ODMITNUTA
+job.not_available	NABIDKA NENI DOSTUPNA
+job.signed_prefix	DOHODNUTO S
+job.new_job	NOVE MISTO
+job.reputation	POVEST
+job.rep_world	SVETOVA TRIDA
+job.rep_high	VYSOCE CENENY
+job.rep_good	UZNAVANY
+job.rep_known	ZNAMY
+job.rep_unproven	NEOVERENY
+job.rep_unwanted	NEZADOUCI
+job.division	LIGA
+job.squad	KADR
+job.letter_header	NABIDKA PRACE OD %a
+job.letter.1	VAZENY PANE/PANI
+job.letter.2	MY ZDE V %a BYCHOM VAM RADI NABIDLI
+job.letter.3	MISTO TRENERA V NASEM KLUBU NA PRISTI SEZONU
+job.letter.4	MUZEME VAM NABIDNOUT VELMI SLUSNY PLAT A
+job.letter.5	DOUFAME, ZE UVOLNIME PROSTREDKY
+job.letter.6	KOLEM %b NA POSILENI TYMU
+job.letter.7	TESIME SE NA VASI ODPOVED
+job.accepted_note	PRIJALI JSTE - PRESTUP PROBEHNE PRISTI SEZONU
+job.waiting_prefix	BUDOU CEKAT JESTE
+job.waiting_suffix	ZAPASU
+job.accepted.1	MY ZDE V %a JSME NADSENI, ZE JSTE
+job.accepted.2	PRIJAL MISTO TRENERA V NASEM KLUBU
+job.accepted.3	OD ZACATKU PRISTI SEZONY
+job.farewell.1	DIKY ZA VSE %a, VSICHNI VAM PREJEME
+job.farewell.2	HODNE STESTI V NOVEM PUSOBISTI
+job.welcome.1	VITEJTE %a, TESIME SE NA MNOHO
+job.welcome.2	USPECHU Z NASI NOVE SPOLUPRACE
+job.withdrawn.1	NABIDKA PRACE OD %a STAZENA
+# board expectation line (feature #2 follow-up)
+chair.expected	VEDENI CEKALO
+chair.of	Z
+chair.finished	SKONCILI JSTE
+chair.expects	VEDENI OCEKAVA
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	REPREZENTACE
+natjob.entry_offer	MEZINARODNI NABIDKA PRACE
+natjob.title	REPREZENTACE
+natjob.title_offer	MEZINARODNI NABIDKA PRACE
+natjob.player	HRAC
+natjob.add	PRIDAT HRACE
+natjob.remove	ODEBRAT HRACE
+natjob.auto	AUTOMATICKY VYBER
+natjob.resign	REZIGNOVAT
+natjob.full	KADR JE PLNY
+natjob.appointed	TRENEREM
+natjob.none	ZADNA REPREZENTACNI POSADA
+natjob.no_players	ZADNI HRACI K DISPOZICI
+natjob.squad_word	KADR
+natjob.rating	HODNOCENI
+natjob.home	DOMA
+natjob.abroad	V CIZINE
+natjob.col_name	JMENO
+natjob.col_pos	POZ
+natjob.col_ovr	CEL
+natjob.col_where	KDE
+natjob.col_club	KLUB
+natjob.letter_header	MEZINARODNI NABIDKA PRACE OD %a
+natjob.offer.1	CLENOVE FOTBALOVEHO VYBORU
+natjob.offer.2	%a VAM NABIZEJI MISTO
+natjob.offer.3	TRENERA NARODNIHO TYMU
+natjob.offer.4	MUZEME VAM SLIBIT VYBORNY PLAT A
+natjob.offer.5	KAZDOROCNE OBNOVOVANOU SMLOUVU
+natjob.offer.6	TESIME SE NA VASI ODPOVED
+natjob.accepted.1	CLENOVE FOTBALOVEHO VYBORU
+natjob.accepted.2	%a JSOU NADSENI, ZE JSTE
+natjob.accepted.3	PRIJAL MISTO TRENERA NARODNIHO TYMU
+natjob.ended.1	CLENOVE FOTBALOVEHO VYBORU
+natjob.ended.2	%a SE ROZHODLI NEOBNOVIT VASI
+natjob.ended.3	KAZDOROCNE OBNOVOVANOU SMLOUVU
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	PROSIM CEKEJTE
+busy.new_career	VYTVARIM SVET
+busy.next_season	PROBIHA LETO
+dash.scorers	NEJLEPSI STRELCI
+scorer.title	NEJLEPSI STRELCI
+scorer.view	SEZNAM
+scorer.page	STRANA
+scorer.view_comp	SOUTEZ
+scorer.view_club	MUJ KLUB
+scorer.view_history	SEZONA PO SEZONE
+scorer.leading	NEJLEPSI STRELCI SOUTEZE
+scorer.goals	GOLY
+scorer.own_goals	VLASTNI GOLY
+scorer.ex_player	GOLY BYVALYCH HRACU
+scorer.career_total	CELKEM V KARIERE
+scorer.season	SEZONA
+scorer.season_top	NEJLEPSI STRELEC SEZONY
+scorer.season_top_plural	NEJLEPSI STRELCI SEZONY
+scorer.no_goals	ZATIM ZADNE GOLY V TETO SEZONE
+scorer.no_seasons	ZADNA SEZONA DOSUD NEDOKONCENA
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	ZAPAS
+dash.sec_team	TYM
+dash.sec_club	KLUB
+dash.sec_game	HRA
+nav.hint_cols	NAHORU/DOLU VYBER   VLEVO/VPRAVO SLOUPEC   PALBA OK   ESC ZPET

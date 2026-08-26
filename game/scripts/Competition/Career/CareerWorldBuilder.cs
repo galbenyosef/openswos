@@ -10,6 +10,70 @@ public static class CareerWorldBuilder
     /// <summary>
     /// Materializes every distinct master team and its players into the career save state.
     /// </summary>
+    /// <summary>
+    /// GlobalIds of every master team that is a NATIONAL SIDE rather than a club.
+    ///
+    /// TEAM.* header byte 0 is the source-file nation, and SWOS reserves 80..85
+    /// for the continental national-team files (TEAM.080..085). Those files are
+    /// the authoritative roll of national sides — but they are not the only
+    /// place the squads appear. This data set stores them AGAIN in TEAM.074
+    /// (the 24 USA '94 finalists) and TEAM.068, under different GlobalIds and
+    /// under nation bytes that say nothing about what they are.
+    ///
+    /// So the roll is taken from the data instead of from a list of magic
+    /// numbers: collect the NAMES in 80..85, then flag every master team
+    /// carrying one of them. A club is not called BRAZIL.
+    ///
+    /// Found by PLAYING a career (2026-08-23): 18 national squads were on sale
+    /// in the club transfer market, so a manager could sign ROBERTO BAGGIO from
+    /// ITALY. Matching on nation 80..85 alone missed two thirds of them, and
+    /// matching names against the nation-name table still missed TOGO,
+    /// COSTA RICA and UNITED STATES (which the table calls U.S.A.).
+    /// </summary>
+    public static System.Collections.Generic.HashSet<ushort> FindNationalSides(
+        System.Collections.Generic.IReadOnlyList<TeamRecord> masterTeams)
+    {
+        var ids = new System.Collections.Generic.HashSet<ushort>();
+        if (masterTeams is null) return ids;
+
+        var names = new System.Collections.Generic.HashSet<string>(
+            System.StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < masterTeams.Count; i++)
+        {
+            TeamRecord t = masterTeams[i];
+            if (t is not null && t.Nation is >= 80 and <= 85)
+                names.Add((t.Name ?? "").Trim());
+        }
+
+        for (int i = 0; i < masterTeams.Count; i++)
+        {
+            TeamRecord t = masterTeams[i];
+            if (t is null) continue;
+            string name = (t.Name ?? "").Trim();
+            if (t.Nation is >= 80 and <= 85
+                || (name.Length > 0 && names.Contains(name))
+                || OpenSwos.Assets.NationNames.IsNationName(name))
+                ids.Add(t.GlobalId);
+        }
+        return ids;
+    }
+
+    /// <summary>
+    /// Re-derives <see cref="CareerWorld.NationalTeamIds"/> from the master
+    /// roster. Careers saved before a national side was recognised keep the old,
+    /// short list inside their save, so the world is refreshed on load rather
+    /// than leaving those squads on the transfer market forever. Additive only:
+    /// it never drops an id a save already had.
+    /// </summary>
+    public static void RefreshNationalTeamIds(
+        CareerWorld world,
+        System.Collections.Generic.IReadOnlyList<TeamRecord> masterTeams)
+    {
+        if (world is null || masterTeams is null) return;
+        world.NationalTeamIds ??= new System.Collections.Generic.HashSet<ushort>();
+        foreach (ushort id in FindNationalSides(masterTeams)) world.NationalTeamIds.Add(id);
+    }
+
     public static CareerWorld BuildWorld(
         CompetitionState career,
         System.Collections.Generic.IReadOnlyList<TeamRecord> masterTeams,
@@ -22,6 +86,8 @@ public static class CareerWorldBuilder
 
         CareerWorld world = new() { Season = career.Career.Season };
         uint baseSeed = CareerRng.SeedFrom(career);
+        // Which master teams are national sides, taken from the data itself.
+        var nationalSides = FindNationalSides(masterTeams);
 
         // Real 1996/97 ages come from the committed offline table (Wikidata, CC0)
         // when a player's name matches; otherwise we fall back to skill-derived
@@ -37,9 +103,7 @@ public static class CareerWorldBuilder
         {
             TeamRecord teamRecord = masterTeams[i];
             HarvestNames(world.YouthFirstNamePools, world.YouthSurnamePools, teamRecord);
-            // TEAM.* header byte 0 is the source-file nation.  SWOS reserves
-            // 80..85 for its continental national-team files (TEAM.080..085).
-            if (teamRecord.Nation is >= 80 and <= 85)
+            if (nationalSides.Contains(teamRecord.GlobalId))
                 world.NationalTeamIds.Add(teamRecord.GlobalId);
             if (!world.Clubs.ContainsKey(teamRecord.GlobalId))
             {

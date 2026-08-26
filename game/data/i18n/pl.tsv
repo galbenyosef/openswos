@@ -559,3 +559,285 @@ staff.spec_attack	ATAK
 staff.spec_defence	OBRONA
 staff.spec_general	OGOLNY
 staff.spec_youth	MLODZIEZ
+# FINANCES (career depth plan feature 1)
+dash.finances	FINANSE
+fin.title	FINANSE
+fin.show_history	SEZON PO SEZONIE
+fin.show_sheet	TEN SEZON
+fin.no_season	BRAK ZAKONCZONEGO SEZONU
+fin.drawn_up	BILANS POWSTAJE NA KONIEC SEZONU
+fin.col_season	SEZON
+fin.col_league	LIGA
+fin.col_cup	PUCHAR
+fin.col_income	PRZYCHOD
+fin.col_wages	PENSJE
+fin.col_balance	SALDO
+fin.season	SEZON
+fin.league	LIGA
+fin.cup	PUCHAR
+fin.home_games	MECZE U SIEBIE
+fin.crowd	WIDZOW
+fin.row.opening	SALDO NA POCZATEK SEZONU:
+fin.row.gate	WPLYWY Z BILETOW:
+fin.row.bonuses	PREMIE + PRAWA TV:
+fin.row.sponsor	SPONSORING OD SENSISOFT PLC:
+fin.row.invest	DODATKOWA INWESTYCJA PREZESA:
+fin.row.invest_new	DODATKOWA INWESTYCJA NOWEGO PREZESA:
+fin.row.wages	PENSJE ZAWODNIKOW:
+fin.row.profit	ZYSK CALKOWITY:
+fin.row.loss	STRATA CALKOWITA:
+fin.row.closing	NOWE SALDO:
+fin.row.sales	SPRZEDAZ ZAWODNIKOW:
+fin.row.purchases	ZAKUPY ZAWODNIKOW:
+# THE CHAIRMAN (career depth plan feature 2)
+dash.chairman	PREZES
+dash.status_sacked	ZWOLNIONY
+chair.title	PREZES
+chair.memo	PISMO
+chair.none	BRAK PISM
+chair.memo_header	PISMO OD PREZESA KLUBU
+chair.memo_sign	TWOJ PREZES
+chair.earlier	WCZESNIEJSZE PISMA
+opt.board	ZARZAD
+opt.board_hint	JAK SZYBKO PREZES CIE ZWOLNI W KARIERZE
+opt.board_patient	CIERPLIWY
+opt.board_normal	NORMALNY
+opt.board_ruthless	BEZWZGLEDNY
+chair.verdict0.1	BRAWO %a, WYKONALES SWIETNA ROBOTE
+chair.verdict0.2	W TYM SEZONIE I WSZYSCY TO DOCENIAMY
+chair.verdict1.1	DOBRY SEZON %a, JESTESMY BARDZO
+chair.verdict1.2	ZADOWOLENI, TAK TRZYMAJ
+chair.verdict2.1	SEZON ZE WZLOTAMI I UPADKAMI %a, LICZYMY
+chair.verdict2.2	ZE WKROTCE SIE TO POPRAWI
+chair.verdict3.1	NIEZBYT DOBRY SEZON %a, MAMY NADZIEJE
+chair.verdict3.2	NA POPRAWE WYNIKOW W PRZYSZLYM SEZONIE
+chair.verdict4.1	BARDZO ROZCZAROWUJACY SEZON %a, ZADAMY
+chair.verdict4.2	DUZO WIECEJ W PRZYSZLYM SEZONIE
+chair.sacked_league.1	Z WIELKIM ZALEM ZARZAD I JA
+chair.sacked_league.2	POSTANOWILISMY ZWOLNIC CIE ZE STANOWISKA
+chair.not_renewed.1	Z WIELKIM ZALEM POSTANOWILISMY NIE
+chair.not_renewed.2	PRZEDLUZAC KONTRAKTU NA NASTEPNY SEZON - POWODZENIA
+chair.not_renewed.3	I LICZYMY, ZE WKROTCE SIE ZOBACZYMY
+chair.league_note.1	ZWROC UWAGE NA NASZA POZYCJE W LIDZE
+chair.league_note.2	I ZADBAJ O JEJ POPRAWE JAK NAJSZYBCIEJ
+chair.league_warn.1	PAMIETAJ, JESLI NASZA POZYCJA SIE NIE POPRAWI
+chair.league_warn.2	BEDZIEMY MUSIELI ROZWAZYC TWOJE STANOWISKO
+chair.league_crisis.1	PO GLOSOWANIU NAD WOTUM ZAUFANIA MASZ NIE WIECEJ NIZ
+chair.league_crisis.2	3 MECZE NA ODWROCENIE SYTUACJI ALBO ZOSTANIESZ ZWOLNIONY
+chair.money_note.1	ZWROC UWAGE NA STAN NASZEGO KONTA
+chair.money_note.2	I ZADBAJ O SPLATE DEBETU JAK NAJSZYBCIEJ
+chair.money_warn.1	PRZYPOMINAM O SPRAWIE DEBETU NA KONCIE
+chair.money_warn.2	INACZEJ BEDZIEMY MUSIELI ROZWAZYC TWOJE STANOWISKO
+chair.money_crisis.1	PO KRYZYSOWYM POSIEDZENIU ZARZADU ZADAMY
+chair.money_crisis.2	NATYCHMIASTOWEJ SPLATY DEBETU ALBO ZWOLNIENIA
+chair.new_season.1	PARE SLOW Z ZYCZENIAMI POWODZENIA W
+chair.new_season.2	NOWYM SEZONIE
+chair.embargo_buy.1	PRZYKRO MI %a, ALE KLUB NIE ZAMIERZA
+chair.embargo_buy.2	KUPOWAC WIECEJ ZAWODNIKOW W TYM SEZONIE
+chair.embargo_sell.1	ZWROC UWAGE %a, ZE NIE POZWOLIMY
+chair.embargo_sell.2	NA WIECEJ SPRZEDAZY ZAWODNIKOW W TYM SEZONIE
+chair.sacked_money.1	Z WIELKIM ZALEM ZARZAD I JA
+chair.sacked_money.2	POSTANOWILISMY ZWOLNIC CIE ZE STANOWISKA
+# JOB OFFERS (career depth plan feature #3)
+job.title	OFERTY PRACY
+job.none	BRAK OFERT PRACY
+job.offer	OFERTA
+job.accept	PRZYJMIJ
+job.decline	ODRZUC
+job.declined	OFERTA ODRZUCONA
+job.not_available	OFERTA NIEDOSTEPNA
+job.signed_prefix	UZGODNIONO Z
+job.new_job	NOWA POSADA
+job.reputation	RENOMA
+job.rep_world	SWIATOWA KLASA
+job.rep_high	WYSOKO CENIONY
+job.rep_good	SZANOWANY
+job.rep_known	ZNANY
+job.rep_unproven	NIESPRAWDZONY
+job.rep_unwanted	NIECHCIANY
+job.division	LIGA
+job.squad	KADRA
+job.letter_header	OFERTA PRACY OD %a
+job.letter.1	SZANOWNY PANIE/PANI
+job.letter.2	MY W %a CHCIELIBYSMY ZAOFEROWAC PANU
+job.letter.3	POSADE TRENERA W NASZYM KLUBIE NA NOWY SEZON
+job.letter.4	OFERUJEMY BARDZO DOBRE WYNAGRODZENIE ORAZ
+job.letter.5	MAMY NADZIEJE ZAPEWNIC SRODKI
+job.letter.6	W OKOLICACH %b NA WZMOCNIENIE ZESPOLU
+job.letter.7	CZEKAMY NA PANSKA ODPOWIEDZ
+job.accepted_note	PRZYJALES - PRZEJSCIE NASTAPI W NOWYM SEZONIE
+job.waiting_prefix	BEDA CZEKAC JESZCZE
+job.waiting_suffix	MECZOW
+job.accepted.1	MY W %a JESTESMY ZACHWYCENI ZE
+job.accepted.2	PRZYJALES POSADE TRENERA W NASZYM KLUBIE
+job.accepted.3	OD POCZATKU PRZYSZLEGO SEZONU
+job.farewell.1	DZIEKUJEMY ZA WSZYSTKO %a, ZYCZYMY
+job.farewell.2	POWODZENIA W NOWEJ PRACY
+job.welcome.1	WITAJ %a, LICZYMY NA WIELE
+job.welcome.2	SUKCESOW Z NASZEJ NOWEJ WSPOLPRACY
+job.withdrawn.1	OFERTA PRACY OD %a WYCOFANA
+# board expectation line (feature #2 follow-up)
+chair.expected	ZARZAD OCZEKIWAL
+chair.of	Z
+chair.finished	ZAJALES
+chair.expects	ZARZAD OCZEKUJE
+# NATIONAL TEAM JOB (career depth plan feature #4)
+natjob.entry	REPREZENTACJA
+natjob.entry_offer	MIEDZYNARODOWA OFERTA PRACY
+natjob.title	REPREZENTACJA
+natjob.title_offer	MIEDZYNARODOWA OFERTA PRACY
+natjob.player	ZAWODNIK
+natjob.add	DODAJ ZAWODNIKA
+natjob.remove	USUN ZAWODNIKA
+natjob.auto	WYBOR AUTOMATYCZNY
+natjob.resign	ZREZYGNUJ
+natjob.full	KADRA PELNA
+natjob.appointed	SELEKCJONER
+natjob.none	BRAK POSADY W REPREZENTACJI
+natjob.no_players	BRAK ZAWODNIKOW
+natjob.squad_word	KADRA
+natjob.rating	OCENA
+natjob.home	W KRAJU
+natjob.abroad	ZA GRANICA
+natjob.col_name	NAZWISKO
+natjob.col_pos	POZ
+natjob.col_ovr	OGL
+natjob.col_where	GDZIE
+natjob.col_club	KLUB
+natjob.letter_header	MIEDZYNARODOWA OFERTA PRACY OD %a
+natjob.offer.1	CZLONKOWIE KOMITETU PILKARSKIEGO
+natjob.offer.2	%a CHCA ZAOFEROWAC PANU POSADE
+natjob.offer.3	SELEKCJONERA REPREZENTACJI
+natjob.offer.4	OBIECUJEMY DOSKONALE WYNAGRODZENIE ORAZ
+natjob.offer.5	KONTRAKT ODNAWIANY CO ROKU
+natjob.offer.6	CZEKAMY NA PANSKA ODPOWIEDZ
+natjob.accepted.1	CZLONKOWIE KOMITETU PILKARSKIEGO
+natjob.accepted.2	%a SA ZACHWYCENI, ZE PRZYJAL PAN
+natjob.accepted.3	POSADE SELEKCJONERA REPREZENTACJI
+natjob.ended.1	CZLONKOWIE KOMITETU PILKARSKIEGO
+natjob.ended.2	%a POSTANOWILI NIE ODNAWIAC
+natjob.ended.3	PANSKIEGO ROCZNEGO KONTRAKTU
+# TOP SCORERS (career depth plan feature #5) + PLEASE WAIT
+busy.title	PROSZE CZEKAC
+busy.new_career	TWORZENIE SWIATA
+busy.next_season	TRWA LATO
+dash.scorers	KROL STRZELCOW
+scorer.title	KROLOWIE STRZELCOW
+scorer.view	LISTA
+scorer.page	STRONA
+scorer.view_comp	ROZGRYWKI
+scorer.view_club	MOJ KLUB
+scorer.view_history	SEZON PO SEZONIE
+scorer.leading	NAJLEPSI STRZELCY ROZGRYWEK
+scorer.goals	GOLE
+scorer.own_goals	GOLE SAMOBOJCZE
+scorer.ex_player	GOLE BYLYCH ZAWODNIKOW
+scorer.career_total	LACZNIE W KARIERZE
+scorer.season	SEZON
+scorer.season_top	KROL STRZELCOW SEZONU
+scorer.season_top_plural	KROLOWIE STRZELCOW SEZONU
+scorer.no_goals	BRAK GOLI W TYM SEZONIE
+scorer.no_seasons	ZADEN SEZON NIE ZOSTAL UKONCZONY
+# CAREER DASHBOARD SECTIONS (3-column layout)
+dash.sec_match	MECZ
+dash.sec_team	DRUZYNA
+dash.sec_club	KLUB
+dash.sec_game	GRA
+nav.hint_cols	GORA/DOL WYBOR   LEWO/PRAWO KOLUMNA   OGIEN OK   ESC POWROT
+# TRAINING / CLUB DIARY / YOUTH INTAKE / CLUB RECORDS (2026-08-26)
+dash.training	TRENING
+dash.chronicle	KRONIKA KLUBU
+dash.legends	REKORDY KLUBU
+busy.training	TRENING
+train.title	TRENING
+train.drill	CWICZENIE
+train.intensity	INTENSYWNOSC
+train.toggle	DODAJ / USUN
+train.auto	WYBIERZ AUTO
+train.auto_done	GRUPA WYBRANA WG POTENCJALU
+train.run	PRZEPROWADZ TRENING
+train.report	OSTATNI RAPORT
+train.report_title	RAPORT Z TRENINGU
+train.ready	TRENING GOTOWY
+train.closed	BRAK TRENINGU MIEDZY SEZONAMI
+train.done_week	JUZ TRENOWALES W TYM TYGODNIU - NASTEPNY PO MECZU
+train.coach	TRENER
+train.trains	ROZWIJA
+train.trains_fitness	KONDYCJA
+train.trains_keeper	GRA BRAMKARSKA
+train.col_in	W
+train.col_con	KON
+train.col_shp	FOR
+train.col_room	ZAPAS
+train.col_grade	OCENA
+train.col_gain	POSTEP
+train.group_full	GRUPA PELNA - MAX
+train.no_report	NIE PRZEPROWADZONO JESZCZE TRENINGU
+train.injured	KONTUZJA NA TRENINGU
+train.potential_up	SUFIT PODNIESIONY
+train.int_0	LEKKA
+train.int_1	NORMALNA
+train.int_2	INTENSYWNA
+train.grade_0	SLABO
+train.grade_1	OK
+train.grade_2	DOBRZE
+train.grade_3	SWIETNIE
+train.drill_shooting	TRENING STRZALOW
+train.drill_finishing	WYKANCZANIE AKCJI
+train.drill_passing	PODANIA I DOSRODKOWANIA
+train.drill_control	TOR SLALOMOWY
+train.drill_pace	SPRINTY I WAHADLOWKI
+train.drill_heading	GRA GLOWA
+train.drill_defending	OBRONA I ODBIOR
+train.drill_keeper	TRENING BRAMKARZY
+train.drill_recovery	REGENERACJA I KONDYCJA
+skill.passing	PODANIE
+skill.shooting	STRZAL
+skill.heading	GLOWKA
+skill.tackling	ODBIOR
+skill.control	PRZYJECIE
+skill.speed	SZYBKOSC
+skill.finishing	WYKONCZENIE
+chron.title	KRONIKA KLUBU
+chron.season	SEZON
+chron.all	WSZYSTKO
+chron.empty	NIC SIE JESZCZE NIE WYDARZYLO
+chron.apps	%a ROZEGRAL %0 MECZ DLA KLUBU
+chron.goals	%a STRZELIL %0 GOLA DLA KLUBU
+chron.training	TRENING: %a, INTENSYWNOSC %b
+chron.training_break	%0 ZAWODNIK(OW) PRZEBILO SWOJ SUFIT
+chron.breakthrough	%a TRENUJE PONAD SWOJE MOZLIWOSCI
+chron.train_injury	%a NABAWIL SIE KONTUZJI NA TRENINGU
+chron.intake	AKADEMIA WYDALA %0 ZAWODNIKOW
+chron.league_won	%a MISTRZEM LIGI
+chron.league_pos	MIEJSCE %a W LIDZE
+chron.cup_won	%a ZDOBYWA PUCHAR
+chron.topscorer	KROL STRZELCOW: %a Z %0
+chron.signed	KUPIONO %a ZA %b
+chron.sold	SPRZEDANO %a ZA %b
+chron.released	%a ZWOLNIONY ZA DARMO
+chron.sacked	ZWOLNIONY PRZEZ %a
+chron.verdict	ZARZAD OCENIL SEZON: %a
+chron.big_win	WYGRANA Z %a %b
+chron.big_loss	PORAZKA %b Z %a
+chron.win_run	%0 ZWYCIESTW Z RZEDU
+chron.unbeaten	%0 MECZOW BEZ PORAZKI
+chron.winless	%0 MECZOW BEZ WYGRANEJ
+youth.entry	MLODZIEZ
+youth.title	NABOR MLODZIEZY
+youth.none	AKADEMIA NIKOGO NIE WYDALA TEGO LATA
+youth.header	RAPORT AKADEMII - SKAUCI DAJA PRZEDZIAL, NIE LICZBE
+youth.col_est	OCENA SKAUTA
+youth.promote	DODAJ DO GRUPY TRENINGOWEJ
+youth.release	ZWOLNIJ
+youth.released	ZWOLNIONY
+youth.added	DODANY DO TRENINGU
+youth.already	JUZ JEST W GRUPIE
+youth.cannot_release	ZA MALO ZAWODNIKOW W KADRZE
+legend.title	REKORDY KLUBU
+legend.header	WYSTEPY WSZECH CZASOW
+legend.empty	BRAK UKONCZONEGO SEZONU W TYM KLUBIE
+legend.col_apps	MEC
+legend.col_goals	GOL
+legend.col_last	OST
+legend.still	TU

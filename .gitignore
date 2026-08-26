@@ -104,3 +104,27 @@ CLAUDE.md
 
 # Promo/press material (large personal media; share as release assets, not repo history)
 GFX_Promo/
+
+# ── THE BROWSER CAREER CLIENT — kept private (user directive, 2026-08-26) ────
+# The web front-end and the match-streaming layer are NOT published. Main.cs
+# reaches them only through `partial void` hooks (see "OPTIONAL MODULE" there),
+# so the tree still compiles and runs without any of this — it just loses the
+# --career-web and --match-record flags. Main.MatchOutcome.cs stays public on
+# purpose: the locally played match needs it too.
+game/scripts/Web/
+game/scripts/Main.Web.cs
+game/scripts/Main.LiveMatch.cs
+game/scripts/Main.LiveMatch.cs.uid
+game/web/
+run-career-web.bat
+tools/career-play/
+docs/decisions/02-match-streaming-and-multiplayer.md
+
+# Personal working notes written for the author, not product documentation.
+/WHATS-NEW.txt
+/CM0102-POROWNANIE.txt
+/TEST-COMMANDS.txt
+
+# Holding area for files removed from the build but deliberately not deleted.
+/_removed/
+/Pack.zip

@@ -1,8 +1,592 @@
 # RESUME HERE — Phase B port progress
 
-**Last updated: 2026-07-18 (Session 34 CONTINUED. R36S is now SOLVED & PLAYABLE via WestonPack. This session also added: fast low-res render mode for handheld, stamina match-length-normalization + half-time recovery + keeper tune, AI-shot-spin table fix, penalty-save table fix, i18n wrapping of ~120 previously-untranslated strings + 19-language translations, COMMENTATOR ON/OFF toggle. CURRENT FRONT: the Android build is reported NOT WORKING — debug next.)**
+**Last updated: 2026-08-26 (Session 37. CAREER DEPTH PLAN Tier 2 is COMPLETE except #9: #6 YOUTH INTAKE DAY, #7 the SEASON CHRONICLE (shipped as the CLUB DIARY), #8 APPEARANCE AND GOAL COUNTERS + a CLUB RECORDS board — all on BOTH clients. #10 turned out to be done already. Plus the user's own ask: a WEEKLY TRAINING system in the shape of FIFA 18's — pick a drill, an intensity and up to six players; the session is graded and slowly loads their stats (`docs/decisions/04-training-and-development.md`). Building it uncovered TWO long-standing defects: the ENTIRE FIRST XI of every career had been pinned at 100 fatigue, i.e. playing at -2 skill for whole careers, because recovery was flat and could never catch the per-match gain; and the youth academy went PERMANENTLY SILENT after about three seasons because a full squad was given no intake. Both fixed. Form and sharpness now actually reach the pitch — FormModel.FormSkillDelta had no caller outside a test.)**
 
-## >>> RESUME FIRST — ANDROID BUILD NOT WORKING (S34, current front)
+## >>> RESUME FIRST
+
+### Where to pick up
+Tier 1 (#1-#5) and Tier 2 (#6, #7, #8, #10) are **complete on both clients**, and so is a weekly
+TRAINING system that was never in the plan (a user directive, 2026-08-26).
+
+**The next task is not fixed. In rough order of visible value per unit of work:**
+
+1. **#9 derbies and rivals** — small, and cheaper than it was: the CLUB DIARY now gives a rival
+   result somewhere to live. Rivals derived deterministically (same nation, similar strength).
+2. **#12 morale as ONE number** — driven by minutes and results, read-only plus one action. No
+   inbox, no player conversations: that is where FM fatigue starts.
+3. **#11 part-exchange transfers** — the original's own `%a EXCHANGE OFFER FOR %b`.
+4. **#14 European competition** — the biggest visible change left, and the most work.
+5. Anything from **"Not in the plan — needs a decision"** in the plan doc (loans, suspensions,
+   deadline day, player search, asking the board for budget, awards, assists/ratings/clean
+   sheets, assistant advice, squad status, stadium/sponsors, work permits, tutoring). **The user
+   still has to pick from that list** — none of it should be started unprompted.
+
+One balance question is measured and deliberately NOT tuned: with the fatigue equilibrium fixed,
+a SIMULATED fixture now tires a mid-stamina player less than a week's rest restores, so AI squads
+sit at 90-100 condition. That is the right side of the old bug (nobody is pinned at zero any
+more), but whether simulated fixtures should cost more is a real decision. See
+`04-training-and-development.md`, "Balance not yet settled".
+
+One idea the 2026-08-26 research turned up that is in NO tier: the CM 01/02 community is kept
+alive by annually updated DATABASES, not by new features. The equivalent here would be
+**editable, shareable team/player data packs**. Tooling, not career work — recorded in the plan
+doc so the option exists.
+
+Full brief: `docs/decisions/03-career-depth-plan.md` and `docs/decisions/04-training-and-development.md`.
+Three files are written FOR THE USER (he cannot copy from the chat):
+`I:\GITHUB\W_OPEN_SWOS\WHATS-NEW.txt` (what changed and where to click),
+`I:\GITHUB\W_OPEN_SWOS\CM0102-POROWNANIE.txt` (the CM 01/02 comparison and the remaining plan)
+and `I:\GITHUB\W_OPEN_SWOS\TEST-COMMANDS.txt` (run/test commands). Keep them current — they are
+how he sees progress, and "I can't see any change" is a real failure mode.
+
+**PLAY THE GAME BEFORE AND AFTER A CAREER FEATURE.** The user's instruction, and it paid for
+itself four times over on 2026-08-23 (see "What playing a career actually found" in the plan
+doc). The career is a menu, so an agent can play it exactly as a person does: start
+`--career-web`, then drive `/api/*` from **`tools/career-play/play.py`** — a text console over
+the same API the page uses (`new / play / autoplay / table / squad / jobs / chairman / national /
+fin / season`, plus the actions). Point it at a port with `OPENSWOS_CAREER_URL`. Do NOT run
+`--competition-test` mid-playthrough: it deletes the autosave. Save the career to a named slot
+first (`saveSlot`).
+
+**Why a feature is REJECTED is per-feature, not one slogan** (corrected 2026-08-23 after the
+user pushed back). "The match is played by hand" justifies dropping press conferences and team
+talks — they interrupt a two-minute match — and nothing else. Contracts and agents are out for
+three unrelated reasons: the original has no contracts at all, expiring deals are the one kind of
+admin a player CANNOT skip (so they fail the skippable test), and they are many clicks for few
+decisions. An inbox is out on UX grounds. None of it is banned for ever: any of it could return
+as an OPTIONS toggle that is off by default. See "What we deliberately do NOT build" in the plan.
+
+**How this work is being done** (the user's stated preference, hold to it):
+one feature at a time, carefully, on BOTH clients, engine-side so the desktop menu and the
+browser inherit it from the same code. Read the ORIGINAL first — both #1 and #2 turned out to
+exist in `original-amiga-swos.asm` in more detail than the plan assumed, and reading it first
+is what produced the line items and the escalation ladders. Verify VISUALLY on both clients
+(`--menu-shot` for the desktop, Playwright for the browser) before calling anything done.
+
+## >>> S37: training, the diary, the records board, and two old bugs (2026-08-26)
+
+### What shipped
+| Feature | Desktop | Web | Engine |
+|---|---|---|---|
+| WEEKLY TRAINING + report | DASHBOARD -> TRAINING | the TRAINING tab | `Career/TrainingModel.cs` |
+| YOUTH INTAKE DAY (#6) | DASHBOARD -> YOUTH INTAKE | the YOUTH tab | `CompetitionEngine` intake diff |
+| CLUB DIARY (#7) | DASHBOARD -> CLUB DIARY | the DIARY tab | `Career/Chronicle.cs` |
+| APP / GLS + CLUB RECORDS (#8) | squad columns + CLUB RECORDS | squad columns + RECORDS tab | `Career/CareerRecords.cs` |
+
+All four are engine-side, so the two clients are views over the same rules. New menu screens live
+in `game/scripts/Menu/MenuClient.Training.cs`; the web endpoints are `/api/training`,
+`/api/youth`, `/api/chronicle`, `/api/legends` plus five `trainX` actions.
+
+### The two bugs it uncovered — both older than any of this
+**Every regular in every career had been playing at -2 skill.** The training screen prints a CON
+(condition) column for the whole squad, and the first XI read **0** while the bench read 96-99.
+`FatigueModel.RecoverBetweenMatches` recovered a FLAT amount per rest day; `MatchFatigueGain` is
+`5 * (8 - stamina)` per match. For stamina <= 4 the flat rate can never catch the gain, so fatigue
+ratchets to 100 and stays there — and `SkillPenalty` is -2 at 80 or more. A flat recovery CANNOT
+have an equilibrium below the cap; recovery now also sheds 35 % of the carried fatigue over a
+week, and `PreSeason` divides it by five at the rollover. `--competition-test` asserts no regular
+is pinned at the cap. This also settles the plan's long-standing open question about between-season
+recovery: yes, and it had to be.
+
+**The youth academy went permanently silent.** `RegenModel` gave a club at or below the 16-man
+target one youth and a club at the 18-man cap none — so once squads settled (about three seasons)
+no club ever produced another academy player, and intake day would have said "nobody" every
+summer for the rest of the career. Every club now produces at least one; a full squad makes room
+by releasing its weakest senior, never one of this summer's arrivals.
+
+**And form finally reaches the pitch.** `FormModel.FormSkillDelta` had no caller outside a test:
+form was computed, stored, displayed and ignored. It and the new sharpness are applied in
+`CareerMatchTeam.ToPlayerRecord`, capped at one SWOS level either way.
+
+### The harness lesson worth keeping
+`--menu-shot` steps that drive anything behind PLEASE WAIT must **wait for the SCREEN, not for a
+frame number**. The rollover and RUN SESSION both take as long as their work takes: PLEASE WAIT
+measured 13 frames in one run and 26 in the next, so fixed frame numbers photographed whatever
+happened to be on screen — three shots of the main menu, reported as a pass. Cases 33-40 now each
+wait for a title and advance when they see it, with a timeout that PRINTS the failure. The
+chairman's memo is PUSHED, not opened, and lands whenever the world simulation finishes, so it
+also has to be stepped off by condition rather than at a fixed frame.
+
+## >>> S36: the web match renderer, and a three-column career board (2026-08-25)
+
+### The web renderer was drawing sprites wrong in three ways — all one root cause
+Reported by the user: "w wersji web jak gra mecz to pilkarze sa jakby przesunieci od pilki
+w lewo. jak wyrzucaja z autu to znikaja pilkarze. jak bramkarz sie rzuca to lekko znika tez."
+All three are the same mistake — **the browser was placing SWOS sprites itself.**
+
+v2 sent an atlas CELL (col, row) and match.js blitted a 16x16 tile at a flat bottom-centre
+anchor. Both halves are wrong:
+
+* the foot anchor is per-DIRECTION and per-FRAME (`PlayerFrames.StandingAnchor` is x=1..4,
+  never 8, plus a per-cell delta). MEASURED across a recorded match: every player was drawn
+  **3-7 px too far LEFT** and 1 px too high. That is the "przesunieci w lewo";
+* throw-in / cheer frames are **16x24** and goalie dive / catch frames are **16x20**. They sit
+  outside the 16x16 grid and are addressed by SYNTHETIC row numbers >= 100
+  (`PlayerFrames.ExtThrowRowBase`), so `row * 16` indexed far past the bottom of the atlas and
+  `drawImage` drew NOTHING. That is the vanishing throw-in taker and the half-vanishing keeper.
+
+The desktop never had any of this wrong, because `Main.UpdateSprite` resolves the rect and the
+anchor properly. So the fix was NOT to teach JavaScript about SWOS sprite layout — it was to
+**send what the desktop computed**. Wire format **v3**: each entity now carries the atlas source
+rect (x, y, w, h) and the draw offset (dx, dy), and match.js is a blitter again:
+
+    drawImage(atlas, srcX, srcY, srcW, srcH, x + dx, y - z + dy, srcW, srcH)
+
+Entity stride 10 -> 16 B, so the stream went 252 -> 404 B/tick (27.6 KB/s at 70 Hz). v1/v2 files
+still play on the old approximate anchor rather than being rejected.
+
+**The rule this is an instance of:** the browser is a renderer, not a second implementation. Any
+time it has to *decide* something about SWOS, the answer belongs in the engine and on the wire.
+
+Verified: a live streamed match through Playwright — 8 963 frames, 197 186 visible player
+frames, **0 with an empty rect**, 156 keeper-dive and 608 throw-in frames all drawable, no page
+errors; plus the replay at the exact ticks that use those frames.
+
+### The career dashboard is three columns with sections
+Sixteen-odd entries in one vertical column ran off the bottom into the compact tier and read as
+an undifferentiated list. `MenuScreen.Columns` lays entries out in N columns; a Label opens a
+SECTION block which is never split across a column, and a LEADING label (the status line) spans
+the full width as a banner. The career board is MATCH / TEAM / CLUB / GAME.
+LEFT/RIGHT jump columns (`MoveColumn` keeps the cursor's height); UP/DOWN still walks the list
+in order. Every other screen is untouched — they keep `Columns = 1`.
+
+## >>> S36: feature #5 + the freeze (2026-08-24)
+
+### Career depth plan — feature #5 SHIPPED: SEASON'S TOP SCORER
+`Competition/Career/ScorerModel.cs`, plus a `TOP SCORERS` entry on the desktop dashboard and a
+`SCORERS` tab on the web (`/api/scorers`). The original specifies the feature almost completely
+in its own strings, and we reproduce all of it:
+
+    asm:283007 SEASON'S TOP SCORER / asm:283027 plural on a tie / asm:283048 "%a  %0"
+    asm:283055 CAREER TOTAL
+    asm:295043 LEADING COMPETITION GOAL SCORERS / asm:295076 TOP GOAL SCORERS
+    asm:295659 GOALS / asm:295686 OWN GOALS / asm:295696 EX. PLAYER GOALS
+
+Three rules that are easy to get wrong:
+* **A simulated scoreline has no scorers**, and without attribution the leaderboard would list
+  only the human's own club. Every simulated goal is therefore attributed to a real member of
+  that club's XI, weighted by position line and finishing, from the SAME competition RNG as the
+  scoreline — so a save reloads to the identical table. A PLAYED fixture keeps its real scorers
+  (`Main.CaptureMatchOutcome` -> `ScorerModel.ResolveCredits` -> `RecordResult(..., credits)`).
+* **`CompetitionState.Scorers` is THIS season's** and is rebuilt at the rollover, because the
+  rollover also rebuilds `Teams` and the rows index into it. The running total lives on
+  `CareerPlayer.CareerGoals`.
+* **The two aggregate rows travel as a `kind`, never as text**, so each client writes its own
+  localised OWN GOALS / EX. PLAYER GOALS label.
+
+### The bug #5 found: THE AUTOMATIC LINEUP FIELDED NO STRIKERS
+Measuring who scored across a simulated season showed defenders taking 23 % of all goals. The
+cause was not the weights: `CareerMatchTeam.BuildAuto` picked the XI by sorting on the position
+group and taking the first ten — and the position group is an ENUM with A last (RB=0 ... A=6).
+Any squad with ten or more non-attackers therefore fielded ZERO forwards and benched its whole
+strike force; 16 of 16 clubs in the test league did. The same ordering plugged gaps in a
+PROJECTED lineup, so an injured or sold forward was replaced by a full-back.
+`PickOutfieldXI` now picks a 4-4-2 and tops short lines up by ability. This is a GAMEPLAY fix,
+not a cosmetic one — it changes who plays in every career match that does not use a custom or
+fully intact lineup.
+
+### The freeze the user reported — MEASURED (and the first answer was the WRONG ONE)
+"Troche freezuje w niektorych miejscach." Worth reading as a lesson in measuring the thing the
+user actually did, not the thing that is easy to instrument.
+
+**First pass — real, but not it.** Timing the web API per call
+(`OPENSWOS_TIME=1 python tools/career-play/play.py ...`) and splitting it server-side showed the
+career logic costing 2-9 ms and the AUTOSAVE 200 ms, because a save is the WHOLE world (1730
+clubs, ~29 000 players) written after every fixture. Serializing one identical state three ways:
+
+    indented, reflection   38.4 MB   253 ms   <- what shipped before
+    compact,  reflection   17.3 MB   236 ms
+    compact,  generated    17.3 MB   165 ms   <- now (CompetitionJson.cs, byte-identical output)
+
+Writing the bytes is 19 ms either way. That took VIEW RESULT from ~250 ms to ~90 ms and the
+rollover from 2.5 s to 1.7 s — all true, all worth keeping, and **not what the user meant**. He
+came back with: "to nie jest milisekundy, to jest z 10 sekund".
+
+**Second pass — the actual freeze.** Sweeping EVERY endpoint found it immediately:
+
+    /api/slots   1389 ms      every other endpoint   30-70 ms
+
+`CompetitionStore.ListSlots()` **fully deserialized every save file on disk** to print a label —
+and its comment said that was "cheap by design ... there will only ever be a handful of slots".
+With real careers that is ~130 MB of JSON and ~150 000 objects. Worse, the desktop competitions
+hub called it **while BUILDING A SCREEN**, purely to decide whether to show a LOAD GAME button.
+On the shipped build (reflection parser, indented 31-38 MB saves) that is the reported ~10 s.
+
+Two fixes: `AnySlotExists()` for the "is there a save?" question (a directory listing), and a
+streaming `Utf8JsonReader` for the labels that reads only the first 512 KB of a file and SKIPS
+`Career` — the world — without materializing it. **1389 ms -> 6 ms**, identical labels.
+`--competition-test` now asserts the streamed label equals the fully-parsed one so the two
+cannot drift.
+
+**The lesson:** the first measurement was of the operation *I* had just touched. The freeze was
+in a helper whose own comment asserted it was cheap. Sweep everything the user can click before
+concluding.
+
+What is left is real computation, so both clients now SAY they are working:
+
+* desktop — `MenuClient.RunBusy(label, work)` pushes a **PLEASE WAIT** screen, lets it render for
+  two frames, then pops it and runs the work. Godot cannot paint from inside a synchronous call,
+  so deferring is the only way. Used by NEXT SEASON and by career creation.
+* web — a busy overlay that appears only if a request outlives **200 ms**, so ordinary clicks do
+  not flash a spinner. Labels come from `BUSY_LABELS` in `app.js`.
+
+## >>> S35: web career + match streaming (Phases 1 + 2 DONE, Phase 3 next)
+
+### Career depth plan — feature #4 SHIPPED (2026-08-23)
+**#4 THE NATIONAL-TEAM JOB is in, on BOTH clients.** `Competition/Career/NationalJob.cs`. A
+committee offers the job in the original's words when the manager is WELL REGARDED (48) and has
+won a trophy; it is held ALONGSIDE the club. Squad selection is the original's HOME/ABROAD
+split, 16 players, and **the squad's average ability IS the side's rating** in the continental
+tournament it plays each season. Winning it is a trophy; a first-round exit ends the annually
+reviewable contract. Desktop: DASHBOARD -> NATIONAL TEAM. Web: NATIONAL tab (`/api/national`).
+Rules to respect:
+* **the reputation gate is MEASURED** — 55 made the feature unreachable (six seasons at Juventus
+  with two trophies peaked at 48). Change it only against a played career, never by feel;
+* **AUTO PICK must stay balanced** (2 keepers, 5 defenders, 6 midfielders, 3 forwards) — picking
+  by ability alone named eleven strikers and one goalkeeper;
+* the country bridge is by NAME (`PlayerNationNames.IndexOfCountry`): the TEAM.* nation byte and
+  the player-nationality byte are different numbering systems. 139 of the 143 national sides
+  resolve; the four that do not have no players carrying that nationality at all.
+
+### Four defects found by PLAYING a career (2026-08-23)
+All four are fixed; all four were invisible to the test suite.
+* **`CompetitionEngine.LiveStrength`** now rates a club from its ACTUAL career squad. It used to
+  read the 1996 TEAM.* snapshot, so transfers, ageing, growth and regens changed nothing about a
+  career's simulated results. Anything that ranks or simulates clubs must go through it.
+* **The board's expectation is club-blind and FROZEN at the season's first match**
+  (`CareerState.SeasonExpectedPosition`). The old tie-break preferred the Teams index, and
+  `CareerFactory` always puts the managed club first — so a manager tied for the strongest squad
+  was permanently expected to win the league.
+* **National sides are found from the DATA, not from nation 80..85**
+  (`CareerWorldBuilder.FindNationalSides`): TEAM.074 and TEAM.068 hold more of them, and 18
+  national squads were on sale in the transfer market. Old saves are repaired on load.
+* Both clients now SHOW the expectation, so a mis-ranked one can never hide again.
+
+### Career depth plan — feature #3 SHIPPED (2026-08-22)
+**#3 JOB OFFERS FROM OTHER CLUBS is in, on BOTH clients.** `Competition/Career/JobMarket.cs`.
+Rival clubs write to the MANAGER in the original's own words, naming a transfer budget; accepting
+books a move that happens at the season rollover; a SACKED manager is offered work a rung lower
+instead of simply ending his career. Desktop: DASHBOARD -> JOB OFFERS, plus a NEW JOB button on
+the career-over screen. Web: JOBS tab (`/api/jobs`). Rules to respect when touching it:
+* **an offer must survive to the rollover** — the move can only happen there, so the wait is
+  taken from the remaining league programme, never rolled. What withdraws an offer early is the
+  manager's OWN board turning on him;
+* **last season's letters lapse at the rollover** (`JobMarket.StartNewSeason`), or a job could
+  be accepted a year late;
+* **`CareerState.SeasonBooksClosed` guards the world roll-forward** — a sacked manager re-enters
+  `AdvanceCareerSeason` to take a new job and must not age the world or pay the wages twice;
+* **`ChairmanMemo.Subject` says what %a meant** — the manager in a chairman memo, the CLUB in a
+  job letter. A client that re-substitutes after translating must read it, or the club's name is
+  replaced by the manager's;
+* both clients build the letter from `JobMarket.OfferLetterLines` and substitute the money
+  themselves, so each prints it in its own format.
+
+### Career depth plan — features #1 and #2 SHIPPED (2026-08-21)
+**#2 THE CHAIRMAN is in, on BOTH clients.** `Competition/Career/ChairmanModel.cs` runs the
+original's two escalation ladders (league position, overdraft) and its five-grade end-of-season
+verdict, and can sack you mid-season or refuse to renew. OPTIONS -> BOARD picks PATIENT /
+NORMAL / RUTHLESS. Desktop: DASHBOARD -> CHAIRMAN, pushed automatically when a memo arrives.
+Web: CHAIRMAN tab (`/api/chairman`) + a header chip. Rules to respect when touching it:
+* the verdict must never judge a season with **no played league fixtures** (see the guard in
+  `CompetitionEngine.RunChairmanSeasonVerdict` — `--career-report` breaks instantly without it);
+* the warning ladders are **monotonic within a season** — escaping the drop zone silences the
+  board but must not rewind the stage, or the same letter is filed over and over;
+* the board judges you against **your squad's strength rank in its own league**, not against
+  first place.
+
+### Career depth plan — feature #1 SHIPPED (2026-08-21)
+**Season finances are in, on BOTH clients.** `Competition/Career/SeasonFinances.cs` prints the
+original game's income/expenditure ledger; prize money now depends on league place and cup run
+for every club in the competition. Desktop: DASHBOARD -> FINANCES. Web: FINANCES tab
+(`/api/finances`). Verified visually on both (`--menu-shot` 13a/13b, Playwright screenshot).
+Key invariant to respect when touching career money: **every path that moves
+`CareerClub.Budget` must also update that club's `Season*` ledger fields**, or
+`SeasonAccount.Unreconciled` goes non-zero and `--competition-test` fails. That assertion is
+deliberate; do not weaken it.
+
+### Career depth plan (NEW, 2026-08-21)
+`docs/decisions/03-career-depth-plan.md` — research + prioritised roadmap for career mode
+(desktop AND web). Headline: the ORIGINAL SWOS career had chairman verdicts, sackings, job
+offers from other clubs, a national-team job and full season finances — strings recovered from
+`original-amiga-swos.asm` — and we never ported any of it. Those are also the mechanics
+football-management players name as most engaging, so Tier 1 there is port completion, not
+feature creep. First step is the literal `TODO` in `Competition/Career/Finance.cs` (prize
+money), because without it the engine cannot judge whether a season was good.
+
+### The two live threads, in priority order
+1. **#242 — AI scoring.** REFRAMED AND PARTLY FIXED in S36 — read the "#242 — S36" block below
+   before touching anything. Short version: the AI *does* score; the visible bug (shots bending away
+   from goal) was a port-only chase heuristic and is fixed. What remains is a *rate* gap, not a
+   blocker.
+2. **Phase 3 of the network plan** — the input channel (take control of your team).
+
+### What exists now (all NEW files — the game itself only gained call-sites)
+
+**Web career client — a browser front-end onto the REAL C# career engine.**
+Run: `I:\GITHUB\W_OPEN_SWOS
+un-career-web.bat` (or
+`...\Godot_v4.6.2-stable_mono_win64_console.exe --headless --path I:\GITHUB\W_OPEN_SWOS\game --career-web 8770`)
+then open **http://127.0.0.1:8770**. The console window IS the engine — closing it stops the page.
+
+* `game/scripts/Web/CareerWeb.cs` — HttpListener server. Serves `game/web/` statically and a JSON API
+  (`/api/state|setup|squad|lineup|market|offers|staff|scouting|record|slots`, `POST /api/action`).
+  Also image endpoints `/img/head|kit|atlas|pitch` rendering REAL SWOS pixels via the game's own code.
+  **Threading:** requests queue onto the main thread via `Pump()` called from `Main._Process` — the
+  engine touches Godot and is not thread-safe. Bound to 127.0.0.1, no auth, dev tool only.
+* `game/web/` — index.html + app.js + style.css (+ match.js, replays/). SWOS-styled: the CSS carries
+  the LITERAL `MenuTheme.kStyles` RGB constants and reproduces the swos-port radial-gradient
+  (`radial-gradient(farthest-corner at 0% 0%, A, B)` == `d=w²+h²; l=x²+y²; s=l/d*32`), the 8-step
+  `kShine` selection flash as `steps(1,end)`, and a 1px press. Deliberately portable BACK into the
+  Godot menu. Palette is blue-forward (Tool/Value/Field/Header), gold = play, red = destructive.
+* **All screens work and were tested end-to-end**: new career, VIEW RESULT, whole season (31 player
+  matches), season rollover, squad, lineup swap, market (25 376 players), offers, staff, scouting,
+  record, named save slots shared with the game.
+
+**Match snapshot streaming — Phase 1 of `docs/decisions/02-match-streaming-and-multiplayer.md`.**
+* `game/scripts/Web/MatchSnapshot.cs` — the wire format. **404 B/tick = 27.6 KB/s at 70 Hz
+  (MEASURED, format v3).** It was 252 B on v2, which sent an atlas CELL; v3 sends the resolved
+  source rect and draw offset instead, because a cell is not enough to draw a SWOS sprite — see
+  "the web match renderer" below.
+  32 B file header + per-tick 12 B header + 24 entities × 10 B (i16 x,y,z + atlas cell + kind + flags/dir).
+* Record a match: `--match-record <out.swr> [ticks]` (default 4200 = 60 s). Demo at
+  `game/web/replays/demo.swr`.
+* `game/web/match.js` — canvas viewer, MATCH tab, speeds **x1–x5**, scrubber, ball-following camera,
+  painter sort, ball shadow + z-lift. **Speed is one line** (`pos += dt * hz * speed`) — that is the
+  whole point of streaming state instead of video.
+* **Coordinate gotcha (already fixed, do not re-break):** VM raw → pitch-bitmap is `x` UNCHANGED and
+  `y - 16`. Derived from the pitch sprite sitting at `(PitchOffsetX, PitchOffsetY + PitchBitmapWorldY)`
+  = `(-160, -272)` while players are at `(raw-160, raw-288)`; the X offsets cancel. Constants
+  `MatchSnapshot.PitchRelX/PitchRelY`. Verified: 100 % of players inside the 672×848 pitch.
+
+### Extractions made in EXISTING game code (this is the only game code touched)
+All three are pure extractions — same code, now called from two places instead of one, so the web can
+never drift from the game:
+* `Main.cs`: sprite-cell resolution → `Main.TryResolvePortCell(slot, out cell)` (renderer + recorder).
+* `MenuClient.Career.cs`: head bust → `Assets/HeadIcon.cs` (menu rows + `/img/head`).
+* `MenuClient.cs`: career pool building → `Competition/CareerFactory.cs` (menu + web new-career).
+
+### Game verified INTACT after those edits (2026-07-28)
+| test | result |
+|---|---|
+| `--competition-test` | PASSED |
+| `--swos-smoke 30000` | PASSED, 0 stuck-events, 0 clock-stalls |
+| `--match-shot` | sprites/kits/HUD render correctly (visual) |
+| `--menu-shot` (18 screens) | head icons + flags render in career rows (visual) |
+
+### Phase 2 DONE (2026-07-28) — LIVE SPECTATING of a real career fixture
+`WATCH MATCH` on the dashboard plays the next career fixture through the REAL sim and streams it to the
+browser. Full match verified end to end: 29 536 frames, 252 B/tick (v2 format), ran to 90:00, result recorded, career
+advanced to the next round.
+
+* **Transport is chunked HTTP, NOT a WebSocket — deliberate, do not "upgrade" it.** HttpListener's
+  `AcceptWebSocketAsync` is **Windows-only** (`PlatformNotSupportedException` on Linux), and the dedicated
+  server this grows into is a Linux box. Chunked streaming works everywhere, needs no upgrade handshake,
+  and Phase 2 is server->client only. Endpoint `GET /api/match/stream`; the browser reads it with
+  `fetch()` + a ReadableStream reader.
+* **The SERVER owns match time.** `CareerWeb.PumpLiveMatch()` ticks the sim on the MAIN thread at
+  `70 x speed` ticks per wall-clock second (`kMaxTicksPerPump = 96` so a hitch can never freeze the main
+  thread). Speed 0 = paused. **Measured accuracy: within 0.1 % at x1/x2/x3/x4/x5, exactly 0 while paused.**
+  The client draws the newest frame each rAF, so it can never drift ahead of or behind the real match.
+  (A client-side measurement of "390 ticks/s at x5" was a buffering artefact — trust the server counter.)
+* **A watched match counts exactly like a played one.** On full time `EndLiveMatch` runs the same pipeline
+  the game runs, including the human side's REAL energy spend and post-match injuries. The FullTime branch
+  of `_PhysicsProcess` was extracted into `Main.CaptureMatchOutcome()`, now called from both — the fourth
+  such extraction, same rule as the other three.
+* `liveAbort` leaves the fixture UNPLAYED (verified), matching ESC-out of a local match.
+* New files: `game/scripts/Main.LiveMatch.cs` (sim driver, partial of Main), `game/scripts/Web/LiveMatch.cs`
+  (frame store + spectator wakeups). New actions `liveStart` / `liveSpeed` / `liveAbort`, status at
+  `GET /api/match/status` (always carries `running`, because the serializer drops null `live`).
+* `MatchSnapshot` gained `BuildFileHeader` + a static `CaptureFrame`, so the file recorder and the live
+  stream emit byte-identical frames.
+* **Fixed while verifying: the stream always claimed the ball was visible.** The port parks the ball
+  off-pitch with a negative image index when it must not be drawn (pre-kickoff, throw-in held overhead,
+  keeper holding); the live renderer honours that (`Main.cs: ballHidden = BallSprite.ImageIndex < 0`) and
+  now so does the frame flag.
+* **The clock is now the port's own** (`gt_gameTimeInMinutes` / `gt_gameSeconds`), fixing the S35 note that
+  `MatchTick / 70` ran ahead of it.
+* **Entities outside the 672x848 pitch bitmap are CORRECT, not a coordinate bug** — measured 0.85 % of
+  samples, occurring ONLY in gameState 21 and 0 (the pre-kickoff walk-in) and never during play. The
+  headless smoke test reports the same off-pitch spawn positions at tick 0, and `--match-shot` shows the
+  players walking in from off-pitch. Do not "fix" this by clamping.
+
+Game verified INTACT again after Phase 2: `--competition-test` PASSED, `--swos-smoke 30000` PASSED
+(0 stuck-events, 0 clock-stalls), `--match-shot` + `--menu-shot` visually correct.
+
+### USE PLAYWRIGHT TO TEST THE WEB CLIENT — it is installed and it works
+`npx playwright install chromium` once, then drive the real page from a node script (examples were in
+the session scratchpad). This is the ONLY way to verify the browser half; server-side curl tests pass
+even when the page is broken, which is exactly how the first live-match bug slipped through.
+Two gotchas that cost time:
+* **`MV` is a `let` global, so `window.MV` is `undefined`** inside `page.evaluate` — read it BARE (`MV`),
+  or every probe silently returns null and you will chase the wrong thing.
+* Trace `page.on('response')` for `/api/match/stream`; a 200 with no bytes vs no request at all are
+  completely different bugs.
+
+### The first live-match bug, for the record (fixed) — "growing counter over a frozen picture"
+Symptom: the MATCH tab sat on the demo replay's frame 0 (all 24 entities off-pitch, clock 00:00, button
+saying PLAY), while the server happily ticked a real match. Cause: `attachLive` only parses the incoming
+stream header when `this.rep` is empty — and `this.rep` still held the demo replay that `renderMatchViewer`
+loads when the tab first opens. So the header was never parsed, `play()` was never called, and the pump
+kept rewriting the DEMO object's `frames` count from the live byte stream. Playwright showed
+`MV.rep.frames` climbing 104 -> 314 -> 524 (exactly 70/s) with `playing:false` — the tell. Fix:
+`detach()` now clears `rep`/`pos`. Also hardened while hunting it: playback starts on the header instead
+of waiting for the atlases (one stalled `Image` could hang it forever), images have an 8 s timeout, and
+uncaught JS errors now toast instead of dying in the console.
+**Also fixed: `.swos{display:inline-flex}` beat the UA `[hidden]` rule**, so `el.hidden = true` never hid
+a button — the toolbar showed live and non-live controls at once. `[hidden]{display:none !important}`.
+
+### Snapshot format v2 (2026-07-29) — viewer fidelity pass
+Frame header 12 -> 20 B. The extra 8 bytes are what make the web view move like the desktop one:
+`i16 camX, i16 camY` (the PORT's smoothed camera), `u8 ctrlSlotTop, u8 ctrlSlotBottom`,
+`u8 nameOrdinal (1..16, 0 = none), u8 nameTeam`. The client reads `version` and still plays v1
+recordings (12 B header, falls back to following the ball). `demo.swr` was re-recorded as v2.
+* **Camera comes from `Camera.GetCameraXWhole/YWhole + kVga/2`, NOT from chasing the ball.** A
+  ball-following camera snaps, because the ball teleports on every restart and set piece. Measured on
+  the v2 demo: max per-tick camera delta **5 px, zero jumps > 8 px** — that is the port's own
+  `|delta| <= 5` clamp, and it is why the desktop client glides.
+* **Ball is the real sprite** (`/img/ball` = CJCBITS.RAW cell (0,3), trimmed) drawn top-left at
+  `(x - 1, y - z - 3)` with the shadow at `(x + z/2 + 1, y + z/4 + 1)` — the game's own
+  BallSpriteCenterX/Y and ball.cpp:1689-1754 formula. It used to be a `ctx.arc` white circle.
+* HUD on the canvas: scoreline + clock, a marker over the on-ball player, and the game's name banner
+  (rosters come from `liveStart` in the shirt order the sim was seeded with, indexed by `nameOrdinal`).
+* Speed now goes to **x10** (`LiveMatchSession.MaxSpeed`) = 700 ticks/s, inside the ~835 ticks/s a core
+  sustains.
+* Player animation was NEVER missing: measured 24 distinct atlas cells per player and ~12 500 cell
+  changes over 4200 ticks. If a specific animation looks wrong, suspect the sim, not the transport.
+
+### NEXT: Phase 3 — input channel (take control of your team)
+The frame format already reserves a spare byte per entity for a controlled-player marker, and
+`Main.LiveMatchBegin` currently forces `_forceBothTeamsCpu = true` — that flag is the switch. Post intent
+(1 byte/tick) to a new endpoint, feed it into `InputControls.SetJoystickState` instead of Godot `Input`.
+Then Phase 4 = dedicated server + multi-user, Phase 5 = desktop client renders from snapshots too.
+
+### Known issues / open
+* **Engine bug found via the web client (NOT introduced by it): `SeasonProgression` never resets
+  fatigue.** Recovery only happens per played fixture (`MatchEffects` → `FatigueModel.RecoverBetweenMatches`),
+  so there is no off-season rest and every player starts season 2 at FIT 0. Affects the GAME too.
+  Fix is a few lines in `SeasonProgression.AgeAndRetire` but it changes career balance — user decision.
+* **AI-vs-AI matches finish 0-0 — INVESTIGATED 2026-07-29, root cause NOT yet found. See task #242.**
+  Pre-existing sim issue, not caused by the web work; the fix will land in shared `Sim/Port/` and serve
+  both clients. What is now SETTLED, so nobody re-treads it:
+  - **It is NOT a return of #188.** The S34 spin fix is correct in BOTH halves — the tables
+    (`Memory.cs:1640-1651` = swos.asm:246182-246188) and the steer commit
+    (`AiBrain.cs:1638-1668` = swos.asm:119095-119120). Every other audited stage also matches the
+    reference: aftertouch application, end-swap/goal identity, keeper dive, ball physics constants.
+  - **"CPU curves away from goal" is RETAIL-FAITHFUL.** SWOS randomizes the AI spin sign per shot from
+    `gameTick & 0x1C` buckets: 3/8 of shots negate the goal-ward spin, 1/8 zero it
+    (swos-port updatePlayers.cpp:18292-18432 → `AiBrain.cs:1512-1584`). It only looks broken because the
+    correctly-curved 5/8 do not score either.
+  - **Measured mechanism:** AI shots never physically enter the goal. Over a deterministic 90 min:
+    113 AI fire commits, 20 goal-ward launches, ball within 6 px of a goal line inside the mouth just
+    3 times (z = 7, 15, 15), and **zero** frames past the line inside the mouth. On-target shots arrive
+    at **z = 14-16**, which is precisely the bar-deflect band (net z<=15, 16-19 deflects, >19 over).
+  - **A/B tests, deterministic 30000-tick recordings:** baseline 0-0; `FaithfulBallControl=false` → 0-1;
+    AI aftertouch tables unseeded (pre-S34) → 1-0. **Neither switch restores scoring.** Both reverted.
+  - **Gravity is NOT broken** (my first hypothesis, disproved): 157 of 168 airborne episodes in a
+    90-min recording are clean parabolas that peak then fall.
+  - **EVERY constant in the shot pipeline matches the Amiga reference — verified by hand:**
+    `ballKickingSpeed 2208` (asm:30730), `ballKickingDeltaZ $14000` (asm:30729), gravity 3291
+    (asm:203966), `ballSpeedKicking {-384,-270,-162,-54,54,162,270,384}` (asm:34836),
+    `ballSpeedFinishing {-288,-160,-32,96,224,352,480,608}` (asm:34844). Nothing left to "fix" there.
+  - **THE ARITHMETIC IS THE ANSWER, and it is brutally tight.** deltaZ 1.25 px/tick against gravity
+    0.0502 px/tick² gives **apex 15.6 px after 25 ticks** — and the goal net window is **z <= 15**.
+    So a plain shot is *above the bar for a single tick around its apex*, and the ball covers ~70 px
+    by then. Worked examples (finishing 4, speed 2432 = 3.08 px/tick):
+    shot from 40 px → z 12.0 **GOAL**; from 50 px → z 13.7 **GOAL**; from 60 px → z 14.9 **just in**;
+    from 70 px → z 15.5 **BAR**. Our AI fires from **70-85 px**, i.e. permanently in the bar band.
+  - **=> The bug is not the shot, it is the APPROACH — and the telemetry proves the split.** Over
+    30000 ticks: **kick fallback = 0 / 0** and **reaim = 0 / 0**, i.e. every one of the 113 kicks came
+    from the REAL ported AiBrain fire paths (`cseg_850F9=19, cseg_84FCA=84,
+    l_activate_normal_fire=10`). Meanwhile **chase fallback = 25410 + 20848**. So SHOOTING is fully
+    ported and constant-verified, while MOVEMENT is ~77 % a non-original heuristic. The AI takes
+    authentic shot decisions from wherever the heuristic parked the attacker — and that is 70-85 px
+    out, exactly the bar band.
+  - **Therefore the fix is to port the remaining AiBrain approach/movement logic** and retire the
+    chase heuristic in `I:\GITHUB\W_OPEN_SWOS\game\scripts\Sim\Port\UpdatePlayers.cs`. Inventing a
+    shot-distance threshold would NOT be faithful and must not be done as a shortcut.
+  - **PROVEN by measurement 2026-07-31 — permanent metric now in `--swos-smoke`.** New `[shots]` line
+    (counters in `Sim/Port/PlayerActions.cs`, printed from the smoke summary; pure telemetry, verified
+    not to change behaviour — the deterministic recording is still 0-0). A full 90 min gives:
+    `finishing=2 long=17 | dist<30=0 <45=0 <60=1 <80=1 <120=6 >=120=11`.
+    **The AI never once shoots from inside ~60 px — the only range from which the physics permits a
+    goal.** 11 of 19 shots come from beyond 120 px. That closes the argument: the shot mechanics are
+    fine, the team never gets into scoring range.
+  - **The metric to watch when fixing this: the `<60` bucket.** It must stop being ~0. Goals will
+    follow on their own; do not chase the scoreline directly.
+
+### #242 — S36 (2026-08-18): what was actually wrong, and what still is
+
+**The premise "the AI never scores, every match ends 0-0" was WRONG.** It came from a single fixture.
+Sampled over 10 different team pairings (`--swos-smoke 30000 <homeIdx> <awayIdx>`, new args added
+this session), AI-vs-AI matches produce **1.3-1.6 goals per match** and 5-6 of 10 fixtures are
+non-goalless. The default ARSENAL/CHELSEA pairing is simply a low-scoring outlier.
+
+**FIXED #1 — the port-only chase heuristic was corrupting the AI's aim.**
+`UpdatePlayers.cs` carried a "chase the ball" fallback with **no counterpart in the reference**: for
+every off-ball CPU sprite it overwrote the TEAM-WIDE `currentAllowedDirection` with a direction
+computed from *that arbitrary sprite's* position toward the ball. It fired **25 410 of 30 000 ticks**.
+Because `currentAllowedDirection` is also the AI's after-touch (spin) input
+(`updatePlayers.cpp:19174-19306`), it was bending shots at random.
+Measured, over 5 fixtures, shot-flight rotation vs the rotation needed to steer toward goal:
+
+| chase heuristic | curves TOWARD goal | curves AWAY |
+|---|---|---|
+| ON (old)  | 53 | 39 |
+| OFF (new) | **78** | **12** |
+
+That is the user's "komputer podkręca od bramki a nie do bramki" report, quantified and fixed. It is
+now behind `UpdatePlayers.kChaseFallbackEnabled = false` (code kept, not deleted). Goal counts across
+10 fixtures: 16 with it ON vs 13 with it OFF — i.e. no scoring cost, and correct aim.
+
+**FIXED #2 — `D2` register seeding in `AiBrain.SetControlsDirection`.**
+In the asm `D2` is ONE register: the `D2 = 769 / 129` write at `updatePlayers.cpp:16091/16095` also
+seeds the LOW BYTE that the spin sign test reads later (`18488-18501`, `18805-18812`) when no
+intervening block rewrote it. Our port kept `d2Byte` as a separate variable initialised to `0`, so
+that default read as "sign clear" for BOTH teams. The asm's real defaults are `769 & 0xFF = 0x01`
+(top) and `129 & 0xFF = 0x81` (bottom) — **opposite spins**. Fixed. Verified behaviour-neutral on the
+sampled fixtures (identical scorelines), so it is a latent-correctness fix, not the bug.
+
+**Two more old hypotheses KILLED by measurement this session** (add them to the list below):
+8. "Shots go over the bar" — **false**. New `miss(wide/high/short)` telemetry: `high = 0` in every
+   sampled match. Close-range shots that fail almost all read `short`, i.e. the ball is saved or
+   blocked before the goal line. The S35 "apex 15.6 px vs net window z<=15" story does not hold up:
+   the ball is under the bar for all but ~6 ticks of a 50-tick flight.
+9. "The AI curves away from goal because the angle convention is mirrored" — **false**. With the
+   chase heuristic off the spin is right-way 78/12; the sign logic
+   (`D2 = (dir<<5) - D5`, `D5` = ball->opponent-goal angle) matches the reference exactly.
+
+**What is STILL open (the honest remainder).** Real SWOS scores a bit higher than our 1.3-1.6.
+Per match the AI takes only **4-6 genuine finishing shots** (`playerKickingBall`'s
+`l_its_a_finishing_shot`, i.e. ball inside x 241..431 and past y 204/694 — `player.cpp:977-1049`),
+and 12-20 "long shots" that are mostly forward passes picking up the shooting-skill speed bonus.
+So the remaining gap is **how often the attack reaches the box**, not shot mechanics, not spin, and
+not ball height. If you pick this up: the metric is the `finishing on/off` and `<60` buckets in the
+`[shots]`/`[curve]` lines, and the code to audit is the approach/positioning path
+(`AiBrain` cseg_84A53 dispatch at `updatePlayers.cpp:17441-17477` and
+`PlayerHeader.SetPlayerWithNoBallDestination`). **Do not tune a threshold to force goals.**
+
+**New measurement tools added this session (pure telemetry, no behaviour):**
+* `--swos-smoke <ticks> [homeIdx] [awayIdx]` — pick the fixture, so results can be SAMPLED. One
+  fixture is not evidence; this session's first "fix" looked like +1 goal and was noise.
+* `[curve]` line — shot-flight rotation vs the toward-goal rotation, shots on/off target, and why
+  finishing shots missed (wide / high / short) plus the goal-line crossing offset.
+
+### Hypotheses ELIMINATED for #242 — do not re-test these
+1. Inverted spin / bug #188 regression — spin fix verified correct in both halves.
+2. Gravity not applied to shots — 157/168 airborne episodes are clean parabolas.
+3. Wrong shot constants — `ballKickingSpeed 2208`, `ballKickingDeltaZ $14000`, gravity 3291,
+   `ballSpeedKicking`, `ballSpeedFinishing` all verified identical to the Amiga asm.
+4. Wrong goal-height window — both thresholds (z>10 near the posts, z>15 in the mouth) verified
+   identical to swos-port `src/game/ball/ball.cpp:937,952`.
+5. Tactics off-ball positioning silently throwing — instrumented the swallowing catch in
+   `UpdatePlayers.cs`; it never fires. Off-ball positioning IS running.
+6. Non-original kick fallback firing shots — measured 0/0; all 113 kicks come from the real ported
+   AiBrain fire paths.
+7. `FaithfulBallControl` / unseeded AI aftertouch tables — A/B tested, 0-1 and 1-0 respectively;
+   neither restores scoring.
+* Referee entity in the snapshot is reserved/invisible (the port draws him from a separate pool).
+
+## >>> S34 (previous front) — ANDROID BUILD NOT WORKING (S34, current front)
 The R36S is SOLVED and playable (see next section). The ACTIVE problem is the **Android APK** built this session:
 `I:\GITHUB\W_OPEN_SWOS\build\android\OpenSWOS.apk` (built 2026-07-18 22:24, 108 MB, valid zip) — **user reports it "does not work". Failure mode NOT yet captured.**
 **NEXT STEP: get the real error, don't guess.** Ask the user (a) the exact failure mode — crash on launch / black screen / stuck on menu / no match / white screen — and (b) to capture `adb logcat` while launching (device via USB debugging: `adb logcat -s godot Godot AndroidRuntime DEBUG *:E`), or describe what they see.

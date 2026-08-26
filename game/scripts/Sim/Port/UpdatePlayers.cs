@@ -116,6 +116,22 @@ public static class UpdatePlayers
     // glued to the ball forever).
     private static int s_carrierStallTicksTop = 0;
     private static int s_carrierStallTicksBot = 0;
+    // ---- port-only chase heuristic: OFF (task #242, 2026-08-18) -------------
+    // Set false after measurement. The block it gates (search
+    // "FALLBACK heuristic") has NO counterpart in the reference and it fired
+    // 25 410 of 30 000 ticks, overwriting the TEAM-WIDE currentAllowedDirection
+    // from an arbitrary OFF-BALL sprite's position. currentAllowedDirection is
+    // also the AI's after-touch (spin) input (updatePlayers.cpp:19174-19306),
+    // so it was bending AI shots at random — the user-reported "the CPU curves
+    // the ball away from goal". Measured over 5 fixtures, shot-flight rotation
+    // vs the rotation needed to steer toward goal:
+    //     heuristic ON : toward 53 / away 39
+    //     heuristic OFF: toward 78 / away 12
+    // Goal counts over 10 fixtures were 16 (ON) vs 13 (OFF) — no scoring cost.
+    // Kept (not deleted) so the A/B can be re-run; do not re-enable without
+    // re-running it.
+    public const bool kChaseFallbackEnabled = false;
+
     public static void ResetFallbackCounters()
     {
         s_fallbackChasesTop = 0;
@@ -2197,12 +2213,17 @@ public static class UpdatePlayers
             AiBrain.SetControlsDirection(teamBase);
         }
 
-        // === FALLBACK heuristic (NOT a port) =============================
-        // AiBrain.SetControlsDirection has many stubbed inner branches and
-        // currently leaves the bottom team's currentAllowedDirection at -1
-        // most ticks (diagnostic measured ~86% no-write on BOT team). Without
-        // a written direction, the kick/pass pipeline never fires and the
-        // ball stays glued at kick-off coordinates.
+        // === FALLBACK heuristic (NOT a port) — DISABLED, see
+        // kChaseFallbackEnabled above (task #242, 2026-08-18) ==============
+        // HISTORICAL rationale, no longer true: "AiBrain.SetControlsDirection
+        // has many stubbed inner branches and leaves currentAllowedDirection
+        // at -1 most ticks, so the kick/pass pipeline never fires and the ball
+        // stays glued at kick-off". AiBrain's chase branches (17372-17555) and
+        // flip-direction (18017-18105) ARE ported now, and -1 is the
+        // ORIGINAL's own per-tick default too (updatePlayers.cpp:16043) — it
+        // means "no new direction this tick", not "AI is broken". With this
+        // block off, matches play out normally: 0 stuck-events over 30 000
+        // ticks and 13 goals across 10 sampled fixtures.
         //
         // Until the deep chase branches (cseg_84A85/cseg_84F4B/...) are
         // fully ported, pick a "chase the ball" direction whenever:
@@ -2213,12 +2234,10 @@ public static class UpdatePlayers
         // The 8-direction encoding matches SWOS: 0=N (-Y), 1=NE, 2=E (+X),
         // 3=SE, 4=S (+Y), 5=SW, 6=W (-X), 7=NW (clockwise from N).
         //
-        // TODO: replace once AiBrain stubs at updatePlayers.cpp:17372-17555
-        // (chase logic) and 18017-18105 (flip-direction) are wired up. Once
-        // those branches write the direction we should never reach this
-        // fallback under normal play.
+        // Those branches are wired up as of 2026-08-18 and this fallback is
+        // gated off. It is retained only so the A/B can be reproduced.
         short postDir = Memory.ReadSignedWord(teamBase + TeamData.OffCurrentAllowedDirection);
-        if (postDir == -1)
+        if (kChaseFallbackEnabled && postDir == -1)
         {
             short t1Has = Memory.ReadSignedWord(TeamData.TopBase + TeamData.OffPlayerHasBall);
             short t2Has = Memory.ReadSignedWord(TeamData.BottomBase + TeamData.OffPlayerHasBall);
